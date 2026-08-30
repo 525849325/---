@@ -12,8 +12,8 @@
 | QA-UNITY-001 | P0 | CORE-001,SAVE-001,COMM-001 | DONE | E | Unity 6000.5.10f1：EditMode 81/81、PlayMode 5/5；batch UI 结构审计 PASS，完整视觉验收未冒充已完成 |
 | QA-REGRESSION-002 | P0 | QA-UNITY-001 | DONE | E | 显式复用已授权 IPC；最新 EditMode 109/109、PlayMode 连续两次 19/19，UI batch 结构审计 0 issue |
 | BUILD-ANDROID-001 | P0 | QA-UNITY-001 | DONE | E | 基线 `060f4df` APK/AAB 已通过 badging/zipalign/v2/bundletool；仅作为历史可构建证据 |
-| BUILD-ANDROID-002 | P0 | QA-REGRESSION-002 | RUNNING | E | 最新 Unity 回归已全绿；正在重建并复验对应 APK/AAB，当前基线包不得用于最新代码验收 |
-| QA-DEVICE-001 | P0 | BUILD-ANDROID-002 | BLOCKED | E | 脚本/清单/证据链已准备；最新 APK 尚未生成且 ADB 当前为 0 台已授权物理设备，二者解除后执行 10/60 分钟验收 |
+| BUILD-ANDROID-002 | P0 | QA-REGRESSION-002 | DONE | E | 运行时代码提交 `10e6a9a` 的 APK/AAB 构建均 exit 0；APK `17225DC2...DAC15C` 与 AAB `B2E8B597...F0D63` 通过 metadata/zipalign/v2/bundletool/Manifest/双 ABI 门禁 |
+| QA-DEVICE-001 | P0 | BUILD-ANDROID-002 | BLOCKED | E | 最新 APK 已就绪；DeviceCheckOnly 实测 ADB 正常但 0 台已授权物理设备，未安装 APK；设备可用后执行 10/60 分钟验收 |
 | SETTINGS-UI-001 | P1 | SAVE-001 | TESTING | C/D | 声音、震动、立即保存、隐私与协议四入口已编译；待当前提交与 Unity 场景运行 |
 | FUNNEL-001 | P1 | CORE-001 | DONE | D/E | 无 PII 本地 JSONL 漏斗、会话关联、可替换 Sink 与可执行烟测完成 |
 | FEEDBACK-001 | P1 | CORE-001 | TESTING | C | 五类程序化音效已接入且程序集编译通过；待 Unity 场景听感/音量验收 |
@@ -26,6 +26,6 @@
 | IDENTITY-PRIVACY-001 | P1 | COMM-001 | DONE | D/E | 移除设备唯一标识，改为应用随机匿名 ID；服务器入口仅 Development 可见；清空无关 PS4 模板字段 |
 | SAVE-AGGREGATE-001 | P0 | SAVE-001 | DONE | D/E | v3 聚合存档、v1/v2 迁移及阶段/境界/功法/灵根/引导/任务恢复通过最新 EditMode/PlayMode；空壳对象归一化已覆盖 |
 | CORE-STAGE-002 | P0 | CORE-001 | DONE | A/B/E | 胜利推进、失败重试、Boss 回环、奖励窗口与在线无奖通关契约通过实际 Unity、核心离线及后端门禁 |
-| RC-QUALITY-001 | P0 | RC-AUDIT-001 | RUNNING | E | 最新 Unity 回归已全绿；当前执行 Android 重构建，随后转真机验收 |
+| RC-QUALITY-001 | P0 | RC-AUDIT-001 | TESTING | E | 最新 Unity 回归及对应 APK/AAB 门禁全绿；物理设备验收被 QA-DEVICE-001 阻塞，继续其他不依赖设备的 RC 收口 |
 
-当前自动执行：`BUILD-ANDROID-002`（基于最新通过回归的 HEAD 重建并复验 Android RC APK/AAB）。
+当前自动执行：`RC-QUALITY-001`（继续不依赖物理设备的 RC 收口；设备可用时自动恢复 QA-DEVICE-001）。

@@ -18,7 +18,7 @@
 - **问题：** 旧批处理会在加载代码前返回 198；人工确认 Hub Personal 有效后需要重新建立自动化证据。
 - **原因：** 旧 LicenseClient 会话/许可证缓存未同步；不是用户缺少 Unity 许可证。刷新后本机 entitlement 明确包含 Editor、headless 与 Android。
 - **已经尝试：** 对比 Hub 与 batch 日志；确认版本化 LicensingClient 成功解析 Unity Personal；修复真实编译/PlayMode 问题；通过纯 ASCII 临时驱动器绕过 Android 工具的中文路径限制。
-- **结果：** EditMode 81/81、PlayMode 5/5；APK/AAB 构建退出码 0并完成产物校验。
+- **结果：** 最新 EditMode 109/109、PlayMode 连续两次 19/19；对应运行时代码提交 `10e6a9a` 的 APK/AAB 构建退出码 0，并完成 metadata、zipalign、v2 签名、bundletool、Manifest 与双 ABI 校验。
 - **残余风险：** batchmode 只完成 UI 结构审计，完整 9:16 视觉边界和真机稳定性仍由 QA-DEVICE-001 验收；测试签名不可用于商店发布。
 - **状态：** RESOLVED（2026-08-30）；无需用户再次激活许可证。
 
@@ -34,3 +34,4 @@
 - 自动化脚本已停止把退出码 198 解释为“用户没有许可证”，并改为只在 lock 文件确实被进程持有时阻止运行；下一策略是显式复用该已授权版本化 IPC，不终止现有 Editor/Hub、不删除当前 stale lock、不要求重新激活。
 - 显式传入 `-licensingIpc LicenseClient-Admin-6000.5.10` 后，本项目已稳定获得 Editor entitlement：最新 EditMode 109/109、PlayMode 连续两次 19/19；RED-001 的自动化会话问题完成闭环。
 - 当前无任何需要老板执行的 Unity 账号或权限动作；后续 Android 构建继续复用同一授权通道。
+- 对应运行时代码提交 `10e6a9a` 的 APK/AAB 已再次通过该授权通道构建并完成包体门禁；ADB 当前 0 台物理设备属于 QA 外部条件，不是账号或许可证 RED。

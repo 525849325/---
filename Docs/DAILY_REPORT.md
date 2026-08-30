@@ -5,22 +5,26 @@
 | 状态 | 当前值 |
 |---|---|
 | 版本 | V0.1 RC 开发中 |
-| 总体完成度 | 最新 Unity 回归全绿；背包、聚合存档、胜利驱动关卡已通过实际 Test Runner，正在重建 Android RC 双产物 |
+| 总体完成度 | 最新 Unity 回归全绿；对应运行时代码提交 `10e6a9a` 的 Android RC APK/AAB 已重建并通过双产物门禁，等待物理设备验收 |
 | 当前 Gate | GATE 4｜P0 收口 / Device Acceptance |
-| 当前 Task | BUILD-ANDROID-002｜基于最新通过回归的 HEAD 重建并校验 APK/AAB |
-| Build | BASELINE PASS｜APK/AAB 已验证；最新背包修复后产物待重构建 |
+| 当前 Task | RC-QUALITY-001｜继续不依赖物理设备的 RC 质量收口；QA-DEVICE-001 单独保持 BLOCKED |
+| Build | PASS｜最新 APK/AAB 均对应运行时代码提交 `10e6a9a` 并通过独立校验 |
 | Tests | 最新 EditMode 109/109；PlayMode 连续两次 19/19；UI batch 结构审计 0 issue；离线核心、真实战斗、领域与后端门禁 PASS |
 | P0 / P1 | P0：背包、聚合存档、胜利驱动关卡与 Unity 回归 DONE；P1：真实战斗模型 PASS，真机 10/60 分钟与完整视觉体验待验收 |
-| Blocked | QA-DEVICE-001｜最新包构建中且当前 ADB 为 0 台已授权物理设备 |
+| Blocked | QA-DEVICE-001｜ADB DeviceCheckOnly 已执行，当前为 0 台已授权物理设备；未安装 APK |
 | RED | 无 OPEN RED；RED-001 已解决 |
-| 最大风险 | 最新代码尚未生成对应 APK/AAB；生产 Controller 的 9999 HP 保胜设定使失败率/难度仍缺少真机证据 |
-| Next | Android RC APK/AAB 重构建与校验 → ADB DeviceCheck → 真机 10/60 分钟验收 |
+| 最大风险 | 尚无物理设备的 10/60 分钟稳定性与完整 9:16 视觉证据；当前 RC 为 Android Debug 测试签名，不可直接上架 |
+| Next | 继续不依赖真机的 RC 质量收口；设备可用时立即执行 FreshInstall 10 分钟与 60 分钟验收 |
 | 是否需要老板决策 | 否 |
 
 当前分支：`main`；远端：`origin/main`（GitHub `525849325/---`）
 
 ## TODAY
 
+- 基于最新回归通过的运行时代码提交 `10e6a9a` 重新生成 Android RC APK/AAB；两次 Unity 构建均退出码 0、时间戳刷新且日志含 `Android artifact built at`。
+- 最新 APK：26,615,915 bytes，SHA-256 `17225DC2F0640B012225D8DC66BF2D50D1A85E70A850C54E5B0A88FA29DAC15C`；包名、版本、min/target SDK、Portrait、双 ABI、zipalign 与 v2 签名均 PASS。
+- 最新 AAB：26,622,389 bytes，SHA-256 `B2E8B5978DC530F1B2FF151EFE36A8C62236329C2BBFA86F0850206C944F0D63`；bundletool validate、base Manifest/dex 与 ARM64/ARMv7 原生库均 PASS。
+- ADB DeviceCheckOnly 在授权环境下正常启动服务并确认 0 台已授权物理设备；未安装 APK，QA-DEVICE-001 保持 BLOCKED，但不升级 RED。
 - 显式复用已授权 `LicenseClient-Admin-6000.5.10` 后，最新 Unity Test Runner 恢复稳定执行；确认问题是 Hub/批处理会话绑定差异，不是许可证缺失。
 - 最新 EditMode 109/109 PASS；PlayMode 修复后连续两次 19/19 PASS；batch UI 结构审计 0 issue。
 - 修复 Unity JsonUtility 将 inline `null` 恢复成空壳对象的问题：清理伪 PendingEquipment、空渡劫占位与空灵根行，保留授予 Token 幂等证据并合并重复灵根最高等级。
@@ -52,10 +56,10 @@
 
 ## BUILD
 
-- 基线 Android RC APK：PASS；包名 `com.immortalloot.prototype`，version `0.1.0 (1)`，minSdk 26、targetSdk 36、Portrait、ARM64+ARMv7。
-- APK：zipalign PASS；APK Signature Scheme v2 PASS；当前 Android Debug 测试签名，仅供 RC 安装验证。
-- Android RC AAB：PASS；bundletool validate PASS，base manifest/dex 与双 ABI 齐全；测试签名不可用于商店上传。
-- 最新 Unity 回归已通过；APK/AAB 正在基于对应 HEAD 重构建，现有旧产物仅保留为基线证据。
+- 最新 Android RC APK：PASS；26,615,915 bytes；SHA-256 `17225DC2F0640B012225D8DC66BF2D50D1A85E70A850C54E5B0A88FA29DAC15C`。
+- APK：`com.immortalloot.prototype`、version `0.1.0 (1)`、minSdk 26、targetSdk 36、Portrait、ARM64+ARMv7、zipalign PASS、APK Signature Scheme v2 PASS。
+- 最新 Android RC AAB：PASS；26,622,389 bytes；SHA-256 `B2E8B5978DC530F1B2FF151EFE36A8C62236329C2BBFA86F0850206C944F0D63`；bundletool validate、base manifest/dex 与双 ABI 齐全。
+- 两个产物均为运行时代码提交 `10e6a9a` 的重构建结果；Android Debug 测试签名仅供 RC 安装验证，不可直接用于商店发布。
 
 ## TEST
 
@@ -70,8 +74,8 @@
 
 ## PROGRESS
 
-- GATE 4 的最新 Test Runner 与全部离线门禁已通过；已验证显式复用授权 IPC 可稳定执行自动化。
-- GATE 4 仍不能关闭：最新对应 APK/AAB 与物理设备证据尚未完成。
+- GATE 4 的最新 Test Runner、全部离线门禁及对应 APK/AAB 构建门禁已通过；显式复用授权 IPC 可稳定执行自动化。
+- GATE 4 仍不能关闭：物理设备 10/60 分钟、完整 9:16 视觉与真实触控证据尚未完成。
 
 ## RED
 
@@ -79,9 +83,9 @@
 
 ## BLOCKED
 
-- QA-DEVICE-001：最新 HEAD 对应 APK 正在生成，且当前 ADB 发现 0 台已授权物理 Android 设备；禁止拿基线旧包冒充本次验收。
+- QA-DEVICE-001：运行时代码提交 `10e6a9a` 对应 APK 已通过包体门禁，但 ADB DeviceCheckOnly 确认 0 台已授权物理 Android 设备；未安装 APK，等待设备后执行 10/60 分钟验收。
 
 ## NEXT
 
-- 立即重建并复验最新 APK/AAB，记录哈希、签名、Manifest、ABI 与 bundletool 结果。
-- 完成 ADB DeviceCheck；物理设备可用时执行 10/60 分钟验收。
+- 继续执行不依赖物理设备的最高优先级 RC 质量收口任务。
+- 物理设备可用时执行 FreshInstall 10 分钟冒烟与 60 分钟稳定性验收，并完成人工视觉/触控清单。
