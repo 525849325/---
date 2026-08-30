@@ -169,6 +169,10 @@ internal static class DomainSmokeTests
 
 namespace UnityEngine
 {
-    internal static class JsonUtility { public static string ToJson(object value) => "{}"; }
+    internal static class JsonUtility
+    {
+        public static string ToJson(object value) => "{}";
+        public static T FromJson<T>(string value) => System.Activator.CreateInstance<T>();
+    }
     internal static class Debug { public static void LogWarning(object value) { } }
 }
