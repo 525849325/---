@@ -3,6 +3,7 @@ using ImmortalLoot.Config;
 using ImmortalLoot.Equipment;
 using ImmortalLoot.Inventory;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace ImmortalLoot.Tests
 {
@@ -81,6 +82,111 @@ namespace ImmortalLoot.Tests
             Assert.That(selected, Is.SameAs(safe));
             Assert.That(InventoryOverflowPolicy.SelectDiscardCandidate(
                 new[] { equipped, locked, legendary }, protectedIds), Is.Null);
+
+            var explicitSacrifice = InventoryOverflowPolicy.SelectExplicitSacrificeCandidate(
+                new[] { equipped, locked, legendary, safe }, protectedIds);
+            Assert.That(explicitSacrifice, Is.SameAs(locked),
+                "A confirmed recovery action may select the lowest-value protected item, but never an equipped item.");
+            var sameTierNewer = Item("same-tier-newer", locked.Quality, locked.Level);
+            sameTierNewer.CreateTimeUtc = locked.CreateTimeUtc.AddHours(1);
+            Assert.That(InventoryOverflowPolicy.IsHigherValue(sameTierNewer, locked), Is.False,
+                "Creation time must not be presented as a real equipment-value upgrade.");
+        }
+
+        [Test]
+        public void FullProtectedInventory_StoresHighQualityDropAsSerializablePendingEquipment()
+        {
+            var state = new InventoryState { EquipmentCapacity = 1 };
+            var inventory = new InventoryService(state, Catalog());
+            var protectedItem = Item("protected", EquipmentQuality.Legendary, 10);
+            inventory.AddEquipment(protectedItem);
+            var incoming = Item("pending-mythic", EquipmentQuality.Mythic, 20);
+
+            var candidate = InventoryOverflowPolicy.SelectDiscardCandidate(
+                state.Equipment,
+                new System.Collections.Generic.HashSet<string> { protectedItem.InstanceId });
+            Assert.That(candidate, Is.Null, "The reproduction requires a full inventory with no safe discard candidate.");
+
+            inventory.StorePendingEquipment(incoming);
+
+            Assert.That(state.Equipment, Has.Count.EqualTo(1));
+            Assert.That(state.Equipment[0], Is.SameAs(protectedItem));
+            Assert.That(state.PendingEquipment, Is.SameAs(incoming), "The high-quality drop must remain owned while the bag is full.");
+            Assert.That(state.PendingEquipment.IsLocked, Is.True, "Legendary and Mythic pending drops must receive the same protection as bagged equipment.");
+
+            var restored = JsonUtility.FromJson<InventoryState>(JsonUtility.ToJson(state));
+            Assert.That(restored.PendingEquipment, Is.Not.Null);
+            Assert.That(restored.PendingEquipment.InstanceId, Is.EqualTo(incoming.InstanceId));
+            Assert.That(restored.PendingEquipment.Quality, Is.EqualTo(EquipmentQuality.Mythic));
+            Assert.That(restored.PendingEquipment.IsLocked, Is.True);
+        }
+
+        [Test]
+        public void PendingEquipment_IsClaimedExactlyOnceAfterCapacityBecomesAvailable()
+        {
+            var state = new InventoryState { EquipmentCapacity = 1 };
+            var inventory = new InventoryService(state, Catalog());
+            var existing = Item("existing", EquipmentQuality.Legendary, 10);
+            var pending = Item("pending", EquipmentQuality.Mythic, 20);
+            inventory.AddEquipment(existing);
+            inventory.StorePendingEquipment(pending);
+
+            Assert.That(inventory.TryClaimPendingEquipment(out var blockedClaim), Is.False);
+            Assert.That(blockedClaim, Is.Null);
+            Assert.That(state.PendingEquipment, Is.SameAs(pending));
+            Assert.That(state.Equipment, Has.Count.EqualTo(1));
+
+            Assert.That(inventory.RemoveEquipment(existing.InstanceId, out _), Is.True);
+            Assert.That(inventory.TryClaimPendingEquipment(out var claimed), Is.True);
+            Assert.That(claimed, Is.SameAs(pending));
+            Assert.That(state.PendingEquipment, Is.Null);
+            Assert.That(state.Equipment, Has.Count.EqualTo(1));
+            Assert.That(state.Equipment[0], Is.SameAs(pending));
+
+            Assert.That(inventory.TryClaimPendingEquipment(out var duplicateClaim), Is.False);
+            Assert.That(duplicateClaim, Is.Null);
+            Assert.That(state.Equipment, Has.Count.EqualTo(1), "A pending drop must never be inserted twice.");
+        }
+
+        [Test]
+        public void FullInventory_ExplicitReplacementClaimsPendingExactlyOnceWithoutChangingCount()
+        {
+            var state = new InventoryState { EquipmentCapacity = 1 };
+            var inventory = new InventoryService(state, Catalog());
+            var existing = Item("existing-protected", EquipmentQuality.Legendary, 10);
+            var pending = Item("pending-upgrade", EquipmentQuality.Mythic, 20);
+            inventory.AddEquipment(existing);
+            inventory.StorePendingEquipment(pending);
+
+            Assert.That(inventory.TryReplaceEquipmentWithPending(existing.InstanceId, out var claimed, out var replaced), Is.True);
+            Assert.That(claimed, Is.SameAs(pending));
+            Assert.That(replaced, Is.SameAs(existing));
+            Assert.That(state.PendingEquipment, Is.Null);
+            Assert.That(state.Equipment, Has.Count.EqualTo(1));
+            Assert.That(state.Equipment[0], Is.SameAs(pending));
+
+            Assert.That(inventory.TryReplaceEquipmentWithPending(existing.InstanceId, out _, out _), Is.False,
+                "The same pending equipment must not be replaceable twice.");
+            Assert.That(state.Equipment, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void LowerValuePendingEquipment_CanBeExplicitlyDiscardedExactlyOnce()
+        {
+            var state = new InventoryState { EquipmentCapacity = 1 };
+            var inventory = new InventoryService(state, Catalog());
+            var existing = Item("existing-mythic", EquipmentQuality.Mythic, 20);
+            var pending = Item("pending-common", EquipmentQuality.Common, 1);
+            inventory.AddEquipment(existing);
+            inventory.StorePendingEquipment(pending);
+
+            Assert.That(InventoryOverflowPolicy.IsHigherValue(pending, existing), Is.False);
+            Assert.That(inventory.TryDiscardPendingEquipment(out var discarded), Is.True);
+            Assert.That(discarded, Is.SameAs(pending));
+            Assert.That(state.PendingEquipment, Is.Null);
+            Assert.That(state.Equipment, Has.Count.EqualTo(1));
+            Assert.That(state.Equipment[0], Is.SameAs(existing));
+            Assert.That(inventory.TryDiscardPendingEquipment(out _), Is.False);
         }
 
         private static EquipmentInstance Item(string id, EquipmentQuality quality, int level, string baseId = "weapon_cloudsteel_blade") => new EquipmentInstance

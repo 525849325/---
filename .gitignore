@@ -14,6 +14,7 @@
 /Recordings/
 /.utmp/
 /TestResults/
+/Docs/Evidence/
 /*.log
 /*results.xml
 /*TestResults.xml

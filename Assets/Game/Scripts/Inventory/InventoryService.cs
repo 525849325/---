@@ -26,6 +26,65 @@ namespace ImmortalLoot.Inventory
             _state.Equipment.Add(item);
         }
 
+        public void StorePendingEquipment(EquipmentInstance item)
+        {
+            if (item == null) throw new ArgumentNullException(nameof(item));
+            if (_state.Equipment.Exists(value => value.InstanceId == item.InstanceId))
+                throw new InvalidOperationException($"Equipment '{item.InstanceId}' already exists in the inventory.");
+            if (_state.PendingEquipment != null)
+            {
+                if (_state.PendingEquipment.InstanceId == item.InstanceId) return;
+                throw new InvalidOperationException("Pending equipment must be claimed before another drop can be stored.");
+            }
+            if (item.Quality >= EquipmentQuality.Legendary) item.IsLocked = true;
+            _state.PendingEquipment = item;
+        }
+
+        public bool TryClaimPendingEquipment(out EquipmentInstance item)
+        {
+            item = null;
+            var pending = _state.PendingEquipment;
+            if (pending == null || _state.Equipment.Count >= _state.EquipmentCapacity) return false;
+            if (_state.Equipment.Exists(value => value.InstanceId == pending.InstanceId))
+                throw new InvalidOperationException($"Pending equipment '{pending.InstanceId}' already exists in the inventory.");
+
+            AddEquipment(pending);
+            _state.PendingEquipment = null;
+            item = pending;
+            return true;
+        }
+
+        public bool TryDiscardPendingEquipment(out EquipmentInstance item)
+        {
+            item = _state.PendingEquipment;
+            if (item == null) return false;
+            _state.PendingEquipment = null;
+            return true;
+        }
+
+        public bool TryReplaceEquipmentWithPending(
+            string replacementInstanceId,
+            out EquipmentInstance claimed,
+            out EquipmentInstance replaced)
+        {
+            claimed = null;
+            replaced = null;
+            if (string.IsNullOrWhiteSpace(replacementInstanceId) || _state.PendingEquipment == null ||
+                _state.Equipment.Count < _state.EquipmentCapacity) return false;
+
+            var replacementIndex = _state.Equipment.FindIndex(value => value.InstanceId == replacementInstanceId);
+            if (replacementIndex < 0) return false;
+            var pending = _state.PendingEquipment;
+            if (_state.Equipment.Exists(value => value.InstanceId == pending.InstanceId))
+                throw new InvalidOperationException($"Pending equipment '{pending.InstanceId}' already exists in the inventory.");
+
+            replaced = _state.Equipment[replacementIndex];
+            _state.Equipment[replacementIndex] = pending;
+            _state.PendingEquipment = null;
+            claimed = pending;
+            return true;
+        }
+
         public void AddStack(string itemId, int count, ItemCategory category)
         {
             if (string.IsNullOrWhiteSpace(itemId)) throw new ArgumentException("Item id is required.", nameof(itemId));

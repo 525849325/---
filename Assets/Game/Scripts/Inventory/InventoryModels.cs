@@ -19,6 +19,7 @@ namespace ImmortalLoot.Inventory
     {
         public int EquipmentCapacity = 100;
         public List<EquipmentInstance> Equipment = new List<EquipmentInstance>();
+        public EquipmentInstance PendingEquipment;
         public List<ItemStack> Materials = new List<ItemStack>();
         public List<ItemStack> Consumables = new List<ItemStack>();
     }

@@ -5,64 +5,67 @@
 | 状态 | 当前值 |
 |---|---|
 | 版本 | V0.1 RC 开发中 |
-| 总体完成度 | GATE 1–3 实现完成；GATE 4 等待 Unity 授权与真机构建证据 |
-| 当前 Gate | GATE 4｜Build / Test / Release Readiness |
-| 当前 Task | RC-QUALITY-001｜完成度审计 P0 收口 |
-| Build | C# 全程序集 PASS；Android APK/AAB BLOCKED |
-| Tests | 程序集 + 10,000 装备 + 满仓保护 PASS；Unity Test Runner BLOCKED |
-| P0 / P1 | P0：聚合进度存档、胜利驱动关卡；P1：真实 10/60 分钟平衡与场景体验 |
-| Blocked | QA-UNITY-001、BUILD-ANDROID-001、QA-DEVICE-001 |
-| RED | RED-001｜Unity Editor/headless entitlement |
-| 最大风险 | 当前关卡在 3 分钟后永久停留 Boss，旧平衡报告未覆盖真实主循环 |
-| Next | 建立完整成长存档；随后修复胜利驱动关卡、Boss 循环和失败重试 |
-| 是否需要老板决策 | 是：在 RC 冻结前恢复 Unity 授权 |
+| 总体完成度 | 基线 Android 构建与自动化 QA 已通过；最新 P0 检查点待 Unity 回归与重构建 |
+| 当前 Gate | GATE 4｜P0 收口 / Device Acceptance |
+| 当前 Task | SAVE-AGGREGATE-001｜聚合成长进度存档 |
+| Build | BASELINE PASS｜APK/AAB 已验证；最新背包修复后产物待重构建 |
+| Tests | 基线 EditMode 81/81、PlayMode 5/5；最新改动全程序集编译 PASS、Unity 回归 BLOCKED |
+| P0 / P1 | P0：聚合存档、胜利驱动关卡；背包 incoming 修复已进 TESTING；P1：真实 10/60 分钟平衡与完整视觉体验 |
+| Blocked | QA-REGRESSION-002｜Hub/Editor IPC 会话错配；BUILD-ANDROID-002｜最新 HEAD 无对应包；QA-DEVICE-001｜最新包未生成且 0 台已授权物理设备 |
+| RED | 无 OPEN RED；RED-001 已解决 |
+| 最大风险 | 最新代码尚未生成对应 APK/AAB；3 分钟后关卡永久停留 Boss |
+| Next | 聚合进度存档 → 胜利驱动关卡/Boss 重试 → Unity 回归与 Android 重构建 |
+| 是否需要老板决策 | 否 |
 
 当前分支：`main`；远端：`origin/main`（GitHub `525849325/---`）
 
 ## TODAY
 
-- 完成首装备后商业入口、Release 构建拒绝 Mock 支付和离线商品只读预览。
-- 统一《太初：无尽轮回》玩家可见产品身份。
-- 完成本地商业验证漏斗：战斗、掉落、换装、Boss、突破、商店曝光。
-- 设置页拆分为声音、震动、立即保存、隐私与协议四个独立入口。
-- 建立无人值守任务队列、RED/YELLOW 分流及恢复机制。
-- 修复战斗只掉武器的问题，扩展为十槽装备池；确定性 10/60 分钟平衡门禁通过。
-- 接入程序化命中、暴击、Boss、掉落、换装五类音效，受声音设置统一控制且无素材授权风险。
-- 完成 Unity 6 弃用 API 迁移，并建立 netstandard 2.1 全程序集编译门禁。
-- 自动换装默认开启且可关闭，只接受含功法加成后的统一战力严格提升装备。
-- 完成 RC P0/P1 静态审计；修复设置启动顺序，并隐藏 Feature Freeze 入口与残留 GM UI。
-- 加固损坏存档隔离：唯一命名、不覆盖旧证据，隔离失败不阻断安全新开。
-- 完成 GitHub 接入前安全检查点、Unity 忽略规则、敏感信息和大文件审计；因缺少仓库 URL 转入 RED-002，不阻断 RC 质量工作。
-- 完成 GitHub 首次 Push 与新鲜克隆验收；远端 `main` 已包含 Unity 必需目录、`.meta` 与项目状态文件。
-- 修复满仓无条件删除首件装备：锁定、穿戴、Legendary/Mythic 永不自动牺牲，并保留安全回收收益。
-- 移除设备唯一标识读取，Development 服务器登录改用应用随机匿名 ID；清空无关平台模板字段。
-- 完成度审计纠正旧结论：当前掉落模拟未覆盖真实关卡/Boss 路径，BALANCE-001 重新打开。
+- 重新诊断 Unity 授权：确认 Unity Personal、headless 与 Android entitlement 有效，RED-001 关闭。
+- 修复 ScreenCapture 模块、奖励窗口测试、AudioSource/AudioListener 初始化及 PlayMode 测试漂移。
+- 基线 `060f4df` 的 Unity Test Runner 实际执行：EditMode 81/81、PlayMode 5/5。
+- batchmode UI 仅计结构审计；报告明确 `visualAuditComplete=false`，不冒充完整视觉验收。
+- 使用可回滚的 ASCII 驱动器映射绕过 Android 工具中文路径限制，成功生成 RC APK 与 AAB。
+- APK：26,572,179 bytes，SHA-256 `EFF6CE65503B39A672D619CC256FB4719F1437CE11633D76256F6C171B59443A`。
+- AAB：26,578,648 bytes，SHA-256 `1078F8941244706014883283D4DAA99421B5FC75098E9DD979B10CB055A5A34B`。
+- 真机脚本更新为 RC 默认包，补充 API 26、强制安装/版本、可验证 FreshInstall、哈希、前台、连续 logcat、PID 存活/重启门禁与当前核心流程清单；长测日志改为流式解析，原始设备证据默认排除 Git。
+- ADB DeviceCheckOnly 实际运行；当前没有已授权物理设备，因此未安装 APK。
+- 实现持久化单槽待领取区：满仓无安全回收候选时掉落不再销毁；待领取期间装备窗口被明确跳过且不会因重启产生不一致积压。
+- 腾位后可单次领取；若全部装备受保护，则先比较价值：升级才在二次确认后原子牺牲最低价值未穿戴旧装备，非升级则二次确认后分解待领取装备并保留全部旧装备，避免倒退和核心循环永久死锁。
+- 新增 EditMode 序列化、单次领取、原子替换测试；PlayMode 从真实满仓掉落路径覆盖保存、重载、二次确认、领取与穿戴；Runtime、Editor、EditMode、PlayMode 全程序集编译 PASS。
+- Hub 再次成功刷新 Unity Personal seat，但本项目最新批处理无法连接持有 entitlement 的版本化 IPC；该问题不要求老板重复激活，回归任务独立 BLOCKED 后已切换其他 P0。
 
 ## BUILD
 
-- C# Runtime / Editor / EditMode / PlayMode 程序集：PASS。
-- Android APK/AAB 实际产物：BLOCKED（RED-001，Unity entitlement，退出码 198）。
+- 基线 Android RC APK：PASS；包名 `com.immortalloot.prototype`，version `0.1.0 (1)`，minSdk 26、targetSdk 36、Portrait、ARM64+ARMv7。
+- APK：zipalign PASS；APK Signature Scheme v2 PASS；当前 Android Debug 测试签名，仅供 RC 安装验证。
+- Android RC AAB：PASS；bundletool validate PASS，base manifest/dex 与双 ABI 齐全；测试签名不可用于商店上传。
+- 背包 P0 修改后的 APK/AAB 尚未重构建，现有产物不能作为最新 HEAD 的候选包。
 
 ## TEST
 
-- 可执行验证套件：2 PASS / 0 FAIL（领域含 10,000 件装备与漏斗；后端权威 API）。
-- 确定性平衡门禁：PASS（10 分钟 22 件、60 分钟 142 件、十槽覆盖与品质分布合格）。
-- Unity Test Runner：0 执行 / BLOCKED；不得视为通过。
+- 基线 `060f4df` EditMode：81 PASS / 0 FAIL。
+- 基线 `060f4df` PlayMode：5 PASS / 0 FAIL；无 NullReference、MissingComponent 或编译错误。
+- 基线 `060f4df` UI batch 结构审计：0 issue；截图、9:16 边界与视觉完整性未在 batchmode 完成，等待真机/交互验收。
+- 最新背包 P0：全程序集编译 PASS，10,000 件领域压力烟测 PASS；新增 Unity 测试已编译，实际 Test Runner 因 QA-REGRESSION-002 未执行，不计入通过数。
 
 ## PROGRESS
 
-- GATE 1–3：实现完成，处于真实 Unity 场景验收阶段。
-- GATE 4：构建与真机证据未完成。
+- GATE 4 的基线 Test Runner 与 Android 构建证据已建立；最新代码门禁被会话级 IPC 问题暂时阻塞。
+- GATE 4 仍不能关闭：三个内部 P0 未收口，物理设备证据未完成。
 
 ## RED
 
-- RED-001：Unity Editor/headless entitlement，需账号/许可证权限。
+- 无 OPEN RED。RED-001 已解决，不需要重复激活许可证。
 
 ## BLOCKED
 
-- Unity Test Runner、APK/AAB 实际构建、10/60 分钟真机测试。
+- BUILD-ANDROID-002：最新背包检查点尚未完成 Unity 回归，无法生成可信的对应 APK/AAB；旧包只保留为基线证据。
+- QA-DEVICE-001：最新 HEAD 对应 APK 尚未生成，且当前 ADB 发现 0 台已授权物理 Android 设备；禁止拿基线旧包冒充本次验收。
+- QA-REGRESSION-002：Hub Personal seat 刷新成功，但本项目不在 Hub 当前跟踪列表，独立 batch 无法取得已授权版本化 LicensingClient 会话；不要求用户重复激活。
 
 ## NEXT
 
-- 建立版本化聚合进度存档，覆盖 Stage、Realm、Cultivation、Root、Guide 与任务状态。
-- 授权一旦恢复，立即转入全量 Unity 测试与 Android RC 构建。
+- 恢复并完成版本化聚合进度存档。
+- 重构胜利驱动关卡、Boss 循环、失败重试并重做 10/60 分钟模拟。
+- 会话可用后重跑完整 Unity 回归，并重建、复验最新 APK/AAB。

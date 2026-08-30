@@ -1,6 +1,6 @@
 # RED Alerts
 
-## RESOLVED-002｜GitHub 仓库 URL
+## RED-002｜GitHub 仓库 URL
 
 - **TASK：** GITHUB-SYNC-001
 - **问题：** 当前 Git 配置没有 remote，项目文件中没有仓库地址，本机未安装 GitHub CLI，无法唯一确定已创建仓库。
@@ -15,11 +15,16 @@
 ## RED-001｜Unity Editor/headless entitlement
 
 - **TASK：** QA-UNITY-001 / BUILD-ANDROID-001
-- **问题：** Unity 6000.5.10f1 batch Test Runner 和 Android 构建在加载项目代码前退出，返回码 198。
-- **原因：** 当前登录环境缺少 `com.unity.editor.headless` entitlement / 有效 Editor 许可证。
-- **已经尝试：** EditMode、PlayMode、Android RC 构建入口均复现；完整 Runtime/Editor/测试程序集改用 Unity 自带编译器独立编译；领域与后端验证继续运行。
-- **推荐方案：** 在 Unity Hub 登录具备 Unity 6 Editor 权限的账号并激活许可证，然后重跑质量门禁。
-- **备选方案：** 在另一台已授权机器或已配置许可证的 CI Runner 执行相同 Test Runner 与 Android 构建命令。
-- **风险：** 无法证明真实场景运行、Console 零错误、APK/AAB 可安装及真机稳定性；GATE 4 不可关闭。
-- **最晚需要用户决定：** Android RC 冻结前，建议立即处理。
-- **状态：** OPEN；相关任务 BLOCKED，其他任务继续。
+- **问题：** 旧批处理会在加载代码前返回 198；人工确认 Hub Personal 有效后需要重新建立自动化证据。
+- **原因：** 旧 LicenseClient 会话/许可证缓存未同步；不是用户缺少 Unity 许可证。刷新后本机 entitlement 明确包含 Editor、headless 与 Android。
+- **已经尝试：** 对比 Hub 与 batch 日志；确认版本化 LicensingClient 成功解析 Unity Personal；修复真实编译/PlayMode 问题；通过纯 ASCII 临时驱动器绕过 Android 工具的中文路径限制。
+- **结果：** EditMode 81/81、PlayMode 5/5；APK/AAB 构建退出码 0并完成产物校验。
+- **残余风险：** batchmode 只完成 UI 结构审计，完整 9:16 视觉边界和真机稳定性仍由 QA-DEVICE-001 验收；测试签名不可用于商店发布。
+- **状态：** RESOLVED（2026-08-30）；无需用户再次激活许可证。
+
+### 自动化会话补充（2026-08-30）
+
+- Hub 再次成功刷新 Unity Personal seat，许可证本身保持有效。
+- 基线门禁已经留下 EditMode 81/81、PlayMode 5/5 与 APK/AAB 成功证据。
+- 最新代码回归时，Hub 当前跟踪的是另一项目路径；本项目 batch 无法连接持有 entitlement 的版本化 IPC，独立 LicensingClient 又没有 Hub 会话令牌，因此返回 198。
+- 该问题记录为 `QA-REGRESSION-002` 技术阻塞，不重新升级 RED、不要求用户重复登录或激活；其他 P0 继续执行。

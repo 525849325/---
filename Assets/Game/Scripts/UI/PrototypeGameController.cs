@@ -73,6 +73,8 @@ namespace ImmortalLoot.UI
         private ValidationFunnelTracker _validationTelemetry;
         private PrototypeCombatFeedback _feedback;
         private EquipmentUpgradeEvaluator _upgradeEvaluator;
+        private string _pendingSacrificeConfirmationKey = string.Empty;
+        private int _skippedPendingRewardWindows;
         private readonly CharacterStats _baseStats = new CharacterStats
         {
             HP = 180f, Attack = 12f, Defense = 3f, CritRate = 0.1f, CritDamage = 1.5f, AttackSpeed = 1f, FireDamage = 0.1f
@@ -98,6 +100,7 @@ namespace ImmortalLoot.UI
             _generator = new EquipmentGenerator(new SystemRandomSource(), _catalog);
             _drops = new DropTableService(_catalog, _generator, new SystemRandomSource());
             _inventory = new InventoryService(RestoreInventory(saved), _catalog);
+            _latestLoot = _inventory.State.PendingEquipment;
             _decomposition = new EquipmentDecompositionService(_inventory, DecompositionFormulaLoader.Load(new ResourcesConfigSource()));
             _loadout = new EquipmentLoadoutService(_catalog);
             _stats = new CharacterStatService();
@@ -120,6 +123,11 @@ namespace ImmortalLoot.UI
             _login = FindAnyObjectByType<PrototypeLoginController>();
             if (equipLatestButton != null) equipLatestButton.onClick.AddListener(EquipLatest);
             RefreshProgressDisplay();
+            if (_latestLoot != null && lootText != null)
+            {
+                lootText.text = FormatLoot(_latestLoot) + "\n\n已从存档恢复到待领取区。请先清理背包，再穿戴或领取。";
+                lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
+            }
             _validationTelemetry.TrackOnce("session_started", _pacing.ElapsedSeconds, _stageNumber, _power);
             _validationTelemetry.TrackOnce("battle_visible", _pacing.ElapsedSeconds, _stageNumber, _power);
             if (guideText != null)
@@ -174,6 +182,20 @@ namespace ImmortalLoot.UI
         private async void HandleBattleFinished(BattleState state)
         {
             if (state != BattleState.Victory) return;
+            var serverAuthenticated = _login != null && _login.IsServerAuthenticated;
+            if (!serverAuthenticated && _inventory.State.PendingEquipment != null)
+            {
+                var skippedRewardWindows = 0;
+                while (_pacing.TryConsumeBattleReward()) skippedRewardWindows++;
+                _skippedPendingRewardWindows += skippedRewardWindows;
+                _kills++;
+                if (guideText != null) guideText.text = skippedRewardWindows > 0
+                    ? $"待领取区仍有装备：已明确跳过 {skippedRewardWindows} 个新装备窗口，不会在重启后补发。请到背包处理待领取装备。"
+                    : "待领取区仍有装备：新的装备结算已暂停。请到背包处理待领取装备。";
+                if (skippedRewardWindows > 0) SaveProgress();
+                Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
+                return;
+            }
             if (!_pacing.TryConsumeBattleReward())
             {
                 _kills++;
@@ -181,7 +203,7 @@ namespace ImmortalLoot.UI
                 Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
                 return;
             }
-            if (_login != null && _login.IsServerAuthenticated)
+            if (serverAuthenticated)
             {
                 if (_settlingServerBattle) return;
                 _settlingServerBattle = true;
@@ -223,9 +245,12 @@ namespace ImmortalLoot.UI
             _latestLoot = drops[0].Equipment;
             if (!TryMakeRoomForLoot(out overflowReward))
             {
-                lootText.text = FormatLoot(_latestLoot) + "\n\n背包已满且没有可安全回收的装备；本次掉落未收入背包。\n请分解未锁定、未穿戴的 Epic 及以下装备。";
+                _inventory.StorePendingEquipment(_latestLoot);
+                _pendingSacrificeConfirmationKey = string.Empty;
+                lootText.text = FormatLoot(_latestLoot) + "\n\n背包已满且没有可安全回收的装备；掉落已保存到待领取区。\n新的装备结算会暂停，直到你清理背包并领取。";
                 lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
-                _latestLoot = null;
+                _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString());
+                _feedback.PlayLoot(_latestLoot.Quality);
                 SaveProgress();
                 Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
                 return;
@@ -277,6 +302,16 @@ namespace ImmortalLoot.UI
                 return;
             }
             if (_latestLoot == null) return;
+            if (_inventory.State.PendingEquipment != null &&
+                _inventory.State.PendingEquipment.InstanceId == _latestLoot.InstanceId)
+            {
+                if (!_inventory.TryClaimPendingEquipment(out var claimedPending))
+                {
+                    if (guideText != null) guideText.text = "待领取装备已安全保存，但背包仍满。请先到背包分解可回收装备。";
+                    return;
+                }
+                _latestLoot = claimedPending;
+            }
             var before = _power;
             _loadout.Equip(_latestLoot);
             RefreshProgressDisplay();
@@ -420,6 +455,93 @@ namespace ImmortalLoot.UI
             return true;
         }
 
+        private string ExecuteInventoryAction()
+        {
+            var sorted = _inventory.QueryEquipment(EquipmentSortMode.QualityDescending);
+            var targets = new List<string>();
+            foreach (var item in sorted)
+            {
+                if (!IsEquipped(item) && !item.IsLocked && item.Quality <= EquipmentQuality.Epic)
+                    targets.Add(item.InstanceId);
+            }
+
+            var reward = new DecompositionReward();
+            foreach (var id in targets) reward += _decomposition.Decompose(id);
+            if (targets.Count > 0) _pendingSacrificeConfirmationKey = string.Empty;
+
+            var pendingSummary = string.Empty;
+            if (_inventory.TryClaimPendingEquipment(out var claimedPending))
+            {
+                _latestLoot = claimedPending;
+                _pendingSacrificeConfirmationKey = string.Empty;
+                pendingSummary = $"\n待领取装备 [{claimedPending.Quality}] {claimedPending.DisplayName} 已收入背包。";
+                ShowPendingResolved(claimedPending, "待领取装备已安全收入背包，可立即穿戴；新的装备结算已恢复。");
+            }
+            else if (_inventory.State.PendingEquipment != null)
+            {
+                var equippedIds = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var equipped in _loadout.Equipped.Values) equippedIds.Add(equipped.InstanceId);
+                var sacrifice = InventoryOverflowPolicy.SelectExplicitSacrificeCandidate(_inventory.State.Equipment, equippedIds);
+                if (sacrifice == null)
+                {
+                    pendingSummary = "\n待领取装备仍安全保留；当前没有可牺牲的未穿戴装备。";
+                }
+                else
+                {
+                    var pending = _inventory.State.PendingEquipment;
+                    var pendingIsUpgrade = InventoryOverflowPolicy.IsHigherValue(pending, sacrifice);
+                    var confirmationKey = (pendingIsUpgrade ? "replace|" : "discard|") + pending.InstanceId + "|" + sacrifice.InstanceId;
+                    if (!string.Equals(_pendingSacrificeConfirmationKey, confirmationKey, StringComparison.Ordinal))
+                    {
+                        _pendingSacrificeConfirmationKey = confirmationKey;
+                        return pendingIsUpgrade
+                            ? $"背包已满，且全部未穿戴装备均受保护。\n最低价值候选：[{sacrifice.Quality}] {sacrifice.DisplayName} Lv.{sacrifice.Level}\n待领取装备价值更高；再次执行将永久牺牲候选并领取 [{pending.Quality}] {pending.DisplayName}。本次尚未修改任何装备。"
+                            : $"背包已满，且全部未穿戴装备均受保护。\n待领取 [{pending.Quality}] {pending.DisplayName} 不高于最低价值旧装备。\n再次执行将放弃并分解待领取装备、保留全部旧装备；本次尚未修改任何装备。";
+                    }
+
+                    if (pendingIsUpgrade)
+                    {
+                        if (!_inventory.TryReplaceEquipmentWithPending(sacrifice.InstanceId, out claimedPending, out var replaced))
+                            throw new InvalidOperationException("Pending equipment replacement could not be completed atomically.");
+                        reward += _decomposition.Calculate(replaced);
+                        _latestLoot = claimedPending;
+                        pendingSummary = $"\n已牺牲 [{replaced.Quality}] {replaced.DisplayName}，待领取装备 [{claimedPending.Quality}] {claimedPending.DisplayName} 已收入背包。";
+                        ShowPendingResolved(claimedPending, "牺牲替换已完成，待领取装备可立即穿戴；新的装备结算已恢复。");
+                    }
+                    else
+                    {
+                        if (!_inventory.TryDiscardPendingEquipment(out var discardedPending))
+                            throw new InvalidOperationException("Pending equipment discard could not be completed atomically.");
+                        reward += _decomposition.Calculate(discardedPending);
+                        _latestLoot = null;
+                        pendingSummary = $"\n已放弃并分解待领取 [{discardedPending.Quality}] {discardedPending.DisplayName}；全部旧装备保持不变。";
+                        if (lootText != null) lootText.text = "待领取装备已按二次确认分解；新的装备结算已恢复。";
+                        if (guideText != null) guideText.text = "低价值待领取装备已分解，全部旧装备保持不变；新的装备结算已恢复。";
+                    }
+                    _pendingSacrificeConfirmationKey = string.Empty;
+                }
+            }
+
+            if (reward.EnhancementMaterial > 0)
+                _inventory.AddStack("item_enhancement_stone", reward.EnhancementMaterial, ItemCategory.Material);
+            if (reward.EquipmentEssence > 0)
+                _inventory.AddStack("item_equipment_essence", reward.EquipmentEssence, ItemCategory.Material);
+            _softCurrency += reward.SoftCurrency;
+            RefreshProgressDisplay();
+            SaveProgress();
+            return $"背包已按品质降序筛选 · 批量分解 Epic 及以下 {targets.Count} 件\n灵砂 +{reward.SoftCurrency:N0} · 强化石 +{reward.EnhancementMaterial} · 装备精华 +{reward.EquipmentEssence}\n装备 {_inventory.State.Equipment.Count}/{_inventory.State.EquipmentCapacity} · 材料 {_inventory.State.Materials.Count} 类 · 消耗品 {_inventory.State.Consumables.Count} 类\n自动分解时 Legendary/Mythic、锁定及已穿戴装备受保护；牺牲替换或放弃待领取均须二次确认{pendingSummary}";
+        }
+
+        private void ShowPendingResolved(EquipmentInstance claimed, string guide)
+        {
+            if (lootText != null)
+            {
+                lootText.text = FormatLoot(claimed) + "\n\n" + guide;
+                lootText.color = PrototypeVisualTheme.QualityColor(claimed.Quality);
+            }
+            if (guideText != null) guideText.text = guide;
+        }
+
         private void OnApplicationPause(bool paused) { if (paused) SaveProgress(); }
         private void OnApplicationQuit() => SaveProgress();
 
@@ -436,25 +558,17 @@ namespace ImmortalLoot.UI
                     RefreshProgressDisplay();
                     return $"等级 {_level} · 战力 {_power}\n经验 {_exp}/{_level * 50L}\n当前境界 {_realmStage} 阶";
                 case "EquipmentPage":
+                    if (_login != null && _login.IsServerAuthenticated)
+                        return "在线模式装备操作由服务器背包处理；本地待领取区不会被误报为已穿戴。";
                     if (_latestLoot == null) return "尚无装备，先完成一场战斗。";
                     var comparison = new EquipmentComparisonService(_catalog).Compare(_progressionStats.Calculate(_baseStats), _loadout.Equipped, _latestLoot);
                     var comparisonText = $"穿戴比较：攻击 {comparison.AttackDelta:+0.##;-0.##;0} · 生命 {comparison.HpDelta:+0.##;-0.##;0} · 防御 {comparison.DefenseDelta:+0.##;-0.##;0}";
+                    if (_inventory.State.PendingEquipment != null && _inventory.State.Equipment.Count >= _inventory.State.EquipmentCapacity)
+                        return comparisonText + "\n装备位于待领取区；请先在背包分解可回收装备。";
+                    var latestName = _latestLoot.DisplayName;
                     EquipLatest();
-                    return $"{comparisonText}\n已穿戴 {_latestLoot.DisplayName}\n统一战力更新为 {_power}";
-                case "InventoryPage":
-                    var sorted = _inventory.QueryEquipment(EquipmentSortMode.QualityDescending);
-                    var targets = new System.Collections.Generic.List<string>();
-                    foreach (var item in sorted)
-                    {
-                        if (!IsEquipped(item) && !item.IsLocked && item.Quality <= EquipmentQuality.Epic) targets.Add(item.InstanceId);
-                    }
-                    var reward = new DecompositionReward();
-                    foreach (var id in targets) reward += _decomposition.Decompose(id);
-                    if (reward.EnhancementMaterial > 0) _inventory.AddStack("item_enhancement_stone", reward.EnhancementMaterial, ItemCategory.Material);
-                    if (reward.EquipmentEssence > 0) _inventory.AddStack("item_equipment_essence", reward.EquipmentEssence, ItemCategory.Material);
-                    _softCurrency += reward.SoftCurrency;
-                    RefreshProgressDisplay();
-                    return $"背包已按品质降序筛选 · 批量分解 Epic 及以下 {targets.Count} 件\n灵砂 +{reward.SoftCurrency:N0} · 强化石 +{reward.EnhancementMaterial} · 装备精华 +{reward.EquipmentEssence}\n装备 {_inventory.State.Equipment.Count}/{_inventory.State.EquipmentCapacity} · 材料 {_inventory.State.Materials.Count} 类 · 消耗品 {_inventory.State.Consumables.Count} 类\nLegendary/Mythic、锁定及已穿戴装备受保护";
+                    return $"{comparisonText}\n已穿戴 {latestName}\n统一战力更新为 {_power}";
+                case "InventoryPage": return ExecuteInventoryAction();
                 case "CultivationPage":
                     _realmStage = Math.Min(10, _realmStage + 1);
                     _buildIndex = (_buildIndex + 1) % 3;
@@ -581,6 +695,8 @@ namespace ImmortalLoot.UI
 #if UNITY_INCLUDE_TESTS
         public void SetPacingSpeedForTests(float speed) => _pacingSpeed = Mathf.Max(1f, speed);
         public void SaveForTests() => SaveProgress();
+        public int SkippedPendingRewardWindowsForTests => _skippedPendingRewardWindows;
+        public int PendingRewardWindowsForTests => _pacing.PendingRewards;
 #endif
     }
 }

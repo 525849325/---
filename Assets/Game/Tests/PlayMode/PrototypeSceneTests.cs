@@ -10,6 +10,7 @@ using ImmortalLoot.UI;
 using ImmortalLoot.Network;
 using ImmortalLoot.Player;
 using ImmortalLoot.Inventory;
+using ImmortalLoot.Equipment;
 using System.IO;
 
 namespace ImmortalLoot.Tests.PlayMode
@@ -176,6 +177,106 @@ namespace ImmortalLoot.Tests.PlayMode
             var restored = Object.FindAnyObjectByType<PrototypeGameController>();
             Assert.That(restored.Power, Is.EqualTo(savedPower));
             Assert.That(restored.StageNumber, Is.EqualTo(savedStage));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator FullProtectedInventory_RealDropSurvivesReloadAndExplicitReplacement()
+        {
+            DeleteLocalSave();
+            var inventory = new InventoryState { EquipmentCapacity = 120 };
+            for (var i = 0; i < inventory.EquipmentCapacity; i++)
+            {
+                inventory.Equipment.Add(new EquipmentInstance
+                {
+                    InstanceId = "protected-legendary-" + i,
+                    BaseId = "weapon_cloudsteel_blade",
+                    DisplayName = "受保护旧装备",
+                    Level = 1,
+                    Quality = EquipmentQuality.Fine,
+                    IsLocked = true,
+                    CreateTimeUtc = System.DateTime.UtcNow.AddSeconds(-i)
+                });
+            }
+            var repository = JsonPlayerSaveRepository.CreateDefault();
+            repository.Save(new PlayerSaveSnapshot
+            {
+                Kills = 0,
+                StageElapsedSeconds = 179,
+                LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                InventoryJson = JsonUtility.ToJson(inventory)
+            });
+
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            controller.SetPacingSpeedForTests(240f);
+            GameObject.Find("EnterGameButton").GetComponent<Button>().onClick.Invoke();
+            var timeout = 5f;
+            InventoryState afterDrop = null;
+            while (timeout > 0f && afterDrop?.PendingEquipment == null)
+            {
+                if (repository.Exists)
+                    afterDrop = JsonUtility.FromJson<InventoryState>(repository.Load().InventoryJson);
+                timeout -= Time.deltaTime;
+                yield return null;
+            }
+
+            Assert.That(afterDrop?.PendingEquipment, Is.Not.Null,
+                "A real local reward must enter the durable pending slot when the protected inventory is full.");
+            var pendingId = afterDrop.PendingEquipment.InstanceId;
+            Assert.That(afterDrop.PendingEquipment.Quality, Is.GreaterThanOrEqualTo(EquipmentQuality.Rare),
+                "Starting immediately before the stage-10 reward window must exercise the guaranteed Rare+ boss table.");
+            Assert.That(InventoryOverflowPolicy.IsHigherValue(afterDrop.PendingEquipment, afterDrop.Equipment[119]), Is.True,
+                "The end-to-end replacement scenario requires the real pending drop to outrank the sacrificial old item.");
+            Assert.That(controller.LatestLoot?.InstanceId, Is.EqualTo(pendingId),
+                "The exact generated drop must remain visible after overflow handling.");
+            Assert.That(afterDrop.Equipment, Has.Count.EqualTo(120));
+            Assert.That(afterDrop.Equipment.Exists(item => item.InstanceId == pendingId), Is.False);
+
+            timeout = 5f;
+            while (timeout > 0f && controller.SkippedPendingRewardWindowsForTests == 0)
+            {
+                timeout -= Time.deltaTime;
+                yield return null;
+            }
+            Assert.That(controller.SkippedPendingRewardWindowsForTests, Is.GreaterThan(0),
+                "The test must cross a later reward window and prove pending backpressure consumes it explicitly.");
+            Assert.That(controller.PendingRewardWindowsForTests, Is.Zero,
+                "No equipment reward backlog may remain queued while a durable pending item blocks settlement.");
+            controller.SaveForTests();
+
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var restored = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(restored.LatestLoot?.InstanceId, Is.EqualTo(pendingId));
+            Assert.That(restored.PendingRewardWindowsForTests, Is.Zero,
+                "Reloading must not resurrect or silently drop a different pending-window count.");
+            var reloadedInventory = JsonUtility.FromJson<InventoryState>(repository.Load().InventoryJson);
+            Assert.That(reloadedInventory.PendingEquipment?.InstanceId, Is.EqualTo(pendingId));
+            Assert.That(reloadedInventory.Equipment.Count, Is.EqualTo(120));
+            Assert.That(reloadedInventory.Equipment.Exists(item => item.InstanceId == pendingId), Is.False,
+                "The pending item must remain outside the full regular inventory until space is available.");
+
+            var firstAction = restored.ExecutePageAction("InventoryPage");
+            Assert.That(firstAction, Does.Contain("再次执行"),
+                "Destroying a protected item must require an explicit second action.");
+            var afterWarning = JsonUtility.FromJson<InventoryState>(repository.Load().InventoryJson);
+            Assert.That(afterWarning.PendingEquipment?.InstanceId, Is.EqualTo(pendingId));
+            Assert.That(afterWarning.Equipment, Has.Count.EqualTo(120));
+
+            var replacement = restored.ExecutePageAction("InventoryPage");
+            Assert.That(replacement, Does.Contain("已牺牲"));
+            var afterReplacement = JsonUtility.FromJson<InventoryState>(repository.Load().InventoryJson);
+            Assert.That(afterReplacement.PendingEquipment, Is.Null);
+            Assert.That(afterReplacement.Equipment, Has.Count.EqualTo(120));
+            Assert.That(afterReplacement.Equipment.FindAll(item => item.InstanceId == pendingId), Has.Count.EqualTo(1));
+
+            restored.EquipLatest();
+            yield return null;
+            restored.SaveForTests();
+            Assert.That(repository.Load().EquippedInstanceIdsJson, Does.Contain(pendingId),
+                "The recovered pending item must be genuinely equippable and persisted as equipped.");
             DeleteLocalSave();
         }
 
