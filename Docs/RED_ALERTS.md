@@ -1,37 +1,23 @@
 # RED Alerts
 
-## RED-002｜GitHub 仓库 URL
-
-- **TASK：** GITHUB-SYNC-001
-- **问题：** 当前 Git 配置没有 remote，项目文件中没有仓库地址，本机未安装 GitHub CLI，无法唯一确定已创建仓库。
-- **原因：** GitHub 仓库 URL 属于外部资源标识，不能安全猜测。
-- **已经尝试：** 检查 `git remote -v`、`.git/config`、项目文档中的 GitHub URL，并检查 GitHub CLI 可用性。
-- **推荐方案：** 老板提供已创建仓库的 HTTPS URL，例如 `https://github.com/OWNER/REPO.git`。
-- **备选方案：** 提供等价 SSH URL；如果远端已有提交，将先拉取审计，绝不强推覆盖。
-- **风险：** URL 未提供前无法配置 remote、Push 或验证远端树；本地提交与安全标签不受影响。
-- **最晚需要用户决定：** 首次远端备份与项目监控启用前。
-- **状态：** RESOLVED（2026-08-30）；`origin/main` Push 与新鲜克隆文件核验通过。
+当前状态：**无 OPEN RED**。
 
 ## RED-001｜Unity Editor/headless entitlement
 
 - **TASK：** QA-UNITY-001 / BUILD-ANDROID-001
-- **问题：** 旧批处理会在加载代码前返回 198；人工确认 Hub Personal 有效后需要重新建立自动化证据。
-- **原因：** 旧 LicenseClient 会话/许可证缓存未同步；不是用户缺少 Unity 许可证。刷新后本机 entitlement 明确包含 Editor、headless 与 Android。
-- **已经尝试：** 对比 Hub 与 batch 日志；确认版本化 LicensingClient 成功解析 Unity Personal；修复真实编译/PlayMode 问题；通过纯 ASCII 临时驱动器绕过 Android 工具的中文路径限制。
-- **结果：** 最新 EditMode 109/109、PlayMode 连续两次 19/19；对应运行时代码提交 `10e6a9a` 的 APK/AAB 构建退出码 0，并完成 metadata、zipalign、v2 签名、bundletool、Manifest 与双 ABI 校验。
-- **残余风险：** batchmode 只完成 UI 结构审计，完整 9:16 视觉边界和真机稳定性仍由 QA-DEVICE-001 验收；测试签名不可用于商店发布。
-- **状态：** RESOLVED（2026-08-30）；无需用户再次激活许可证。
+- **问题：** 早期 batchmode 在加载项目代码前返回 198，而同用户通过 Hub 启动 Editor 正常。
+- **真实原因：** Hub 启动的 Editor 自动携带 Hub 会话；受限 batch 环境未自动连接当前版本的授权 IPC。许可证本身、Personal seat、headless 与 Android entitlement 均有效。
+- **已经尝试：** 对比 Hub/Editor/batch 日志；检查启动用户、进程冲突、项目锁、许可证缓存与命令行；停止重复无效命令；在同一 Windows 用户上下文显式传入版本化 IPC `LicenseClient-Admin-6000.5.10`。
+- **结果：** EditMode 109/109、PlayMode 24/24、APK 与 AAB 构建全部 exit 0；日志确认成功连接 IPC 并解析 entitlement。batch 没有 Hub access token 用于在线刷新，但本地 entitlement 可正常解析，不构成失败。
+- **推荐方案：** 自动化继续复用版本化 IPC；不终止用户的 Hub/Editor，不删除许可证缓存，不要求重复激活。
+- **备选方案：** 若版本升级导致 IPC 名变化，先只读枚举同版本 LicensingClient/日志，再使用当前用户上下文启动；禁止机械重复旧命令。
+- **风险：** 完整视觉/真机稳定性仍属于 QA-DEVICE-001；测试签名不可用于商店发布。
+- **最晚需要用户决定：** 无；当前不需要账号或权限动作。
+- **状态：** RESOLVED（2026-08-30）。
 
-### 自动化会话补充（2026-08-30，历史诊断已解决）
+## RED-002｜GitHub 仓库 URL
 
-- Hub 再次成功刷新 Unity Personal seat，许可证本身保持有效。
-- 基线门禁已经留下 EditMode 81/81、PlayMode 5/5 与 APK/AAB 成功证据。
-- 最新代码回归时，Hub 当前跟踪的是另一项目路径；本项目 batch 无法连接持有 entitlement 的版本化 IPC，独立 LicensingClient 又没有 Hub 会话令牌，因此返回 198。
-- 该问题记录为 `QA-REGRESSION-002` 技术阻塞，不重新升级 RED、不要求用户重复登录或激活；其他 P0 继续执行。
-- 后续只读复核确认：当前可见交互 Editor 已连接 `LicenseClient-Admin`，但 `Editor.log` 绑定的是另一 Unity 工作区；本项目 `Temp/UnityLockfile` 未被进程持有，不能据此宣称本项目存在可复用的已授权 Editor 会话。
-- 这仍是自动化会话/项目绑定差异，不是许可证缺失；未发现需要老板执行的具体账号或权限动作，因此保持无 OPEN RED，并继续处理不依赖 Unity Test Runner 的 P0。
-- 最新只读诊断进一步确认 Hub 项目索引当前仅跟踪另一 Unity 工作区，Hub 曾明确拒绝直接打开未登记的本项目路径；同时系统仍存在且可访问已成功跑过基线门禁的版本化管道 `Unity-LicenseClient-Admin-6000.5.10`。
-- 自动化脚本已停止把退出码 198 解释为“用户没有许可证”，并改为只在 lock 文件确实被进程持有时阻止运行；下一策略是显式复用该已授权版本化 IPC，不终止现有 Editor/Hub、不删除当前 stale lock、不要求重新激活。
-- 显式传入 `-licensingIpc LicenseClient-Admin-6000.5.10` 后，本项目已稳定获得 Editor entitlement：最新 EditMode 109/109、PlayMode 连续两次 19/19；RED-001 的自动化会话问题完成闭环。
-- 当前无任何需要老板执行的 Unity 账号或权限动作；后续 Android 构建继续复用同一授权通道。
-- 对应运行时代码提交 `10e6a9a` 的 APK/AAB 已再次通过该授权通道构建并完成包体门禁；ADB 当前 0 台物理设备属于 QA 外部条件，不是账号或许可证 RED。
+- **TASK：** GITHUB-SYNC-001
+- **问题：** 初始本地配置无法唯一确定已创建仓库 URL。
+- **结果：** 用户提供 `https://github.com/525849325/---`；`origin/main` 已配置、Push 并直接验证。
+- **状态：** RESOLVED（2026-08-30）。

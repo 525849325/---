@@ -5,6 +5,9 @@
 | Y-001 | UI/美术 | 角色、怪物、装备图标及部分特效仍为程序化/文字占位 | 核心循环与品质反馈可运行，不依赖外部素材 | 真机首轮后按最高感知缺口替换 |
 | Y-002 | 合规 | 隐私政策与用户协议入口可用，但法律主体、邮箱和最终文本未确认 | 候选版明确展示数据范围与草案状态 | 外部测试发布前必须转 RED-人工事项关闭 |
 | Y-003 | 音频 | 未发现可确认授权的正式音效资产 | 五类短音效由运行时代码生成，无外部版权依赖 | 真机首轮校准听感与音量 |
-| Y-005 | 测试 | 基线 `060f4df` 已实际通过 EditMode 81/81 与 PlayMode 5/5；最新背包、聚合存档、关卡与在线结算测试仅完成程序集编译，尚未由 Unity Test Runner 执行 | 保留基线 XML；最新实现只记 TESTING，不把离线编译冒充运行通过 | QA-REGRESSION-002 显式复用已授权版本化 IPC 后立即补跑 |
 | Y-006 | 平衡 | 生产 Controller 为保证演示连贯把玩家 HP 下限固定为 9999，真实战斗模型因此 10/60 分钟均为 0 次失败 | 关卡失败重试已有领域与流程覆盖；当前模型只验证 Boss 时点、吞吐、奖励账与不死锁，不声称难度已平衡 | 最新 Android 真机 10/60 分钟验收后决定 V0.1 是否降低保胜阈值 |
 | Y-007 | Development 在线模式 | 未确认的 Finish 会在当前进程内复用同一 session/key 退避重试，但强杀进程会丢失该意图；确定性 4xx 目前也走同一退避 | V0.1 默认本地核心循环，服务器登录入口仅 Development 可见；服务端幂等与当前进程响应丢失已覆盖，问题不阻塞离线商业验证包 | 对外启用权威服务器登录前，持久化 pending intent，并区分 definitive 4xx、transient 与 unknown outcome |
+| Y-008 | UI 验收 | batch UI 结构审计 0 issue，但未捕获真实屏幕截图，`visualAuditComplete=false` | 不把 24/24 PlayMode 或结构审计描述成完整视觉通过 | QA-DEVICE-001 真机阶段完成 9:16、字体、触控和遮挡清单 |
+| Y-009 | Android 签名 | RC APK/AAB 使用 Unity 默认 Android 测试签名 | 当前产物可安装并用于商业验证，但不直接上架 | 商店上传前配置独立 upload/release keystore，并重新构建验证 |
+| Y-010 | 服务器会话鲁棒性 | profile 刷新暂不重校本地服务器镜像；首章上限硬编码 10；部分异步结算缺少场景销毁 generation guard | 服务器入口仅 Development；后端会拒绝非法状态，正常单场景流程与当前回归全绿 | RC-QUALITY-001 在不扩 Scope 前提下逐项补测试/防护 |
+| Y-011 | 测试覆盖 | production LoginToServer、损坏存档延迟读取、invalid profile 后离线恢复与富本地状态污染仍可加强端到端断言 | 现有专项 RED→GREEN、EditMode 109/109、PlayMode 24/24 与真实用户存档哈希证明当前修复有效 | RC-QUALITY-001 优先补最小高价值回归 |
