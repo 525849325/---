@@ -56,7 +56,13 @@ namespace ImmortalLoot.Tests.PlayMode
                 yield return Capture(Path.Combine(output, page.File + ".png"));
             }
 
-            var json = "{\n  \"passed\": " + (issues.Count == 0 ? "true" : "false") +
+            var structuralPassed = issues.Count == 0;
+            var screenshotsCaptured = !Application.isBatchMode;
+            var visualAuditComplete = structuralPassed && screenshotsCaptured && auditScreenBounds;
+            var json = "{\n  \"passed\": " + (visualAuditComplete ? "true" : "false") +
+                       ",\n  \"structuralPassed\": " + (structuralPassed ? "true" : "false") +
+                       ",\n  \"screenshotsCaptured\": " + (screenshotsCaptured ? "true" : "false") +
+                       ",\n  \"visualAuditComplete\": " + (visualAuditComplete ? "true" : "false") +
                        ",\n  \"screenBoundsAudited\": " + (auditScreenBounds ? "true" : "false") +
                        ",\n  \"issueCount\": " + issues.Count + ",\n  \"issues\": [";
             for (var i = 0; i < issues.Count; i++)
