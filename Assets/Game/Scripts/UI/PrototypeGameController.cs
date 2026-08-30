@@ -209,14 +209,11 @@ namespace ImmortalLoot.UI
 
         private PlayerSaveSnapshot CreateServerRuntimeSnapshot(PlayerProfileDto profile)
         {
-            if (profile == null || string.IsNullOrWhiteSpace(profile.currentStageId) ||
-                !_catalog.Stages.ContainsKey(profile.currentStageId) || profile.clearedStageIds == null)
-                throw new InvalidOperationException("Server profile contained an invalid authoritative stage.");
-            var progress = new PlayerProgressState { CurrentStageId = profile.currentStageId };
-            foreach (var stageId in profile.clearedStageIds)
-                if (!string.IsNullOrWhiteSpace(stageId) && _catalog.Stages.ContainsKey(stageId) &&
-                    !progress.Stage.ClearedStageIds.Contains(stageId))
-                    progress.Stage.ClearedStageIds.Add(stageId);
+            var progress = new PlayerProgressState
+            {
+                CurrentStageId = profile?.currentStageId,
+                Stage = CreateValidatedServerStageState(profile)
+            };
             progress.Realm.PlayerLevel = Math.Max(1, profile.level);
             progress.Realm.Experience = Math.Max(0, profile.exp);
             progress.Realm.RealmId = string.IsNullOrWhiteSpace(profile.realmId) ? "realm_body_tempering" : profile.realmId;
@@ -247,6 +244,46 @@ namespace ImmortalLoot.UI
                 InventoryJson = InventoryStateCodec.Serialize(new InventoryState { EquipmentCapacity = 120 }),
                 ProgressJson = PlayerProgressStateCodec.Serialize(progress)
             };
+        }
+
+        private StageProgressState CreateValidatedServerStageState(PlayerProfileDto profile)
+        {
+            if (profile == null || string.IsNullOrWhiteSpace(profile.currentStageId) ||
+                !_catalog.Stages.ContainsKey(profile.currentStageId) || profile.clearedStageIds == null)
+                throw new InvalidOperationException("Server profile contained an invalid authoritative stage.");
+
+            var cleared = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var stageId in profile.clearedStageIds)
+            {
+                if (string.IsNullOrWhiteSpace(stageId) || !_catalog.Stages.ContainsKey(stageId) || !cleared.Add(stageId))
+                    throw new InvalidOperationException("Server profile contained invalid authoritative clear history.");
+            }
+
+            var orderedStages = new List<StageConfig>(_catalog.Stages.Values);
+            orderedStages.Sort((left, right) =>
+            {
+                var chapter = left.Chapter.CompareTo(right.Chapter);
+                if (chapter != 0) return chapter;
+                var stageNumber = left.StageNumber.CompareTo(right.StageNumber);
+                return stageNumber != 0 ? stageNumber : string.CompareOrdinal(left.Id, right.Id);
+            });
+            if (orderedStages.Count == 0)
+                throw new InvalidOperationException("The local stage catalog is empty.");
+
+            var expectedCurrentStageId = orderedStages[0].Id;
+            foreach (var stage in orderedStages)
+            {
+                if (cleared.Contains(stage.Id)) continue;
+                expectedCurrentStageId = stage.Id;
+                break;
+            }
+            if (!string.Equals(profile.currentStageId, expectedCurrentStageId, StringComparison.Ordinal))
+                throw new InvalidOperationException("Server profile current stage did not match its authoritative clear history.");
+
+            var state = new StageProgressState();
+            foreach (var stage in orderedStages)
+                if (cleared.Contains(stage.Id)) state.ClearedStageIds.Add(stage.Id);
+            return state;
         }
 
         public bool TryEnterOfflineGameplay() => TryEnterGameplay(serverGameplay: false);
@@ -656,7 +693,9 @@ namespace ImmortalLoot.UI
         {
             if (!string.Equals(_stageLoop.CurrentStageId, completedStage.Id, StringComparison.Ordinal))
                 throw new InvalidOperationException($"Cannot settle '{completedStage.Id}' while current stage is '{_stageLoop.CurrentStageId}'.");
-            var maximumUnlockedStage = _serverGameplay ? 10 : _pacing.CurrentStageNumber;
+            // The server finish response already authorizes this transition. The local catalog still
+            // constrains the actual next node, so no second client-owned numeric ceiling is required.
+            var maximumUnlockedStage = _serverGameplay ? int.MaxValue : _pacing.CurrentStageNumber;
             var transition = _stageLoop.RecordVictory(maximumUnlockedStage);
             _stageNumber = _stageLoop.CurrentStageNumber;
             return transition;
@@ -1186,6 +1225,17 @@ namespace ImmortalLoot.UI
         private async System.Threading.Tasks.Task RefreshServerProfile()
         {
             var profile = ImmortalLootApiClient.Parse<PlayerProfileDto>(await _login.ApiClient.GetProfileAsync());
+            ApplyRefreshedServerProfile(profile);
+        }
+
+        private void ApplyRefreshedServerProfile(PlayerProfileDto profile)
+        {
+            var stageState = CreateValidatedServerStageState(profile);
+            var stageLoop = new VictoryDrivenStageLoop(_catalog, stageState, profile.currentStageId);
+            _progressState.Stage = stageState;
+            _progressState.CurrentStageId = profile.currentStageId;
+            _stageLoop = stageLoop;
+            _stageNumber = stageLoop.CurrentStageNumber;
             ApplyServerProfileDisplay(profile);
         }
 

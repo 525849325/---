@@ -216,6 +216,42 @@ namespace ImmortalLoot.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator CorruptOfflineSave_IsNotReadOrQuarantinedBeforeSuccessfulServerEntry()
+        {
+            DeleteLocalSave();
+            var corruptBytes = System.Text.Encoding.UTF8.GetBytes("{\"schemaVersion\":3,\"payload\":\"tampered\",\"checksum\":\"invalid\"}");
+            File.WriteAllBytes(JsonPlayerSaveRepository.DefaultPath, corruptBytes);
+            var saveDirectory = Path.GetDirectoryName(JsonPlayerSaveRepository.DefaultPath);
+            var saveName = Path.GetFileName(JsonPlayerSaveRepository.DefaultPath);
+            var quarantineBeforeEntry = Directory.GetFiles(saveDirectory, saveName + ".corrupt-*");
+
+            PrototypeGameController.PauseNextBattleForTests();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+
+            Assert.That(controller.GameplayActive, Is.False);
+            Assert.That(File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath), Is.EqualTo(corruptBytes),
+                "Opening the login page must not read, rewrite or quarantine a corrupt offline save.");
+            Assert.That(Directory.GetFiles(saveDirectory, saveName + ".corrupt-*"), Is.EquivalentTo(quarantineBeforeEntry));
+
+            var client = new ImmortalLootApiClient(new ServerLoopTransport());
+            var loginTask = client.LoginAsync("server-entry-with-corrupt-offline-save", "在线修士");
+            while (!loginTask.IsCompleted) yield return null;
+            Assert.That(loginTask.Exception, Is.Null);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
+                client, CreateServerProfile(), CreateServerInventory());
+
+            Assert.That(controller.GameplayActive, Is.True);
+            Assert.That(controller.ServerGameplayActive, Is.True);
+            Assert.That(File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath), Is.EqualTo(corruptBytes),
+                "A successful server entry must not touch the deferred corrupt offline save.");
+            Assert.That(Directory.GetFiles(saveDirectory, saveName + ".corrupt-*"), Is.EquivalentTo(quarantineBeforeEntry),
+                "Only an explicit offline entry may load and quarantine a corrupt offline save.");
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
         public IEnumerator ServerMode_NeverMutatesLocalSave()
         {
             DeleteLocalSave();
@@ -268,12 +304,33 @@ namespace ImmortalLoot.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator FreshServerAccount_IgnoresAdvancedLocalStageAndPacing()
+        public IEnumerator FreshServerAccount_IgnoresAdvancedLocalStagePacingInventoryAndCurrency()
         {
             DeleteLocalSave();
             var localProgress = new PlayerProgressState { CurrentStageId = "stage_1_7" };
             for (var stage = 1; stage <= 6; stage++) localProgress.Stage.ClearedStageIds.Add("stage_1_" + stage);
-            SaveSeededProgress(localProgress, elapsedSeconds: 600d);
+            var localInventory = new InventoryState { EquipmentCapacity = 120 };
+            localInventory.Equipment.Add(new EquipmentInstance
+            {
+                InstanceId = "offline-only-equipment",
+                BaseId = "weapon_cloudsteel_blade",
+                DisplayName = "离线专属青锋",
+                Level = 12,
+                Quality = EquipmentQuality.Legendary,
+                IsLocked = true,
+                CreateTimeUtc = System.DateTime.UtcNow
+            });
+            localInventory.Materials.Add(new ItemStack { ItemId = "item_enhancement_stone", Count = 321 });
+            JsonPlayerSaveRepository.CreateDefault().Save(new PlayerSaveSnapshot
+            {
+                SoftCurrency = 98765,
+                PremiumCurrency = 777,
+                StageElapsedSeconds = 600d,
+                LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.AddMinutes(1).ToUnixTimeSeconds(),
+                InventoryJson = InventoryStateCodec.Serialize(localInventory),
+                EquippedInstanceIdsJson = "{\"ids\":[\"offline-only-equipment\"]}",
+                ProgressJson = PlayerProgressStateCodec.Serialize(localProgress)
+            });
             var saveBeforeServerEntry = File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath);
 
             PrototypeGameController.PauseNextBattleForTests();
@@ -292,6 +349,16 @@ namespace ImmortalLoot.Tests.PlayMode
                 "A fresh server account must start from the server-authoritative stage, not local stage 1-7.");
             Assert.That(controller.PacingElapsedSecondsForTests, Is.EqualTo(0d),
                 "Server reward pacing must start from a fresh server session, not the offline clock.");
+            Assert.That(controller.SoftCurrencyForTests, Is.Zero,
+                "A fresh server account must use the authoritative server balance, not high offline currency.");
+            Assert.That(controller.PremiumCurrencyForTests, Is.Zero);
+            Assert.That(controller.CommercialUnlocked, Is.False,
+                "Offline equipment must not unlock server-session commercial navigation.");
+            var serverRuntimeInventory = ReadRuntimeInventory(controller);
+            Assert.That(serverRuntimeInventory.Equipment, Is.Empty,
+                "A fresh server runtime must not inherit offline equipment.");
+            Assert.That(serverRuntimeInventory.Materials, Is.Empty,
+                "A fresh server runtime must not inherit offline materials.");
             controller.ResolveCurrentBattleForTests();
             var timeout = 2f;
             while (timeout > 0f && transport.FinishRequestBodies.Count < 1) { timeout -= Time.deltaTime; yield return null; }
@@ -304,11 +371,35 @@ namespace ImmortalLoot.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator InvalidServerProfile_StaysAtLoginAndPreservesOfflineSave()
+        public IEnumerator InvalidServerProfile_ThenProductionOffline_RestoresCompleteLocalState()
         {
             DeleteLocalSave();
-            SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_4" }, elapsedSeconds: 180d);
+            var localProgress = new PlayerProgressState { CurrentStageId = "stage_1_7" };
+            for (var stage = 1; stage <= 6; stage++) localProgress.Stage.ClearedStageIds.Add("stage_1_" + stage);
+            var localInventory = new InventoryState { EquipmentCapacity = 120 };
+            localInventory.Equipment.Add(new EquipmentInstance
+            {
+                InstanceId = "offline-restored-equipment",
+                BaseId = "weapon_cloudsteel_blade",
+                DisplayName = "归档青锋",
+                Level = 9,
+                Quality = EquipmentQuality.Legendary,
+                IsLocked = true,
+                CreateTimeUtc = System.DateTime.UtcNow
+            });
+            localInventory.Materials.Add(new ItemStack { ItemId = "item_enhancement_stone", Count = 88 });
+            JsonPlayerSaveRepository.CreateDefault().Save(new PlayerSaveSnapshot
+            {
+                SoftCurrency = 54321,
+                PremiumCurrency = 654,
+                StageElapsedSeconds = 345d,
+                LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.AddMinutes(1).ToUnixTimeSeconds(),
+                InventoryJson = InventoryStateCodec.Serialize(localInventory),
+                EquippedInstanceIdsJson = "{\"ids\":[\"offline-restored-equipment\"]}",
+                ProgressJson = PlayerProgressStateCodec.Serialize(localProgress)
+            });
             var saveBeforeEntry = File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath);
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
 
@@ -327,6 +418,22 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(login.CanEnterOffline, Is.True, "A rejected server snapshot must leave both retry and offline entry available.");
             Assert.That(FindIncludingInactive("LoginPage").activeSelf, Is.True);
             Assert.That(File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath), Is.EqualTo(saveBeforeEntry));
+
+            GameObject.Find("EnterGameButton").GetComponent<Button>().onClick.Invoke();
+            Assert.That(controller.GameplayActive, Is.True);
+            Assert.That(controller.ServerGameplayActive, Is.False);
+            Assert.That(controller.StageNumber, Is.EqualTo(7));
+            Assert.That(controller.PacingElapsedSecondsForTests, Is.EqualTo(345d).Within(0.01d));
+            Assert.That(controller.SoftCurrencyForTests, Is.EqualTo(54321));
+            Assert.That(controller.PremiumCurrencyForTests, Is.EqualTo(654));
+            Assert.That(controller.CommercialUnlocked, Is.True,
+                "The production offline button must restore local equipment after a rejected server profile.");
+            var restoredInventory = ReadRuntimeInventory(controller);
+            Assert.That(restoredInventory.Equipment.ConvertAll(item => item.InstanceId),
+                Is.EqualTo(new[] { "offline-restored-equipment" }));
+            Assert.That(restoredInventory.Materials, Has.Count.EqualTo(1));
+            Assert.That(restoredInventory.Materials[0].ItemId, Is.EqualTo("item_enhancement_stone"));
+            Assert.That(restoredInventory.Materials[0].Count, Is.EqualTo(88));
             DeleteLocalSave();
         }
 
@@ -356,6 +463,39 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(transport.BattleStartStageIds, Is.EqualTo(new[] { "stage_1_7" }));
             Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_8"),
                 "The server lock check, not the local demo clock, owns online stage advancement.");
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator ServerProfileRefresh_AtomicallyRebuildsAuthoritativeStageMirror()
+        {
+            DeleteLocalSave();
+            PrototypeGameController.PauseNextBattleForTests();
+            SceneManager.LoadScene("Main");
+            yield return null;
+
+            var transport = new ServerLoopTransport(
+                requiredStartStageId: "stage_1_1",
+                authoritativeProfileCurrentStageId: "stage_1_3",
+                authoritativeProfileClearedStageIds: ClearedStages(2));
+            var client = new ImmortalLootApiClient(transport);
+            var loginTask = client.LoginAsync("server-profile-reconciliation", "在线修士");
+            while (!loginTask.IsCompleted) yield return null;
+            Assert.That(loginTask.Exception, Is.Null);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
+                client, CreateServerProfile(), CreateServerInventory());
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+
+            controller.ResolveCurrentBattleForTests();
+            var timeout = 2f;
+            while (timeout > 0f && transport.ProfileRequestCount < 1) { timeout -= Time.deltaTime; yield return null; }
+
+            Assert.That(transport.ProfileRequestCount, Is.EqualTo(1));
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_3"),
+                "The refreshed server profile must replace the client's stage-1-to-stage-2 prediction.");
+            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds,
+                Is.EquivalentTo(new[] { "stage_1_1", "stage_1_2" }),
+                "The refreshed currentStageId and clearedStageIds must be applied as one authoritative mirror.");
             DeleteLocalSave();
         }
 
@@ -1036,6 +1176,17 @@ namespace ImmortalLoot.Tests.PlayMode
             if (File.Exists(JsonPlayerSaveRepository.DefaultPath)) File.Delete(JsonPlayerSaveRepository.DefaultPath);
         }
 
+        private static InventoryState ReadRuntimeInventory(PrototypeGameController controller)
+        {
+            var field = typeof(PrototypeGameController).GetField(
+                "_inventory",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null, "The PlayMode fixture could not inspect the runtime inventory boundary.");
+            var service = field.GetValue(controller) as InventoryService;
+            Assert.That(service, Is.Not.Null);
+            return service.State;
+        }
+
         private static PrototypeGameController EnterOfflineGameplay()
         {
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -1109,23 +1260,33 @@ namespace ImmortalLoot.Tests.PlayMode
             public readonly List<string> BattleStartStageIds = new List<string>();
             public int BattleStartCount { get; private set; }
             public int AuthoritativeFinishGrantCount { get; private set; }
+            public int ProfileRequestCount { get; private set; }
             private readonly bool _failBattleFinish;
             private readonly bool _loseFirstFinishResponseAfterCommit;
             private readonly string _requiredStartStageId;
+            private readonly string _authoritativeProfileCurrentStageId;
+            private readonly string[] _authoritativeProfileClearedStageIds;
             private bool _hasSuccessfulFinish;
             private bool _hasRewardedFinish;
             private bool _lostFirstFinishResponse;
             private string _currentSessionId = string.Empty;
+            private string _currentStageId = "stage_1_1";
+            private string _lastStartedStageId = string.Empty;
+            private readonly List<string> _clearedStageIds = new List<string>();
             private readonly Dictionary<string, bool> _committedFinishEligibility = new Dictionary<string, bool>();
 
             public ServerLoopTransport(
                 bool failBattleFinish = false,
                 bool loseFirstFinishResponseAfterCommit = false,
-                string requiredStartStageId = "")
+                string requiredStartStageId = "",
+                string authoritativeProfileCurrentStageId = "",
+                string[] authoritativeProfileClearedStageIds = null)
             {
                 _failBattleFinish = failBattleFinish;
                 _loseFirstFinishResponseAfterCommit = loseFirstFinishResponseAfterCommit;
                 _requiredStartStageId = requiredStartStageId ?? string.Empty;
+                _authoritativeProfileCurrentStageId = authoritativeProfileCurrentStageId ?? string.Empty;
+                _authoritativeProfileClearedStageIds = authoritativeProfileClearedStageIds;
             }
 
             public Task<ApiResponse> SendAsync(ApiRequest request)
@@ -1150,6 +1311,7 @@ namespace ImmortalLoot.Tests.PlayMode
                         AuthoritativeFinishGrantCount++;
                         _hasSuccessfulFinish = true;
                         _hasRewardedFinish |= committedRewardWindowEligible;
+                        ConfirmStage(_lastStartedStageId);
                     }
                     finishRewardWindowEligible = committedRewardWindowEligible;
                     if (_loseFirstFinishResponseAfterCommit && !_lostFirstFinishResponse)
@@ -1166,6 +1328,7 @@ namespace ImmortalLoot.Tests.PlayMode
                         BattleStartCount++;
                         _currentSessionId = System.Guid.NewGuid().ToString();
                         var start = JsonUtility.FromJson<BattleStartCapture>(request.JsonBody);
+                        _lastStartedStageId = start?.StageId ?? string.Empty;
                         BattleStartStageIds.Add(start?.StageId ?? string.Empty);
                         if (_requiredStartStageId.Length > 0 && start?.StageId != _requiredStartStageId)
                             return Task.FromResult(new ApiResponse(409, "{\"error\":\"Stage is locked.\"}"));
@@ -1179,14 +1342,42 @@ namespace ImmortalLoot.Tests.PlayMode
                     case "/player/inventory": json = "{\"items\":[],\"equipment\":[{\"instanceId\":\"equip-online\",\"baseId\":\"gloves_starseal\",\"slot\":\"Gloves\",\"level\":1,\"quality\":\"Rare\",\"isLocked\":false,\"isEquipped\":false,\"instanceJson\":\"{\\\"instanceId\\\":\\\"equip-online\\\",\\\"baseId\\\":\\\"gloves_starseal\\\",\\\"slot\\\":\\\"Gloves\\\",\\\"level\\\":1,\\\"quality\\\":\\\"Rare\\\",\\\"affixes\\\":[{\\\"id\\\":\\\"affix_attack\\\",\\\"value\\\":8.5}]}\"}]}"; break;
                     case "/equipment/equip": json = "{\"instanceId\":\"equip-online\",\"slot\":\"Gloves\",\"replaced\":false}"; break;
                     case "/player/profile":
-                        json = "{\"playerId\":\"p1\",\"nickname\":\"在线修士\",\"level\":1,\"exp\":" + (_hasRewardedFinish ? 25 : 0) +
-                               ",\"realmId\":\"realm_body_tempering\",\"realmStage\":1,\"power\":180,\"softCurrency\":" + (_hasRewardedFinish ? 10 : 0) +
-                               ",\"premiumCurrency\":" + (_hasSuccessfulFinish ? 10 : 0) +
-                               ",\"currentStageId\":\"stage_1_1\",\"clearedStageIds\":[],\"spiritualRoots\":[]}";
+                        ProfileRequestCount++;
+                        json = JsonUtility.ToJson(new PlayerProfileDto
+                        {
+                            playerId = "p1",
+                            nickname = "在线修士",
+                            level = 1,
+                            exp = _hasRewardedFinish ? 25 : 0,
+                            realmId = "realm_body_tempering",
+                            realmStage = 1,
+                            power = 180,
+                            softCurrency = _hasRewardedFinish ? 10 : 0,
+                            premiumCurrency = _hasSuccessfulFinish ? 10 : 0,
+                            currentStageId = _authoritativeProfileCurrentStageId.Length > 0
+                                ? _authoritativeProfileCurrentStageId
+                                : _currentStageId,
+                            clearedStageIds = _authoritativeProfileClearedStageIds ?? _clearedStageIds.ToArray(),
+                            spiritualRoots = System.Array.Empty<SpiritualRootProfileDto>()
+                        });
                         break;
                     default: json = "{}"; break;
                 }
                 return Task.FromResult(new ApiResponse(200, json));
+            }
+
+            private void ConfirmStage(string stageId)
+            {
+                var parts = (stageId ?? string.Empty).Split('_');
+                if (parts.Length != 3 || parts[0] != "stage" || parts[1] != "1" ||
+                    !int.TryParse(parts[2], out var stageNumber) || stageNumber < 1 || stageNumber > 10)
+                    return;
+                for (var number = 1; number <= stageNumber; number++)
+                {
+                    var clearedStageId = "stage_1_" + number;
+                    if (!_clearedStageIds.Contains(clearedStageId)) _clearedStageIds.Add(clearedStageId);
+                }
+                _currentStageId = stageNumber == 10 ? "stage_1_1" : "stage_1_" + (stageNumber + 1);
             }
 
             [System.Serializable]
