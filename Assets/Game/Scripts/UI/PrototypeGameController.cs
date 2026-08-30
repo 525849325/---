@@ -70,7 +70,6 @@ namespace ImmortalLoot.UI
         private AfkState _afkState;
         private string _offlineRewardSummary;
         private GameSettingsService _settings;
-        private int _settingsActionStep;
         private IReadOnlyList<CommercialProductConfig> _commercialProducts;
         private ValidationFunnelTracker _validationTelemetry;
         private readonly CharacterStats _baseStats = new CharacterStats
@@ -431,11 +430,7 @@ namespace ImmortalLoot.UI
                     return "完成登录/推图任务：活跃度 20\n宝箱灵砂 +100";
                 case "ActivityPage": return "灵潮涌动生效中\n服务器挂机收益 ×2";
                 case "DebugPage":
-                    if ((_settingsActionStep++ & 1) == 0) _settings.ToggleSound();
-                    else _settings.ToggleVibration();
-                    _settings.ApplySound();
-                    _settings.TryVibrate();
-                    return $"声音：{(_settings.SoundEnabled ? "开启" : "关闭")}\n震动：{(_settings.VibrationEnabled ? "开启" : "关闭")}\n再次点击依次切换声音与震动\n隐私政策 / 用户协议：发布前由渠道主体确认";
+                    return SettingsSummary();
                 default: return "功能已就绪。";
             }
         }
@@ -444,6 +439,32 @@ namespace ImmortalLoot.UI
         {
             if (CommercialUnlocked) _validationTelemetry?.TrackOnce("shop_exposed", _pacing?.ElapsedSeconds ?? 0f, _stageNumber, _power);
         }
+
+        public string SettingsSummary() =>
+            $"设置\n\n声音：{(_settings.SoundEnabled ? "开启" : "关闭")}\n震动：{(_settings.VibrationEnabled ? "开启" : "关闭")}\n进度会在暂停、退出和关键成长节点自动保存。";
+
+        public string ToggleSoundSetting()
+        {
+            _settings.ToggleSound();
+            _settings.ApplySound();
+            return SettingsSummary();
+        }
+
+        public string ToggleVibrationSetting()
+        {
+            _settings.ToggleVibration();
+            _settings.TryVibrate();
+            return SettingsSummary();
+        }
+
+        public string SaveNowFromSettings()
+        {
+            SaveProgress();
+            return SettingsSummary() + "\n\n进度已安全保存。";
+        }
+
+        public string LegalNotice() =>
+            "隐私政策与用户协议\n\n本候选版仅保存本地游戏进度与不含个人身份的验证事件。\n不读取通讯录、定位、相册或广告标识。\n正式外测前须由发行主体补充主体名称、联系邮箱和最终法律文本。";
 
         private string BuildName() => _buildIndex == 0 ? "火修燃烧" : _buildIndex == 1 ? "雷修暴击" : "血修吸血";
 

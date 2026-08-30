@@ -118,7 +118,14 @@ namespace ImmortalLoot.Tests.PlayMode
             GameObject.Find("Nav_DebugPage").GetComponent<Button>().onClick.Invoke();
             Assert.That(GameObject.Find("PageHeader").GetComponent<Text>().text, Is.EqualTo("设置"));
             Assert.That(controller.ExecutePageAction("DebugPage"), Does.Contain("声音："));
-            Assert.That(controller.ExecutePageAction("DebugPage"), Does.Contain("震动："));
+            Assert.That(GameObject.Find("Setting_Sound"), Is.Not.Null);
+            Assert.That(GameObject.Find("Setting_Vibration"), Is.Not.Null);
+            Assert.That(GameObject.Find("Setting_Save"), Is.Not.Null);
+            Assert.That(GameObject.Find("Setting_Legal"), Is.Not.Null);
+            GameObject.Find("Setting_Save").GetComponent<Button>().onClick.Invoke();
+            Assert.That(GameObject.Find("DebugPageContent").GetComponent<Text>().text, Does.Contain("进度已安全保存"));
+            GameObject.Find("Setting_Legal").GetComponent<Button>().onClick.Invoke();
+            Assert.That(GameObject.Find("DebugPageContent").GetComponent<Text>().text, Does.Contain("隐私政策与用户协议"));
         }
 
         [UnityTest]

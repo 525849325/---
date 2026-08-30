@@ -1,0 +1,20 @@
+# 无人值守任务队列
+
+状态只使用 `TODO / RUNNING / TESTING / BLOCKED / DONE / FAILED`。每次恢复先选择依赖已满足、可执行的最高优先级任务；外部阻塞不得阻塞其他 Workstream。
+
+| ID | Priority | Dependencies | Status | Owner / Workstream | Result / 下一验收证据 |
+|---|---|---|---|---|---|
+| AUDIT-001 | P0 | — | DONE | Direction | 审计、资产、冲刺、Backlog、人工事项与 Git 基线完成 |
+| CORE-001 | P0 | AUDIT-001 | TESTING | A/B/C | 1 分钟掉落、3 分钟 Boss、换装战力反馈已实现；待 Unity 4 分钟 PlayMode/真人试玩 |
+| SAVE-001 | P0 | CORE-001 | TESTING | D | v2 快照、迁移、损坏隔离、离线单次领取已实现；待 Unity 生命周期回归 |
+| COMM-001 | P0 | SAVE-001 | TESTING | D/C | 配置商品、首装备后入口、Release 拒绝 Mock、独立设置按钮已实现；待 Unity PlayMode |
+| QA-UNITY-001 | P0 | CORE-001,SAVE-001,COMM-001 | BLOCKED | E | Unity Test Runner 在代码加载前被 headless entitlement 拦截（RED-001） |
+| BUILD-ANDROID-001 | P0 | QA-UNITY-001 | BLOCKED | E | APK/AAB 脚本与构建规格已完成；实际产物被 RED-001 阻塞 |
+| QA-DEVICE-001 | P0 | BUILD-ANDROID-001 | BLOCKED | E | 等待可安装包后执行 10/60 分钟真机测试 |
+| SETTINGS-UI-001 | P1 | SAVE-001 | TESTING | C/D | 声音、震动、立即保存、隐私与协议四入口已编译；待当前提交与 Unity 场景运行 |
+| FUNNEL-001 | P1 | CORE-001 | DONE | D/E | 无 PII 本地 JSONL 漏斗、会话关联、可替换 Sink 与可执行烟测完成 |
+| FEEDBACK-001 | P1 | CORE-001 | TODO | C | 最小战斗音效/命中与 Boss 反馈；不得引入未授权素材 |
+| BALANCE-001 | P1 | CORE-001 | TODO | A/B/E | 建立 10/60 分钟确定性成长模拟与异常阈值报告 |
+| WARNINGS-001 | P2 | — | TODO | E | 迁移 Unity 6 已弃用查找/BuildTarget API，不阻塞 RC 逻辑 |
+
+当前自动执行：`SETTINGS-UI-001`。完成后自动进入 `BALANCE-001`；若 Unity 授权恢复，立即抢占并执行 `QA-UNITY-001`。
