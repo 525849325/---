@@ -23,6 +23,9 @@ namespace ImmortalLoot.Tests.PlayMode
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var scaler = Object.FindAnyObjectByType<Canvas>().GetComponent<CanvasScaler>();
+            Assert.That(scaler.referenceResolution, Is.EqualTo(new Vector2(1080f, 1920f)));
+            Assert.That(scaler.uiScaleMode, Is.EqualTo(CanvasScaler.ScaleMode.ScaleWithScreenSize));
             controller.SetPacingSpeedForTests(240f);
             GameObject.Find("EnterGameButton").GetComponent<Button>().onClick.Invoke();
             var lootObject = GameObject.Find("Loot");
@@ -40,6 +43,7 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(lootText.text, Does.Contain("最新掉落"));
             Assert.That(lootText.text, Does.Contain("云纹青锋"));
             Assert.That(lootText.text, Does.Contain("+"));
+            Assert.That(lootText.color, Is.EqualTo(PrototypeVisualTheme.QualityColor(controller.LatestLoot.Quality)));
             var before = controller.Power;
             GameObject.Find("EquipLatestButton").GetComponent<Button>().onClick.Invoke();
             yield return null;

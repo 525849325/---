@@ -14,6 +14,7 @@ using ImmortalLoot.Debugging;
 using ImmortalLoot.Player;
 using ImmortalLoot.Stage;
 using System.Collections.Generic;
+using System.Collections;
 using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
@@ -75,6 +76,7 @@ namespace ImmortalLoot.UI
 
         private void Start()
         {
+            PrototypeVisualTheme.Apply(FindAnyObjectByType<Canvas>());
             _catalog = new JsonConfigRepository(new ResourcesConfigSource()).LoadAll();
             _saveRepository = JsonPlayerSaveRepository.CreateDefault();
             var saved = LoadSnapshotSafely();
@@ -115,7 +117,9 @@ namespace ImmortalLoot.UI
             _battle.Tick(Time.deltaTime * _pacingSpeed);
             enemyHealth.value = _battle.Enemy.Hp / _battle.Enemy.MaxHp;
             var stage = _catalog.Stages[$"stage_1_{_stageNumber}"];
-            statusText.text = $"{stage.Name}  1-{_stageNumber}\n{_battle.Enemy.Id}  {_battle.Enemy.Hp:0}/{_battle.Enemy.MaxHp:0}\n已击败：{_kills}";
+            var bossLabel = stage.IsBossStage ? "BOSS · " : string.Empty;
+            statusText.text = $"{bossLabel}{stage.Name}  1-{_stageNumber}\n{_battle.Enemy.Id}  {_battle.Enemy.Hp:0}/{_battle.Enemy.MaxHp:0}\n已击败：{_kills}";
+            statusText.color = stage.IsBossStage ? PrototypeVisualTheme.Gold : PrototypeVisualTheme.TextPrimary;
             if (!_playtestQuitRequested && _pacing.IsComplete && _pacing.PendingRewards == 0 && !_settlingServerBattle && DevelopmentPlaytestOptions.AutoQuit)
             {
                 _playtestQuitRequested = true;
@@ -188,6 +192,7 @@ namespace ImmortalLoot.UI
                 _inventory.RemoveEquipment(_inventory.State.Equipment[0].InstanceId, out _);
             _inventory.AddEquipment(_latestLoot);
             lootText.text = FormatLoot(_latestLoot) + "\n\n点击“穿戴最新装备”提升战力";
+            lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
             if (_stageNumber == 10 && guideText != null) guideText.text = "Boss 已击败：可领取挂机收益并准备境界突破";
             RefreshProgressDisplay();
             SaveProgress();
@@ -212,6 +217,7 @@ namespace ImmortalLoot.UI
             var before = _power;
             _loadout.Equip(_latestLoot);
             RefreshProgressDisplay();
+            StartCoroutine(FlashPowerGain());
             SaveProgress();
             if (guideText != null) guideText.text = $"装备成功，战力 {before} → {_power}。继续推图挑战 1-10 Boss";
         }
@@ -222,6 +228,17 @@ namespace ImmortalLoot.UI
             _power = _powerCalculator.Calculate(calculated);
             if (profileText != null) profileText.text = $"云游剑客  Lv.{_level}\n战力 {_power}";
             if (currencyText != null) currencyText.text = $"灵砂 {_softCurrency:N0}    仙晶 {_premiumCurrency:N0}";
+        }
+
+        private IEnumerator FlashPowerGain()
+        {
+            if (profileText == null) yield break;
+            var originalScale = profileText.rectTransform.localScale;
+            profileText.color = PrototypeVisualTheme.Gold;
+            profileText.rectTransform.localScale = originalScale * 1.12f;
+            yield return new WaitForSecondsRealtime(0.18f);
+            profileText.rectTransform.localScale = originalScale;
+            profileText.color = PrototypeVisualTheme.TextPrimary;
         }
 
         private PlayerSaveSnapshot LoadSnapshotSafely()
