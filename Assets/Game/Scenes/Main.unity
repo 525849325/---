@@ -4644,7 +4644,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u300A\u592A\u521D\u62FE\u9057\u5F55\u300B\n\u4E00\u5FF5\u5165\u9752\u5D16\uFF0C\u4E07\u5668\u7686\u6709\u7F18"
+  m_Text: "\u300A\u592A\u521D\uFF1A\u65E0\u5C3D\u8F6E\u56DE\u300B\n\u4E00\u5FF5\u5165\u9752\u5D16\uFF0C\u4E07\u5668\u7686\u6709\u7F18"
 --- !u!222 &850496117
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -7187,7 +7187,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u300A\u592A\u521D\u62FE\u9057\u5F55\u300B\nProject ImmortalLoot"
+  m_Text: "\u300A\u592A\u521D\uFF1A\u65E0\u5C3D\u8F6E\u56DE\u300B\nProject ImmortalLoot"
 --- !u!222 &1841340477
 CanvasRenderer:
   m_ObjectHideFlags: 0

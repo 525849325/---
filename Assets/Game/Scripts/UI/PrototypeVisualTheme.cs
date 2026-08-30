@@ -52,6 +52,7 @@ namespace ImmortalLoot.UI
             if (camera != null) camera.backgroundColor = Ink;
             SetLabel("Nav_DebugPage", "设置");
             SetLabel("Action_DebugPage", "切换设置");
+            SetLabel("LoginTitle", "《太初：无尽轮回》\n一念入青崖，万器皆有缘");
             var settingsContent = FindIncludingInactive("DebugPageContent")?.GetComponent<Text>();
             if (settingsContent != null) settingsContent.text = "声音 / 震动设置\n\n点击下方按钮依次切换并持久化\n隐私政策 / 用户协议将在发布前展示";
         }

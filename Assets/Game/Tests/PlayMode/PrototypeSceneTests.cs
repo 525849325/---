@@ -23,6 +23,7 @@ namespace ImmortalLoot.Tests.PlayMode
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(GameObject.Find("LoginTitle").GetComponent<Text>().text, Does.StartWith("《太初：无尽轮回》"));
             Assert.That(FindIncludingInactive("Nav_ShopPage").activeSelf, Is.False, "Commercial entry must stay hidden until the player understands equipment growth.");
             var scaler = Object.FindAnyObjectByType<Canvas>().GetComponent<CanvasScaler>();
             Assert.That(scaler.referenceResolution, Is.EqualTo(new Vector2(1080f, 1920f)));

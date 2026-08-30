@@ -35,7 +35,7 @@ namespace ImmortalLoot.Editor
             var header = CreateText(canvas.transform, "PageHeader", "青崖历练", 36, new Vector2(0, 770), new Vector2(700, 80));
             header.color = new Color(0.9f, 0.79f, 0.43f);
 
-            var title = CreateText(canvas.transform, "Title", "《太初拾遗录》\nProject ImmortalLoot", 52, new Vector2(0, 650), new Vector2(900, 180));
+            var title = CreateText(canvas.transform, "Title", "《太初：无尽轮回》\nProject ImmortalLoot", 52, new Vector2(0, 650), new Vector2(900, 180));
             title.color = new Color(0.9f, 0.79f, 0.43f);
             var status = CreateText(canvas.transform, "BattleStatus", "正在准备战斗……", 42, new Vector2(0, 250), new Vector2(900, 300));
             var sliderObject = new GameObject("EnemyHealth", typeof(RectTransform), typeof(Slider));
@@ -91,12 +91,12 @@ namespace ImmortalLoot.Editor
             CreateButton(side.transform, "Nav_RankingPage", "排行", new Vector2(0, 30), 160, 90);
             CreateButton(side.transform, "Nav_ActivityPage", "活动", new Vector2(0, -80), 160, 90);
             CreateButton(side.transform, "Nav_StagePage", "关卡", new Vector2(0, -190), 160, 90);
-            CreateButton(side.transform, "Nav_DebugPage", "Debug", new Vector2(0, -300), 160, 90);
+            CreateButton(side.transform, "Nav_DebugPage", "设置", new Vector2(0, -300), 160, 90);
 
             var login = CreateImage(canvas.transform, "LoginPage", new Color(0.025f, 0.04f, 0.065f, 1f));
             Stretch(login.rectTransform);
             login.transform.SetAsLastSibling();
-            var loginTitle = CreateText(login.transform, "LoginTitle", "《太初拾遗录》\n一念入青崖，万器皆有缘", 54, new Vector2(0, 240), new Vector2(900, 300));
+            var loginTitle = CreateText(login.transform, "LoginTitle", "《太初：无尽轮回》\n一念入青崖，万器皆有缘", 54, new Vector2(0, 240), new Vector2(900, 300));
             loginTitle.color = new Color(0.9f, 0.79f, 0.43f);
             CreateButton(login.transform, "EnterGameButton", "离线演示 · 开始修行", new Vector2(0, -120), 620, 110);
             var serverLogin = CreateButton(login.transform, "ServerLoginButton", "本地服务器登录", new Vector2(0, -260), 620, 110);
