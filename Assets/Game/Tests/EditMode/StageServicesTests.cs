@@ -73,6 +73,25 @@ namespace ImmortalLoot.Tests
         }
 
         [Test]
+        public void VictoryLoop_ThirdDefeatRetreatsToFarmablePredecessorAndVictoryReturnsToBoss()
+        {
+            var loop = new VictoryDrivenStageLoop(Catalog(), new StageProgressState(), "stage_1_10");
+
+            Assert.That(loop.RecordDefeatAndMaybeRetreat(3), Is.False);
+            Assert.That(loop.RecordDefeatAndMaybeRetreat(3), Is.False);
+            Assert.That(loop.CurrentStageId, Is.EqualTo("stage_1_10"));
+            Assert.That(loop.DefeatsOnCurrentStage, Is.EqualTo(2));
+
+            Assert.That(loop.RecordDefeatAndMaybeRetreat(3), Is.True);
+            Assert.That(loop.CurrentStageId, Is.EqualTo("stage_1_9"));
+            Assert.That(loop.DefeatsOnCurrentStage, Is.Zero);
+
+            var recovery = loop.RecordVictory(10);
+            Assert.That(recovery.NextStageId, Is.EqualTo("stage_1_10"));
+            Assert.That(loop.CurrentStageId, Is.EqualTo("stage_1_10"));
+        }
+
+        [Test]
         public void VictoryLoop_MigratedStageSevenReconcilesPredecessorsBeforeSettlement()
         {
             var state = new StageProgressState();

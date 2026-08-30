@@ -1032,10 +1032,45 @@ namespace ImmortalLoot.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator BossVictoryDropsRareWithoutWindowAndLoopsToFirstStage()
+        public IEnumerator ThirdOfflineDefeatRetreatsToFarmableStageAndPersistsRecovery()
         {
             DeleteLocalSave();
             SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_10" });
+            PrototypeGameController.PauseNextBattleForTests();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = EnterOfflineGameplay();
+
+            Assert.That(controller.ActivePlayerMaxHpForTests, Is.GreaterThan(0f).And.LessThan(9999f),
+                "The production battle must use real progression stats instead of the former invincibility floor.");
+            controller.ResolveCurrentBattleForTests();
+            controller.RespawnCurrentBattleForTests();
+            controller.ResolveCurrentBattleForTests();
+            controller.RespawnCurrentBattleForTests();
+            controller.ResolveCurrentBattleForTests();
+
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_9"));
+            Assert.That(controller.DefeatsOnCurrentStageForTests, Is.Zero);
+            Assert.That(controller.SaveOperationCountForTests, Is.GreaterThan(0));
+            Assert.That(controller.ProgressForTests.CurrentStageId, Is.EqualTo("stage_1_9"));
+            var saved = JsonPlayerSaveRepository.CreateDefault().Load();
+            Assert.That(PlayerProgressStateCodec.Deserialize(saved.ProgressJson).CurrentStageId, Is.EqualTo("stage_1_9"),
+                "The farmable recovery stage must survive an app restart instead of reopening on the blocked Boss.");
+            controller.RespawnCurrentBattleForTests();
+            Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_9"),
+                "The production respawn path must actually create the recovery encounter.");
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator BossVictoryDropsRareWithoutWindowAndLoopsToFirstStage()
+        {
+            DeleteLocalSave();
+            SaveSeededProgress(new PlayerProgressState
+            {
+                CurrentStageId = "stage_1_10",
+                Realm = new RealmProgressState { PlayerLevel = 5 }
+            });
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
@@ -1184,7 +1219,11 @@ namespace ImmortalLoot.Tests.PlayMode
                 StageElapsedSeconds = 0,
                 LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 InventoryJson = JsonUtility.ToJson(inventory),
-                ProgressJson = PlayerProgressStateCodec.Serialize(new PlayerProgressState { CurrentStageId = "stage_1_10" })
+                ProgressJson = PlayerProgressStateCodec.Serialize(new PlayerProgressState
+                {
+                    CurrentStageId = "stage_1_10",
+                    Realm = new RealmProgressState { PlayerLevel = 5 }
+                })
             });
 
             PrototypeGameController.PauseNextBattleForTests();

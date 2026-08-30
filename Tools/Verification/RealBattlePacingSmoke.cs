@@ -13,6 +13,7 @@ internal static class RealBattlePacingSmoke
     private const float TickSeconds = 1f / 60f;
     private const double RespawnSeconds = 0.65d;
     private const double MaximumEncounterSeconds = 300d;
+    private const int DefeatsBeforeRetreat = 3;
     private const string FirstStageId = "stage_1_1";
     private const string PlayerSkillId = "skill_ember_brand";
 
@@ -21,12 +22,14 @@ internal static class RealBattlePacingSmoke
         try
         {
             var fixture = ParseFixture(args);
+            VerifyDeterministicGrowthResistance(fixture);
             var tenMinutes = Simulate(fixture, 10, 20260830);
             var sixtyMinutes = Simulate(fixture, 60, 20260830);
             VerifyResult(tenMinutes);
             VerifyResult(sixtyMinutes);
 
             Console.WriteLine("PASS: BALANCE-001 real-battle pacing smoke");
+            Console.WriteLine("growth-resistance: deterministic level-1 Boss defeats -> stage-9 farm recovery -> level-5 Boss victory");
             Console.WriteLine(
                 "model: production battle/factory/stage/pacing; tick=1/60s; respawn=0.65s; " +
                 "player=controller baseline plus configured stage-exp level growth; equipment/cultivation bonuses excluded");
@@ -71,6 +74,7 @@ internal static class RealBattlePacingSmoke
         var postBossTransitions = 0;
         var firstBossReachedSecond = -1d;
         var firstBossVictorySecond = -1d;
+        var firstBossPlayerLevel = 0;
         var maximumEncounterDuration = 0d;
         var lastSettlementSecond = 0d;
         var lastTransitionSecond = 0d;
@@ -96,7 +100,11 @@ internal static class RealBattlePacingSmoke
                 if (activeStageWasBoss)
                 {
                     bossEntries++;
-                    if (firstBossReachedSecond < 0d) firstBossReachedSecond = elapsedSeconds;
+                    if (firstBossReachedSecond < 0d)
+                    {
+                        firstBossReachedSecond = elapsedSeconds;
+                        firstBossPlayerLevel = progression.Level;
+                    }
                 }
             }
 
@@ -137,7 +145,7 @@ internal static class RealBattlePacingSmoke
             }
             else if (finishedState.Value == BattleState.Defeat)
             {
-                loop.RecordDefeat();
+                loop.RecordDefeatAndMaybeRetreat(DefeatsBeforeRetreat);
                 defeats++;
             }
             else
@@ -163,6 +171,7 @@ internal static class RealBattlePacingSmoke
             minutes,
             firstBossReachedSecond,
             firstBossVictorySecond,
+            firstBossPlayerLevel,
             bossEntries,
             bossVictories,
             postBossTransitions,
@@ -179,12 +188,88 @@ internal static class RealBattlePacingSmoke
             stuck);
     }
 
+    private static void VerifyDeterministicGrowthResistance(Fixture fixture)
+    {
+        var battles = new StageBattleFactory(
+            fixture.Catalog,
+            new MonsterFactory(fixture.Catalog),
+            new DamageCalculator(fixture.DamageFormula, new NoCriticalRandomSource()));
+        var loop = new VictoryDrivenStageLoop(fixture.Catalog, new StageProgressState(), "stage_1_10");
+        var pacing = new DemoPacingSession(fixture.Pacing);
+        pacing.Restore(180d);
+        var progression = new BaselineProgression();
+        var bossDefeats = 0;
+        var retreats = 0;
+        var farmVictories = 0;
+        var bossVictory = false;
+
+        var baseline = CreatePlayer(fixture.Catalog, progression.Level);
+        Require(Math.Abs(baseline.MaxHp - 180f) < 0.001f && baseline.MaxHp < 9999f,
+            "the deterministic baseline player did not use the controller's real level-1 HP");
+
+        for (var encounter = 0; encounter < 20 && !bossVictory; encounter++)
+        {
+            var stage = loop.CurrentStage;
+            var battle = battles.Create(stage.Id, CreatePlayer(fixture.Catalog, progression.Level));
+            battle.SuppressPresentationEvents = true;
+            var result = ResolveWithProductionPacing(battle, pacing);
+            if (result == BattleState.Defeat)
+            {
+                Require(stage.IsBossStage, "the recovery farm stage was not beatable by the baseline player");
+                bossDefeats++;
+                if (loop.RecordDefeatAndMaybeRetreat(DefeatsBeforeRetreat)) retreats++;
+                continue;
+            }
+
+            Require(result == BattleState.Victory, "the recovery encounter did not settle");
+            var transition = loop.RecordVictory(pacing.CurrentStageNumber);
+            if (stage.IsBossStage || pacing.TryConsumeBattleReward())
+                progression.GrantExperience(stage.RewardExp);
+            if (stage.IsBossStage)
+            {
+                bossVictory = true;
+                Require(transition.Advanced && transition.CompletedChapter && loop.CurrentStageId == FirstStageId,
+                    "the recovered Boss victory did not loop the chapter");
+            }
+            else
+            {
+                farmVictories++;
+                Require(loop.CurrentStageId == "stage_1_10",
+                    "the recovery farm victory did not return to the blocked Boss");
+            }
+        }
+
+        Require(bossDefeats >= DefeatsBeforeRetreat && retreats > 0 && farmVictories > 0,
+            "an under-level migrated Boss state did not exercise the bounded retreat/farm recovery path");
+        Require(bossVictory && progression.Level == 5,
+            "the bounded recovery path did not turn real stage experience into a level-5 Boss victory");
+        var grown = CreatePlayer(fixture.Catalog, progression.Level);
+        Require(Math.Abs(grown.MaxHp - 240f) < 0.001f && grown.MaxHp < 9999f,
+            "the recovered player did not use the controller's real level-5 HP");
+    }
+
+    private static BattleState ResolveWithProductionPacing(AutoBattleEngine battle, DemoPacingSession pacing)
+    {
+        BattleState? finished = null;
+        battle.Finished += state => finished = state;
+        var elapsed = 0d;
+        while (!finished.HasValue && elapsed <= MaximumEncounterSeconds)
+        {
+            battle.Tick(TickSeconds);
+            pacing.Advance(TickSeconds);
+            elapsed += TickSeconds;
+        }
+        Require(finished.HasValue, "a deterministic recovery encounter exceeded the production timeout");
+        pacing.Advance(RespawnSeconds);
+        return finished.Value;
+    }
+
     private static BattleActor CreatePlayer(GameConfigCatalog catalog, int level)
     {
         var levelOffset = Math.Max(0, level - 1);
         var stats = new CharacterStats
         {
-            HP = 9999f,
+            HP = 180f + levelOffset * 15f,
             Attack = 12f + levelOffset * 2f,
             Defense = 3f,
             CritRate = 0.1f,
@@ -202,21 +287,21 @@ internal static class RealBattlePacingSmoke
             $"{result.Minutes}-minute simulation reached the Boss before the 180-second gate");
         Require(result.FirstBossReachedSecond <= 240d,
             $"{result.Minutes}-minute simulation missed the 4-minute Boss reach target");
+        Require(result.FirstBossPlayerLevel == 5,
+            $"{result.Minutes}-minute simulation reached its first Boss at unexpected level {result.FirstBossPlayerLevel}");
         Require(result.FirstBossVictorySecond >= result.FirstBossReachedSecond,
             $"{result.Minutes}-minute simulation did not defeat the first Boss");
-        Require(result.FirstBossVictorySecond <= 300d,
-            $"{result.Minutes}-minute simulation missed the 5-minute first-Boss defeat guardrail");
+        Require(result.FirstBossVictorySecond <= 240d,
+            $"{result.Minutes}-minute simulation missed the 4-minute first-Boss defeat guardrail");
         Require(result.BossVictories > 1,
             $"{result.Minutes}-minute simulation did not complete a second Boss cycle");
         Require(result.PostBossTransitions > 0,
             $"{result.Minutes}-minute simulation made no stage transition after its first Boss victory");
-        Require(result.ConsumedRewardWindows <= result.GeneratedRewardWindows,
-            $"{result.Minutes}-minute simulation consumed more rewards than pacing generated");
-        Require(result.PendingRewardWindows ==
-                result.GeneratedRewardWindows - result.ConsumedRewardWindows,
-            $"{result.Minutes}-minute reward-window accounting did not balance");
-        Require(result.PendingRewardWindows <= 1,
-            $"{result.Minutes}-minute simulation accumulated a reward backlog of {result.PendingRewardWindows}");
+        var expectedRewardWindows = result.Minutes == 10 ? 22 : 142;
+        Require(result.GeneratedRewardWindows == expectedRewardWindows,
+            $"{result.Minutes}-minute simulation generated {result.GeneratedRewardWindows} reward windows instead of {expectedRewardWindows}");
+        Require(result.ConsumedRewardWindows == result.GeneratedRewardWindows && result.PendingRewardWindows == 0,
+            $"{result.Minutes}-minute reward-window accounting did not drain exactly");
         Require(result.MaximumEncounterDuration <= MaximumEncounterSeconds,
             $"{result.Minutes}-minute simulation exceeded the encounter timeout");
     }
@@ -373,7 +458,7 @@ internal static class RealBattlePacingSmoke
     {
         Console.WriteLine(
             $"{result.Minutes}m: firstBossReached={result.FirstBossReachedSecond:0.00}s, " +
-            $"firstBossDefeated={result.FirstBossVictorySecond:0.00}s, bossEntries={result.BossEntries}, " +
+            $"firstBossDefeated={result.FirstBossVictorySecond:0.00}s, firstBossLevel={result.FirstBossPlayerLevel}, bossEntries={result.BossEntries}, " +
             $"bossVictories={result.BossVictories}, postBossTransitions={result.PostBossTransitions}, " +
             $"encounters={result.EncounterCount}, " +
             $"victories={result.Victories}, defeats={result.Defeats}, " +
@@ -403,6 +488,12 @@ internal static class RealBattlePacingSmoke
         }
     }
 
+    private sealed class NoCriticalRandomSource : IRandomSource
+    {
+        public int Range(int minInclusive, int maxExclusive) => minInclusive;
+        public float Value() => 1f;
+    }
+
     private sealed class Fixture
     {
         public DemoPacingConfig Pacing { get; }
@@ -422,6 +513,7 @@ internal static class RealBattlePacingSmoke
         public int Minutes { get; }
         public double FirstBossReachedSecond { get; }
         public double FirstBossVictorySecond { get; }
+        public int FirstBossPlayerLevel { get; }
         public int BossEntries { get; }
         public int BossVictories { get; }
         public int PostBossTransitions { get; }
@@ -441,6 +533,7 @@ internal static class RealBattlePacingSmoke
             int minutes,
             double firstBossReachedSecond,
             double firstBossVictorySecond,
+            int firstBossPlayerLevel,
             int bossEntries,
             int bossVictories,
             int postBossTransitions,
@@ -459,6 +552,7 @@ internal static class RealBattlePacingSmoke
             Minutes = minutes;
             FirstBossReachedSecond = firstBossReachedSecond;
             FirstBossVictorySecond = firstBossVictorySecond;
+            FirstBossPlayerLevel = firstBossPlayerLevel;
             BossEntries = bossEntries;
             BossVictories = bossVictories;
             PostBossTransitions = postBossTransitions;

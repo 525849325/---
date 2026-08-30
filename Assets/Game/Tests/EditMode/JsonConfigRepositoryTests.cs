@@ -23,6 +23,8 @@ namespace ImmortalLoot.Tests
             Assert.That(catalog.Skills.Count, Is.EqualTo(3));
             Assert.That(catalog.CultivationMethods.Count, Is.EqualTo(6));
             Assert.That(catalog.Monsters["monster_stone_nightmare"].SkillIds, Does.Contain("skill_blood_tide"));
+            Assert.That(catalog.Monsters["monster_stone_nightmare"].Attack, Is.EqualTo(24f));
+            Assert.That(catalog.Monsters["monster_stone_nightmare"].EnrageSeconds, Is.EqualTo(8f));
             Assert.That(catalog.Stages["stage_1_10"].IsBossStage, Is.True);
             Assert.That(catalog.DropTables.Count, Is.EqualTo(4));
             Assert.That(catalog.ShopItems.Count, Is.EqualTo(2));

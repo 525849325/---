@@ -371,7 +371,7 @@ namespace ImmortalLoot.UI
             enemyHealth.value = _battle.Enemy.Hp / _battle.Enemy.MaxHp;
             var stage = _catalog.Stages[_activeBattleStageId];
             var bossLabel = stage.IsBossStage ? "BOSS · " : string.Empty;
-            statusText.text = $"{bossLabel}{stage.Name}  1-{stage.StageNumber}\n{_battle.Enemy.Id}  {_battle.Enemy.Hp:0}/{_battle.Enemy.MaxHp:0}\n已击败：{_kills}";
+            statusText.text = $"{bossLabel}{stage.Name}  1-{stage.StageNumber}\n{_battle.Enemy.Id}  {_battle.Enemy.Hp:0}/{_battle.Enemy.MaxHp:0}\n玩家生命  {_battle.Player.Hp:0}/{_battle.Player.MaxHp:0}  ·  已击败：{_kills}";
             statusText.color = stage.IsBossStage ? PrototypeVisualTheme.Gold : PrototypeVisualTheme.TextPrimary;
             if (!_playtestQuitRequested && _pacing.IsComplete && _pacing.PendingRewards == 0 &&
                 !_settlingServerBattle && _pendingServerBattleSettlement == null && DevelopmentPlaytestOptions.AutoQuit)
@@ -388,7 +388,6 @@ namespace ImmortalLoot.UI
             _activeBattleStageId = _stageLoop.CurrentStageId;
             var stage = _stageLoop.CurrentStage;
             var playerStats = _stats.Calculate(_baseStats);
-            playerStats.HP = Mathf.Max(playerStats.HP, 9999f);
             var player = new BattleActor("player", playerStats, 0.7f, new[] { _catalog.Skills["skill_ember_brand"] });
             _battle = _stageBattleFactory.Create(_activeBattleStageId, player);
             _battle.Finished += HandleBattleFinished;
@@ -577,9 +576,21 @@ namespace ImmortalLoot.UI
 
         private void RecordBattleDefeat(bool scheduleRetry)
         {
-            _stageLoop.RecordDefeat();
+            var retreated = false;
+            if (_serverGameplay)
+                _stageLoop.RecordDefeat();
+            else
+                retreated = _stageLoop.RecordDefeatAndMaybeRetreat(3);
+
+            if (retreated)
+            {
+                _stageNumber = _stageLoop.CurrentStageNumber;
+                SaveProgress();
+            }
             if (guideText != null)
-                guideText.text = $"挑战失败：保留 1-{_stageLoop.CurrentStageNumber}，稍后自动重试（本关失败 {_stageLoop.DefeatsOnCurrentStage} 次）。";
+                guideText.text = retreated
+                    ? $"连续挑战失败：已退回 1-{_stageLoop.CurrentStageNumber} 自动修炼，胜利后会再次挑战。"
+                    : $"挑战失败：保留 1-{_stageLoop.CurrentStageNumber}，稍后自动重试（本关失败 {_stageLoop.DefeatsOnCurrentStage} 次）。";
             if (scheduleRetry) Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
         }
 
@@ -1384,6 +1395,7 @@ namespace ImmortalLoot.UI
         public int SaveOperationCountForTests => _saveOperationCount;
         public double PacingElapsedSecondsForTests => _pacing.ElapsedSeconds;
         public bool HasActiveBattleForTests => _battle != null;
+        public float ActivePlayerMaxHpForTests => _battle?.Player.MaxHp ?? 0f;
         public long ExperienceForTests => _exp;
         public long ConfiguredStageExperienceGrantedForTests => _configuredStageExperienceGranted;
         public long SoftCurrencyForTests => _softCurrency;

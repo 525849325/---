@@ -96,6 +96,26 @@ namespace ImmortalLoot.Stage
             if (DefeatsOnCurrentStage < int.MaxValue) DefeatsOnCurrentStage++;
         }
 
+        public bool RecordDefeatAndMaybeRetreat(int defeatsBeforeRetreat)
+        {
+            if (defeatsBeforeRetreat <= 0)
+                throw new ArgumentOutOfRangeException(nameof(defeatsBeforeRetreat));
+
+            RecordDefeat();
+            if (DefeatsOnCurrentStage < defeatsBeforeRetreat) return false;
+
+            var currentIndex = _orderedStages.FindIndex(stage =>
+                string.Equals(stage.Id, _currentStageId, StringComparison.Ordinal));
+            if (currentIndex <= 0) return false;
+
+            var predecessor = _orderedStages[currentIndex - 1];
+            if (predecessor.Chapter != CurrentStage.Chapter) return false;
+
+            _currentStageId = predecessor.Id;
+            DefeatsOnCurrentStage = 0;
+            return true;
+        }
+
         private void ReconcilePredecessors(string currentStageId)
         {
             var cleared = new HashSet<string>(_state.ClearedStageIds, StringComparer.Ordinal);

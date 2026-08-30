@@ -1,9 +1,9 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $configRoot = Join-Path $projectRoot 'Assets\Game\Resources\Config'
-$pacing = Get-Content -Raw (Join-Path $configRoot 'demo_pacing.json') | ConvertFrom-Json
-$dropFile = Get-Content -Raw (Join-Path $configRoot 'drop_tables.json') | ConvertFrom-Json
-$equipmentFile = Get-Content -Raw (Join-Path $configRoot 'equipment.json') | ConvertFrom-Json
+$pacing = Get-Content -Raw -Encoding UTF8 (Join-Path $configRoot 'demo_pacing.json') | ConvertFrom-Json
+$dropFile = Get-Content -Raw -Encoding UTF8 (Join-Path $configRoot 'drop_tables.json') | ConvertFrom-Json
+$equipmentFile = Get-Content -Raw -Encoding UTF8 (Join-Path $configRoot 'equipment.json') | ConvertFrom-Json
 
 function Require([bool]$condition, [string]$message) {
     if (-not $condition) { throw $message }
