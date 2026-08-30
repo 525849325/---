@@ -10,7 +10,10 @@ using ImmortalLoot.Network;
 using ImmortalLoot.Cultivation;
 using ImmortalLoot.Realm;
 using ImmortalLoot.Debugging;
+using ImmortalLoot.Player;
 using ImmortalLoot.Stage;
+using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -57,6 +60,8 @@ namespace ImmortalLoot.UI
         private DemoPacingConfig _pacingConfig;
         private float _pacingSpeed = 1f;
         private bool _playtestQuitRequested;
+        private IPlayerSaveRepository _saveRepository;
+        private string _saveLoadWarning;
         private readonly CharacterStats _baseStats = new CharacterStats
         {
             HP = 180f, Attack = 12f, Defense = 3f, CritRate = 0.1f, CritDamage = 1.5f, AttackSpeed = 1f, FireDamage = 0.1f
@@ -68,9 +73,11 @@ namespace ImmortalLoot.UI
         private void Start()
         {
             _catalog = new JsonConfigRepository(new ResourcesConfigSource()).LoadAll();
+            _saveRepository = JsonPlayerSaveRepository.CreateDefault();
+            var saved = LoadSnapshotSafely();
             _generator = new EquipmentGenerator(new SystemRandomSource(), _catalog);
             _drops = new DropTableService(_catalog, _generator, new SystemRandomSource());
-            _inventory = new InventoryService(new InventoryState { EquipmentCapacity = 120 }, _catalog);
+            _inventory = new InventoryService(RestoreInventory(saved), _catalog);
             _decomposition = new EquipmentDecompositionService(_inventory, DecompositionFormulaLoader.Load(new ResourcesConfigSource()));
             _loadout = new EquipmentLoadoutService(_catalog);
             _stats = new CharacterStatService();
@@ -83,11 +90,13 @@ namespace ImmortalLoot.UI
             _powerCalculator = PowerCalculator.Load(new ResourcesConfigSource());
             _pacingConfig = DemoPacingLoader.Load(new ResourcesConfigSource());
             _pacing = new DemoPacingSession(_pacingConfig);
+            RestoreProgress(saved);
             _pacingSpeed = DevelopmentPlaytestOptions.Speed;
             _debugService = new GameDebugService(new DebugGameState(), _catalog, new SystemRandomSource());
             _login = FindAnyObjectByType<PrototypeLoginController>();
             if (equipLatestButton != null) equipLatestButton.onClick.AddListener(EquipLatest);
             RefreshProgressDisplay();
+            if (!string.IsNullOrEmpty(_saveLoadWarning) && guideText != null) guideText.text = _saveLoadWarning;
             SpawnEnemy();
         }
 
@@ -162,7 +171,11 @@ namespace ImmortalLoot.UI
             _exp += 25;
             _softCurrency += _stageNumber == 10 ? 50 : 10;
             while (_exp >= _level * 50L) { _exp -= _level * 50L; _level++; _baseStats.Attack += 2f; _baseStats.HP += 15f; }
-            var drops = _drops.Roll("drop_prototype_equipment", new DropContext(DropSourceType.Monster, 1 + _kills / 3, "monster_wasteland_beast"));
+            var isBoss = _stageNumber == 10;
+            var dropTableId = isBoss ? _catalog.Stages["stage_1_10"].DropTableId : "drop_prototype_equipment";
+            var source = isBoss ? DropSourceType.Boss : DropSourceType.Monster;
+            var sourceId = isBoss ? "monster_stone_nightmare" : "monster_wasteland_beast";
+            var drops = _drops.Roll(dropTableId, new DropContext(source, 1 + _kills / 3, sourceId));
             _latestLoot = drops[0].Equipment;
             if (_inventory.State.Equipment.Count >= _inventory.State.EquipmentCapacity)
                 _inventory.RemoveEquipment(_inventory.State.Equipment[0].InstanceId, out _);
@@ -170,6 +183,7 @@ namespace ImmortalLoot.UI
             lootText.text = FormatLoot(_latestLoot) + "\n\n点击“穿戴最新装备”提升战力";
             if (_stageNumber == 10 && guideText != null) guideText.text = "Boss 已击败：可领取挂机收益并准备境界突破";
             RefreshProgressDisplay();
+            SaveProgress();
             Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
         }
 
@@ -191,6 +205,7 @@ namespace ImmortalLoot.UI
             var before = _power;
             _loadout.Equip(_latestLoot);
             RefreshProgressDisplay();
+            SaveProgress();
             if (guideText != null) guideText.text = $"装备成功，战力 {before} → {_power}。继续推图挑战 1-10 Boss";
         }
 
@@ -201,6 +216,74 @@ namespace ImmortalLoot.UI
             if (profileText != null) profileText.text = $"云游剑客  Lv.{_level}\n战力 {_power}";
             if (currencyText != null) currencyText.text = $"灵砂 {_softCurrency:N0}    仙晶 {_premiumCurrency:N0}";
         }
+
+        private PlayerSaveSnapshot LoadSnapshotSafely()
+        {
+            if (!_saveRepository.Exists) return null;
+            try { return _saveRepository.Load(); }
+            catch (Exception exception)
+            {
+                _saveLoadWarning = "存档校验失败，已安全新开；损坏文件已保留。";
+                Debug.LogError("SAVE_RECOVERY: " + exception);
+                var source = JsonPlayerSaveRepository.DefaultPath;
+                if (File.Exists(source)) File.Move(source, source + ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss"));
+                return null;
+            }
+        }
+
+        private static InventoryState RestoreInventory(PlayerSaveSnapshot saved)
+        {
+            if (saved == null || string.IsNullOrWhiteSpace(saved.InventoryJson)) return new InventoryState { EquipmentCapacity = 120 };
+            var state = JsonUtility.FromJson<InventoryState>(saved.InventoryJson) ?? new InventoryState();
+            state.EquipmentCapacity = Math.Max(120, state.EquipmentCapacity);
+            state.Equipment ??= new List<EquipmentInstance>();
+            state.Materials ??= new List<ItemStack>();
+            state.Consumables ??= new List<ItemStack>();
+            return state;
+        }
+
+        private void RestoreProgress(PlayerSaveSnapshot saved)
+        {
+            if (saved == null) return;
+            _level = Math.Max(1, saved.Level);
+            _exp = Math.Max(0, saved.Exp);
+            _kills = Math.Max(0, saved.Kills);
+            _softCurrency = Math.Max(0, saved.SoftCurrency);
+            _premiumCurrency = Math.Max(0, saved.PremiumCurrency);
+            _realmStage = Math.Max(1, saved.RealmStage);
+            _baseStats.Attack += (_level - 1) * 2f;
+            _baseStats.HP += (_level - 1) * 15f;
+            _pacing.Restore(saved.StageElapsedSeconds);
+            var equipped = JsonUtility.FromJson<EquippedIds>(saved.EquippedInstanceIdsJson);
+            if (equipped?.ids == null) return;
+            foreach (var id in equipped.ids)
+            {
+                var item = _inventory.State.Equipment.Find(value => value.InstanceId == id);
+                if (item != null) _loadout.Equip(item);
+            }
+        }
+
+        private void SaveProgress()
+        {
+            if (_saveRepository == null || _inventory == null || _pacing == null) return;
+            var equipped = new EquippedIds();
+            foreach (var item in _loadout.Equipped.Values) equipped.ids.Add(item.InstanceId);
+            _saveRepository.Save(new PlayerSaveSnapshot
+            {
+                PlayerId = "local-player", Nickname = "云游剑客", Level = _level, Exp = _exp,
+                RealmStage = _realmStage, Kills = _kills, SoftCurrency = _softCurrency,
+                PremiumCurrency = _premiumCurrency, StageElapsedSeconds = _pacing.ElapsedSeconds,
+                LastActiveUnixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                InventoryJson = JsonUtility.ToJson(_inventory.State),
+                EquippedInstanceIdsJson = JsonUtility.ToJson(equipped)
+            });
+        }
+
+        private void OnApplicationPause(bool paused) { if (paused) SaveProgress(); }
+        private void OnApplicationQuit() => SaveProgress();
+
+        [Serializable]
+        private sealed class EquippedIds { public List<string> ids = new List<string>(); }
 
         public string ExecutePageAction(string pageName)
         {
@@ -341,6 +424,7 @@ namespace ImmortalLoot.UI
 
 #if UNITY_INCLUDE_TESTS
         public void SetPacingSpeedForTests(float speed) => _pacingSpeed = Mathf.Max(1f, speed);
+        public void SaveForTests() => SaveProgress();
 #endif
     }
 }

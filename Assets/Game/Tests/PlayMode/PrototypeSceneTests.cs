@@ -8,6 +8,8 @@ using UnityEngine.TestTools;
 using UnityEngine.UI;
 using ImmortalLoot.UI;
 using ImmortalLoot.Network;
+using ImmortalLoot.Player;
+using System.IO;
 
 namespace ImmortalLoot.Tests.PlayMode
 {
@@ -16,6 +18,7 @@ namespace ImmortalLoot.Tests.PlayMode
         [UnityTest]
         public IEnumerator MainScene_AutoBattleProducesVisibleRandomLoot()
         {
+            DeleteLocalSave();
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -112,6 +115,7 @@ namespace ImmortalLoot.Tests.PlayMode
         [UnityTest]
         public IEnumerator ServerMode_AutoBattleSynchronizesLootAndEquipRequest()
         {
+            DeleteLocalSave();
             SceneManager.LoadScene("Main");
             yield return null;
             var transport = new ServerLoopTransport();
@@ -135,6 +139,37 @@ namespace ImmortalLoot.Tests.PlayMode
             while (timeout > 0f && !transport.Paths.Contains("/equipment/equip")) { timeout -= Time.deltaTime; yield return null; }
             Assert.That(transport.Paths, Does.Contain("/equipment/equip"));
             Assert.That(GameObject.Find("Profile").GetComponent<Text>().text, Does.Contain("战力 180"));
+        }
+
+        [UnityTest]
+        public IEnumerator LocalSave_ReloadRestoresEquippedPowerAndStage()
+        {
+            DeleteLocalSave();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            controller.SetPacingSpeedForTests(240f);
+            GameObject.Find("EnterGameButton").GetComponent<Button>().onClick.Invoke();
+            var timeout = 5f;
+            while (timeout > 0f && controller.LatestLoot == null) { timeout -= Time.deltaTime; yield return null; }
+            Assert.That(controller.LatestLoot, Is.Not.Null);
+            controller.EquipLatest();
+            yield return null;
+            controller.SaveForTests();
+            var savedPower = controller.Power;
+            var savedStage = controller.StageNumber;
+
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var restored = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(restored.Power, Is.EqualTo(savedPower));
+            Assert.That(restored.StageNumber, Is.EqualTo(savedStage));
+            DeleteLocalSave();
+        }
+
+        private static void DeleteLocalSave()
+        {
+            if (File.Exists(JsonPlayerSaveRepository.DefaultPath)) File.Delete(JsonPlayerSaveRepository.DefaultPath);
         }
 
         private sealed class ServerLoopTransport : IApiTransport
