@@ -1,5 +1,17 @@
 # RED Alerts
 
+## RED-002｜GitHub 仓库 URL
+
+- **TASK：** GITHUB-SYNC-001
+- **问题：** 当前 Git 配置没有 remote，项目文件中没有仓库地址，本机未安装 GitHub CLI，无法唯一确定已创建仓库。
+- **原因：** GitHub 仓库 URL 属于外部资源标识，不能安全猜测。
+- **已经尝试：** 检查 `git remote -v`、`.git/config`、项目文档中的 GitHub URL，并检查 GitHub CLI 可用性。
+- **推荐方案：** 老板提供已创建仓库的 HTTPS URL，例如 `https://github.com/OWNER/REPO.git`。
+- **备选方案：** 提供等价 SSH URL；如果远端已有提交，将先拉取审计，绝不强推覆盖。
+- **风险：** URL 未提供前无法配置 remote、Push 或验证远端树；本地提交与安全标签不受影响。
+- **最晚需要用户决定：** 首次远端备份与项目监控启用前。
+- **状态：** OPEN；GITHUB-SYNC-001 BLOCKED，RC-QUALITY-001 继续执行。
+
 ## RED-001｜Unity Editor/headless entitlement
 
 - **TASK：** QA-UNITY-001 / BUILD-ANDROID-001

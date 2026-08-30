@@ -7,14 +7,14 @@
 | 版本 | V0.1 RC 开发中 |
 | 总体完成度 | GATE 1–3 实现完成；GATE 4 等待 Unity 授权与真机构建证据 |
 | 当前 Gate | GATE 4｜Build / Test / Release Readiness |
-| 当前 Task | GITHUB-SYNC-001｜GitHub 首次安全同步 |
+| 当前 Task | RC-QUALITY-001｜静态安全与性能门禁 |
 | Build | C# 全程序集 PASS；Android APK/AAB BLOCKED |
 | Tests | 非 Unity 门禁 PASS；Unity Test Runner BLOCKED |
 | P0 / P1 | P0：GitHub 同步与 RC 质量门禁；P1：场景体验验收待授权 |
-| Blocked | QA-UNITY-001、BUILD-ANDROID-001、QA-DEVICE-001 |
-| RED | RED-001｜Unity Editor/headless entitlement |
+| Blocked | GITHUB-SYNC-001、QA-UNITY-001、BUILD-ANDROID-001、QA-DEVICE-001 |
+| RED | RED-001｜Unity entitlement；RED-002｜GitHub 仓库 URL |
 | 最大风险 | 缺少真实 Unity 场景、Android 包与真机稳定性证据 |
-| Next | 完成 GitHub 同步后自动恢复 RC-QUALITY-001 |
+| Next | 继续 RC 静态安全/性能审计；收到 URL 后立即恢复 GitHub 同步 |
 | 是否需要老板决策 | 是：提供已创建 GitHub 仓库 URL；并在 RC 冻结前恢复 Unity 授权 |
 
 当前分支：`codex/task-000-audit`
@@ -32,6 +32,7 @@
 - 自动换装默认开启且可关闭，只接受含功法加成后的统一战力严格提升装备。
 - 完成 RC P0/P1 静态审计；修复设置启动顺序，并隐藏 Feature Freeze 入口与残留 GM UI。
 - 加固损坏存档隔离：唯一命名、不覆盖旧证据，隔离失败不阻断安全新开。
+- 完成 GitHub 接入前安全检查点、Unity 忽略规则、敏感信息和大文件审计；因缺少仓库 URL 转入 RED-002，不阻断 RC 质量工作。
 
 ## BUILD
 
@@ -59,5 +60,5 @@
 
 ## NEXT
 
-- 完成 GitHub 首次安全同步后，自动执行 RC 静态安全与性能门禁。
+- 继续 RC 静态安全与性能门禁；收到仓库 URL 后立即完成 GitHub 首次同步与远端树核验。
 - 授权一旦恢复，立即转入全量 Unity 测试与 Android RC 构建。
