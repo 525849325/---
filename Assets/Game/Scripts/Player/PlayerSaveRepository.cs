@@ -133,6 +133,13 @@ namespace ImmortalLoot.Player
             state.Realm.PlayerLevel = Math.Max(1, state.Realm.PlayerLevel);
             state.Realm.Experience = Math.Max(0, state.Realm.Experience);
             state.Realm.BreakthroughMaterial = Math.Max(0, state.Realm.BreakthroughMaterial);
+            var pendingTribulation = state.Realm.PendingTribulation;
+            if (pendingTribulation != null &&
+                string.IsNullOrWhiteSpace(pendingTribulation.Token) &&
+                string.IsNullOrWhiteSpace(pendingTribulation.TargetRealmId) &&
+                pendingTribulation.ReservedMaterial <= 0 &&
+                pendingTribulation.RequiredExp <= 0)
+                state.Realm.PendingTribulation = null;
 
             state.Stage ??= new StageProgressState();
             state.Stage.ClearedStageIds ??= new List<string>();
@@ -155,8 +162,57 @@ namespace ImmortalLoot.Player
             state.SpiritualRoots ??= new SpiritualRootState();
             state.SpiritualRoots.Roots ??= new List<SpiritualRootProgress>();
             state.SpiritualRoots.GrantRecords ??= new List<SpiritualRootGrantRecord>();
-            state.SpiritualRoots.Roots.RemoveAll(value => value == null);
-            state.SpiritualRoots.GrantRecords.RemoveAll(value => value == null);
+            NormalizeSpiritualRoots(state.SpiritualRoots);
+        }
+
+        private static void NormalizeSpiritualRoots(SpiritualRootState state)
+        {
+            var rootIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
+            var rootWriteIndex = 0;
+            for (var i = 0; i < state.Roots.Count; i++)
+            {
+                var progress = state.Roots[i];
+                if (progress == null || string.IsNullOrWhiteSpace(progress.RootId)) continue;
+
+                progress.RootId = progress.RootId.Trim();
+                progress.Level = Math.Max(0, progress.Level);
+                if (rootIndexes.TryGetValue(progress.RootId, out var existingIndex))
+                {
+                    state.Roots[existingIndex].Level = Math.Max(state.Roots[existingIndex].Level, progress.Level);
+                    continue;
+                }
+
+                rootIndexes.Add(progress.RootId, rootWriteIndex);
+                state.Roots[rootWriteIndex++] = progress;
+            }
+            if (rootWriteIndex < state.Roots.Count)
+                state.Roots.RemoveRange(rootWriteIndex, state.Roots.Count - rootWriteIndex);
+
+            var grantIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
+            var grantWriteIndex = 0;
+            for (var i = 0; i < state.GrantRecords.Count; i++)
+            {
+                var record = state.GrantRecords[i];
+                if (record == null || string.IsNullOrWhiteSpace(record.TribulationToken)) continue;
+
+                record.TribulationToken = record.TribulationToken.Trim();
+                record.RootId = string.IsNullOrWhiteSpace(record.RootId) ? string.Empty : record.RootId.Trim();
+                record.NewLevel = Math.Max(0, record.NewLevel);
+                if (grantIndexes.TryGetValue(record.TribulationToken, out var existingIndex))
+                {
+                    var existing = state.GrantRecords[existingIndex];
+                    if (string.IsNullOrEmpty(existing.RootId) && !string.IsNullOrEmpty(record.RootId))
+                        existing.RootId = record.RootId;
+                    if (string.Equals(existing.RootId, record.RootId, StringComparison.Ordinal))
+                        existing.NewLevel = Math.Max(existing.NewLevel, record.NewLevel);
+                    continue;
+                }
+
+                grantIndexes.Add(record.TribulationToken, grantWriteIndex);
+                state.GrantRecords[grantWriteIndex++] = record;
+            }
+            if (grantWriteIndex < state.GrantRecords.Count)
+                state.GrantRecords.RemoveRange(grantWriteIndex, state.GrantRecords.Count - grantWriteIndex);
         }
 
         private static void NormalizeIds(List<string> ids)
@@ -277,7 +333,44 @@ namespace ImmortalLoot.Player
             }
         }
 
-        public static string DefaultPath => Path.Combine(Application.persistentDataPath, "immortal-loot-save.json");
+        public static string DefaultPath
+        {
+            get
+            {
+#if UNITY_INCLUDE_TESTS
+                if (!string.IsNullOrWhiteSpace(_defaultPathOverrideForTests)) return _defaultPathOverrideForTests;
+#endif
+                return Path.Combine(Application.persistentDataPath, "immortal-loot-save.json");
+            }
+        }
+
+#if UNITY_INCLUDE_TESTS
+        private static string _defaultPathOverrideForTests;
+
+        public static IDisposable OverrideDefaultPathForTests(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("A test save path is required.", nameof(path));
+            var previous = _defaultPathOverrideForTests;
+            _defaultPathOverrideForTests = Path.GetFullPath(path);
+            return new DefaultPathOverrideScope(previous);
+        }
+
+        private sealed class DefaultPathOverrideScope : IDisposable
+        {
+            private readonly string _previous;
+            private bool _disposed;
+
+            public DefaultPathOverrideScope(string previous) => _previous = previous;
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _defaultPathOverrideForTests = _previous;
+                _disposed = true;
+            }
+        }
+#endif
+
         public static JsonPlayerSaveRepository CreateDefault() => new JsonPlayerSaveRepository(DefaultPath);
     }
 }

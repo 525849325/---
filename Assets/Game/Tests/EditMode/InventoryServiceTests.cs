@@ -114,11 +114,21 @@ namespace ImmortalLoot.Tests
             Assert.That(state.PendingEquipment, Is.SameAs(incoming), "The high-quality drop must remain owned while the bag is full.");
             Assert.That(state.PendingEquipment.IsLocked, Is.True, "Legendary and Mythic pending drops must receive the same protection as bagged equipment.");
 
-            var restored = JsonUtility.FromJson<InventoryState>(JsonUtility.ToJson(state));
+            var restored = InventoryStateCodec.Deserialize(InventoryStateCodec.Serialize(state));
             Assert.That(restored.PendingEquipment, Is.Not.Null);
             Assert.That(restored.PendingEquipment.InstanceId, Is.EqualTo(incoming.InstanceId));
             Assert.That(restored.PendingEquipment.Quality, Is.EqualTo(EquipmentQuality.Mythic));
             Assert.That(restored.PendingEquipment.IsLocked, Is.True);
+        }
+
+        [Test]
+        public void EmptyPendingEquipment_RoundTripDoesNotCreateGhostDrop()
+        {
+            var restored = InventoryStateCodec.Deserialize(
+                InventoryStateCodec.Serialize(new InventoryState { EquipmentCapacity = 120 }));
+
+            Assert.That(restored.PendingEquipment, Is.Null);
+            Assert.That(restored.EquipmentCapacity, Is.EqualTo(120));
         }
 
         [Test]

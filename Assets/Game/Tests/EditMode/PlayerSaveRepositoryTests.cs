@@ -137,6 +137,7 @@ namespace ImmortalLoot.Tests
             {
                 Assert.That(state.CurrentStageId, Is.EqualTo("stage_1_1"));
                 Assert.That(state.Realm, Is.Not.Null);
+                Assert.That(state.Realm.PendingTribulation, Is.Null);
                 Assert.That(state.Stage?.ClearedStageIds, Is.Not.Null);
                 Assert.That(state.Cultivation?.LearnedMethodIds, Is.Not.Null);
                 Assert.That(state.Cultivation?.AuxiliaryMethodIds, Has.Length.EqualTo(2));
@@ -153,6 +154,28 @@ namespace ImmortalLoot.Tests
             Assert.That(partial.SpiritualRoots.Roots[0].RootId, Is.EqualTo("root_fire"));
             Assert.That(partial.SpiritualRoots.GrantRecords, Has.Count.EqualTo(1));
             Assert.That(partial.SpiritualRoots.GrantRecords[0].TribulationToken, Is.EqualTo("trial-token"));
+        }
+
+        [Test]
+        public void ProgressState_NormalizesDuplicateRootsWithoutLosingGrantIdempotency()
+        {
+            var state = PlayerProgressStateCodec.Deserialize(
+                "{\"SpiritualRoots\":{" +
+                "\"Roots\":[{\"RootId\":\" root_fire \",\"Level\":1},{\"RootId\":\"root_fire\",\"Level\":3}]," +
+                "\"GrantRecords\":[{\"TribulationToken\":\" trial-token \",\"RootId\":\"\",\"NewLevel\":1}," +
+                "{\"TribulationToken\":\"trial-token\",\"RootId\":\"root_fire\",\"NewLevel\":3}," +
+                "{\"TribulationToken\":\" orphan-token \",\"RootId\":null,\"NewLevel\":-2}]}}");
+
+            Assert.That(state.SpiritualRoots.Roots, Has.Count.EqualTo(1));
+            Assert.That(state.SpiritualRoots.Roots[0].RootId, Is.EqualTo("root_fire"));
+            Assert.That(state.SpiritualRoots.Roots[0].Level, Is.EqualTo(3));
+            Assert.That(state.SpiritualRoots.GrantRecords, Has.Count.EqualTo(2));
+            Assert.That(state.SpiritualRoots.GrantRecords[0].TribulationToken, Is.EqualTo("trial-token"));
+            Assert.That(state.SpiritualRoots.GrantRecords[0].RootId, Is.EqualTo("root_fire"));
+            Assert.That(state.SpiritualRoots.GrantRecords[0].NewLevel, Is.EqualTo(3));
+            Assert.That(state.SpiritualRoots.GrantRecords[1].TribulationToken, Is.EqualTo("orphan-token"));
+            Assert.That(state.SpiritualRoots.GrantRecords[1].RootId, Is.Empty);
+            Assert.That(state.SpiritualRoots.GrantRecords[1].NewLevel, Is.Zero);
         }
 
         [TestCase(null)]

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using ImmortalLoot.Player;
 using ImmortalLoot.UI;
 using NUnit.Framework;
 using UnityEngine;
@@ -24,52 +25,66 @@ namespace ImmortalLoot.Tests.PlayMode
         [UnityTest]
         public IEnumerator CriticalPages_PassStructuralAudit_AndCaptureWhenInteractive()
         {
-            SceneManager.LoadScene("Main");
-            yield return null;
-            var output = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "TestResults", "UI"));
-            Directory.CreateDirectory(output);
-            yield return Capture(Path.Combine(output, "01-login.png"));
-            var controller = UnityEngine.Object.FindAnyObjectByType<PrototypeGameController>();
-            controller.SetPacingSpeedForTests(240f);
-            GameObject.Find("EnterGameButton").GetComponent<Button>().onClick.Invoke();
-            yield return null;
-            var unlockTimeout = 5f;
-            while (!controller.CommercialUnlocked && unlockTimeout > 0f)
+            var saveDirectory = Path.Combine(Path.GetTempPath(), "immortal-loot-ui-" + Guid.NewGuid().ToString("N"));
+            var savePath = Path.Combine(saveDirectory, "save.json");
+            Directory.CreateDirectory(saveDirectory);
+            var saveOverride = JsonPlayerSaveRepository.OverrideDefaultPathForTests(savePath);
+            try
             {
-                unlockTimeout -= Time.deltaTime;
+                SceneManager.LoadScene("Main");
                 yield return null;
-            }
-            Assert.That(controller.CommercialUnlocked, Is.True, "Critical-page audit requires the normal first-loot shop unlock.");
-
-            var issues = new List<string>();
-            var auditScreenBounds = !Application.isBatchMode;
-            foreach (var page in Pages)
-            {
-                if (!string.IsNullOrEmpty(page.Button))
+                var output = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "TestResults", "UI"));
+                Directory.CreateDirectory(output);
+                yield return Capture(Path.Combine(output, "01-login.png"));
+                var controller = UnityEngine.Object.FindAnyObjectByType<PrototypeGameController>();
+                controller.SetPacingSpeedForTests(240f);
+                GameObject.Find("EnterGameButton").GetComponent<Button>().onClick.Invoke();
+                yield return null;
+                var unlockTimeout = 5f;
+                while (!controller.CommercialUnlocked && unlockTimeout > 0f)
                 {
-                    var buttonObject = GameObject.Find(page.Button);
-                    Assert.That(buttonObject, Is.Not.Null, page.Button + " must be available for the critical-page audit.");
-                    buttonObject.GetComponent<Button>().onClick.Invoke();
+                    unlockTimeout -= Time.deltaTime;
+                    yield return null;
                 }
-                yield return null;
-                AuditVisibleUi(issues, auditScreenBounds);
-                yield return Capture(Path.Combine(output, page.File + ".png"));
-            }
+                Assert.That(controller.CommercialUnlocked, Is.True, "Critical-page audit requires the normal first-loot shop unlock.");
 
-            var structuralPassed = issues.Count == 0;
-            var screenshotsCaptured = !Application.isBatchMode;
-            var visualAuditComplete = structuralPassed && screenshotsCaptured && auditScreenBounds;
-            var json = "{\n  \"passed\": " + (visualAuditComplete ? "true" : "false") +
-                       ",\n  \"structuralPassed\": " + (structuralPassed ? "true" : "false") +
-                       ",\n  \"screenshotsCaptured\": " + (screenshotsCaptured ? "true" : "false") +
-                       ",\n  \"visualAuditComplete\": " + (visualAuditComplete ? "true" : "false") +
-                       ",\n  \"screenBoundsAudited\": " + (auditScreenBounds ? "true" : "false") +
-                       ",\n  \"issueCount\": " + issues.Count + ",\n  \"issues\": [";
-            for (var i = 0; i < issues.Count; i++)
-                json += (i == 0 ? "" : ",") + "\n    \"" + Escape(issues[i]) + "\"";
-            json += "\n  ]\n}";
-            File.WriteAllText(Path.Combine(output, "ui-audit.json"), json);
-            Assert.That(issues, Is.Empty, string.Join("\n", issues));
+                var issues = new List<string>();
+                var auditScreenBounds = !Application.isBatchMode;
+                foreach (var page in Pages)
+                {
+                    if (!string.IsNullOrEmpty(page.Button))
+                    {
+                        var buttonObject = GameObject.Find(page.Button);
+                        Assert.That(buttonObject, Is.Not.Null, page.Button + " must be available for the critical-page audit.");
+                        buttonObject.GetComponent<Button>().onClick.Invoke();
+                    }
+                    yield return null;
+                    AuditVisibleUi(issues, auditScreenBounds);
+                    yield return Capture(Path.Combine(output, page.File + ".png"));
+                }
+
+                var structuralPassed = issues.Count == 0;
+                var screenshotsCaptured = !Application.isBatchMode;
+                var visualAuditComplete = structuralPassed && screenshotsCaptured && auditScreenBounds;
+                var json = "{\n  \"passed\": " + (visualAuditComplete ? "true" : "false") +
+                           ",\n  \"structuralPassed\": " + (structuralPassed ? "true" : "false") +
+                           ",\n  \"screenshotsCaptured\": " + (screenshotsCaptured ? "true" : "false") +
+                           ",\n  \"visualAuditComplete\": " + (visualAuditComplete ? "true" : "false") +
+                           ",\n  \"screenBoundsAudited\": " + (auditScreenBounds ? "true" : "false") +
+                           ",\n  \"issueCount\": " + issues.Count + ",\n  \"issues\": [";
+                for (var i = 0; i < issues.Count; i++)
+                    json += (i == 0 ? "" : ",") + "\n    \"" + Escape(issues[i]) + "\"";
+                json += "\n  ]\n}";
+                File.WriteAllText(Path.Combine(output, "ui-audit.json"), json);
+                Assert.That(issues, Is.Empty, string.Join("\n", issues));
+            }
+            finally
+            {
+                var activeController = UnityEngine.Object.FindAnyObjectByType<PrototypeGameController>();
+                if (activeController != null) UnityEngine.Object.DestroyImmediate(activeController.gameObject);
+                saveOverride.Dispose();
+                if (Directory.Exists(saveDirectory)) Directory.Delete(saveDirectory, recursive: true);
+            }
         }
 
         private static IEnumerator Capture(string path)
@@ -100,9 +115,14 @@ namespace ImmortalLoot.Tests.PlayMode
                     issues.Add(graphic.name + " is outside the visible screen.");
 
                 var text = graphic as Text;
-                if (text != null && !string.IsNullOrWhiteSpace(text.text) &&
-                    (text.preferredWidth > text.rectTransform.rect.width + 2 || text.preferredHeight > text.rectTransform.rect.height + 2))
-                    issues.Add(text.name + " text is clipped.");
+                if (text != null && !string.IsNullOrWhiteSpace(text.text))
+                {
+                    var horizontalOverflow = text.horizontalOverflow == HorizontalWrapMode.Overflow &&
+                                             text.preferredWidth > text.rectTransform.rect.width + 2;
+                    var verticalOverflow = text.verticalOverflow == VerticalWrapMode.Truncate &&
+                                           text.preferredHeight > text.rectTransform.rect.height + 2;
+                    if (horizontalOverflow || verticalOverflow) issues.Add(text.name + " text is clipped.");
+                }
             }
             foreach (var button in UnityEngine.Object.FindObjectsByType<Button>(FindObjectsInactive.Exclude))
             {

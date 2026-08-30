@@ -10,9 +10,9 @@
 | SAVE-001 | P0 | CORE-001 | TESTING | D | v2 快照、迁移、损坏隔离、离线单次领取已实现；待 Unity 生命周期回归 |
 | COMM-001 | P0 | SAVE-001 | TESTING | D/C | 配置商品、首装备后入口、Release 拒绝 Mock、独立设置按钮已实现；待 Unity PlayMode |
 | QA-UNITY-001 | P0 | CORE-001,SAVE-001,COMM-001 | DONE | E | Unity 6000.5.10f1：EditMode 81/81、PlayMode 5/5；batch UI 结构审计 PASS，完整视觉验收未冒充已完成 |
-| QA-REGRESSION-002 | P0 | QA-UNITY-001 | RUNNING | E | 已发现并只读确认仍存活的已授权版本化 IPC `LicenseClient-Admin-6000.5.10`；离线门禁通过后以显式复用通道运行最新 EditMode/PlayMode |
+| QA-REGRESSION-002 | P0 | QA-UNITY-001 | DONE | E | 显式复用已授权 IPC；最新 EditMode 109/109、PlayMode 连续两次 19/19，UI batch 结构审计 0 issue |
 | BUILD-ANDROID-001 | P0 | QA-UNITY-001 | DONE | E | 基线 `060f4df` APK/AAB 已通过 badging/zipalign/v2/bundletool；仅作为历史可构建证据 |
-| BUILD-ANDROID-002 | P0 | QA-REGRESSION-002 | BLOCKED | E | 最新 HEAD 必须先通过 Unity 回归再重建 APK/AAB；当前基线包不得用于最新代码验收 |
+| BUILD-ANDROID-002 | P0 | QA-REGRESSION-002 | RUNNING | E | 最新 Unity 回归已全绿；正在重建并复验对应 APK/AAB，当前基线包不得用于最新代码验收 |
 | QA-DEVICE-001 | P0 | BUILD-ANDROID-002 | BLOCKED | E | 脚本/清单/证据链已准备；最新 APK 尚未生成且 ADB 当前为 0 台已授权物理设备，二者解除后执行 10/60 分钟验收 |
 | SETTINGS-UI-001 | P1 | SAVE-001 | TESTING | C/D | 声音、震动、立即保存、隐私与协议四入口已编译；待当前提交与 Unity 场景运行 |
 | FUNNEL-001 | P1 | CORE-001 | DONE | D/E | 无 PII 本地 JSONL 漏斗、会话关联、可替换 Sink 与可执行烟测完成 |
@@ -22,10 +22,10 @@
 | AUTO-EQUIP-001 | P1 | CORE-001 | TESTING | B/C | 默认开启且可关闭；仅在含功法加成的统一战力严格提升时换装，程序集与领域门禁通过 |
 | RC-AUDIT-001 | P0 | CORE-001,SAVE-001,COMM-001 | DONE | Direction/E | P0/P1 静态矩阵完成；修复启动顺序、Feature Freeze 入口与残留 GM UI |
 | SAVE-HARDEN-001 | P0 | SAVE-001 | DONE | D/E | 唯一隔离名、不覆盖既有证据、隔离 I/O 失败安全降级；回归测试已编译 |
-| INVENTORY-OVERFLOW-001 | P0 | CORE-001 | TESTING | B/D/E | 真实满仓掉落进入持久化单槽；窗口明确跳过；安全腾位单次领取，升级才二次确认牺牲替换，非升级二次确认分解 pending；Edit/Play 测试已编译，实际 Unity 回归由 QA-REGRESSION-002 阻塞 |
+| INVENTORY-OVERFLOW-001 | P0 | CORE-001 | DONE | B/D/E | 持久化单槽、窗口跳过、单次领取与二次确认替换均通过最新 EditMode/PlayMode；伪 pending 序列化回归已修复 |
 | IDENTITY-PRIVACY-001 | P1 | COMM-001 | DONE | D/E | 移除设备唯一标识，改为应用随机匿名 ID；服务器入口仅 Development 可见；清空无关 PS4 模板字段 |
-| SAVE-AGGREGATE-001 | P0 | SAVE-001 | TESTING | D/E | v3 聚合存档、v1/v2 迁移、阶段/境界/功法/灵根/引导/任务恢复已实现；四类程序集编译与领域烟测 PASS，待真实 Unity Test Runner |
-| CORE-STAGE-002 | P0 | CORE-001 | TESTING | A/B/E | 胜利驱动推进、时间门、失败原关重试、Boss 胜后回环、奖励窗口限频与在线无奖通关契约已实现；离线程序集/核心/后端门禁 PASS，待 Unity Test Runner |
-| RC-QUALITY-001 | P0 | RC-AUDIT-001 | RUNNING | E | 背包、聚合存档、胜利驱动关卡与真实战斗节奏均进入 TESTING；当前抢占执行最新 Unity 回归，随后 Android 重构建 |
+| SAVE-AGGREGATE-001 | P0 | SAVE-001 | DONE | D/E | v3 聚合存档、v1/v2 迁移及阶段/境界/功法/灵根/引导/任务恢复通过最新 EditMode/PlayMode；空壳对象归一化已覆盖 |
+| CORE-STAGE-002 | P0 | CORE-001 | DONE | A/B/E | 胜利推进、失败重试、Boss 回环、奖励窗口与在线无奖通关契约通过实际 Unity、核心离线及后端门禁 |
+| RC-QUALITY-001 | P0 | RC-AUDIT-001 | RUNNING | E | 最新 Unity 回归已全绿；当前执行 Android 重构建，随后转真机验收 |
 
-当前自动执行：`QA-REGRESSION-002`（显式复用已授权版本化 IPC，运行最新 Unity Test Runner）。
+当前自动执行：`BUILD-ANDROID-002`（基于最新通过回归的 HEAD 重建并复验 Android RC APK/AAB）。

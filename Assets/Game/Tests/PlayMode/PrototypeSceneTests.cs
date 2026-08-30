@@ -20,6 +20,27 @@ namespace ImmortalLoot.Tests.PlayMode
 {
     public sealed class PrototypeSceneTests
     {
+        private string _saveDirectory;
+        private System.IDisposable _saveOverride;
+
+        [OneTimeSetUp]
+        public void UseTemporarySaveRepository()
+        {
+            _saveDirectory = Path.Combine(Path.GetTempPath(), "immortal-loot-playmode-" + System.Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(_saveDirectory);
+            _saveOverride = JsonPlayerSaveRepository.OverrideDefaultPathForTests(Path.Combine(_saveDirectory, "save.json"));
+        }
+
+        [OneTimeTearDown]
+        public void ReleaseTemporarySaveRepository()
+        {
+            foreach (var controller in Object.FindObjectsByType<PrototypeGameController>(FindObjectsInactive.Include))
+                Object.DestroyImmediate(controller.gameObject);
+            _saveOverride?.Dispose();
+            if (!string.IsNullOrEmpty(_saveDirectory) && Directory.Exists(_saveDirectory))
+                Directory.Delete(_saveDirectory, recursive: true);
+        }
+
         [UnityTest]
         public IEnumerator MainScene_AutoBattleProducesVisibleRandomLoot()
         {
@@ -134,6 +155,7 @@ namespace ImmortalLoot.Tests.PlayMode
         public IEnumerator ServerMode_WindowlessVictoryAdvancesBeforeRewardWindowSynchronizesLoot()
         {
             DeleteLocalSave();
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var transport = new ServerLoopTransport();
@@ -198,6 +220,7 @@ namespace ImmortalLoot.Tests.PlayMode
         {
             DeleteLocalSave();
             SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_10" });
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var transport = new ServerLoopTransport();
@@ -224,6 +247,7 @@ namespace ImmortalLoot.Tests.PlayMode
         public IEnumerator ServerFinishUnknownFreezesOriginalStageAndWindowForConfirmation()
         {
             DeleteLocalSave();
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var transport = new ServerLoopTransport(failBattleFinish: true);
@@ -255,6 +279,7 @@ namespace ImmortalLoot.Tests.PlayMode
         public IEnumerator LostFinishResponseRetriesSameSettlementWithoutDuplicatingRewardWindow()
         {
             DeleteLocalSave();
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var transport = new ServerLoopTransport(loseFirstFinishResponseAfterCommit: true);
@@ -310,6 +335,7 @@ namespace ImmortalLoot.Tests.PlayMode
             var savedPower = controller.Power;
             var savedStage = controller.StageNumber;
 
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var restored = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -350,6 +376,7 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(before.TaskClaimed, Is.True);
             var savedPower = controller.Power;
 
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var restored = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -378,6 +405,7 @@ namespace ImmortalLoot.Tests.PlayMode
             var repository = JsonPlayerSaveRepository.CreateDefault();
             SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_7" }, 0d);
 
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -394,6 +422,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 "Migrating an authoritative stage 7 save must reconcile only its prerequisite stages.");
             Assert.That(saved.StageElapsedSeconds, Is.LessThan(1d));
 
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             Assert.That(Object.FindAnyObjectByType<PrototypeGameController>().StageNumber, Is.EqualTo(7));
@@ -404,6 +433,7 @@ namespace ImmortalLoot.Tests.PlayMode
         public IEnumerator LocalVictoryWithoutRewardWindowWritesStageAndFirstClearOnly()
         {
             DeleteLocalSave();
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -428,6 +458,7 @@ namespace ImmortalLoot.Tests.PlayMode
         public IEnumerator RepeatedSameStageVictoryWithoutRewardWindowDoesNotSaveEveryBattle()
         {
             DeleteLocalSave();
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -456,6 +487,7 @@ namespace ImmortalLoot.Tests.PlayMode
         public IEnumerator NormalTimedRewardWindowAlwaysProducesEquipment()
         {
             DeleteLocalSave();
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -498,6 +530,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 InventoryJson = JsonUtility.ToJson(inventory),
                 ProgressJson = PlayerProgressStateCodec.Serialize(new PlayerProgressState())
             });
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -519,6 +552,7 @@ namespace ImmortalLoot.Tests.PlayMode
         {
             DeleteLocalSave();
             SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_3" });
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -536,6 +570,7 @@ namespace ImmortalLoot.Tests.PlayMode
         {
             DeleteLocalSave();
             SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_10" });
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -568,6 +603,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 }
             });
 
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var partial = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -584,6 +620,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 }
             });
 
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var primaryOnly = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -605,6 +642,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 }
             });
 
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var doubleAuxiliary = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -633,6 +671,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 }
             });
 
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -672,6 +711,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 ProgressJson = PlayerProgressStateCodec.Serialize(new PlayerProgressState { CurrentStageId = "stage_1_10" })
             });
 
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -679,12 +719,13 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_10"));
             controller.ResolveCurrentBattleForTests();
             controller.SetPacingSpeedForTests(240f);
+            controller.ResumeBattleForTests();
             var timeout = 5f;
             InventoryState afterDrop = null;
             while (timeout > 0f && afterDrop?.PendingEquipment == null)
             {
                 if (repository.Exists)
-                    afterDrop = JsonUtility.FromJson<InventoryState>(repository.Load().InventoryJson);
+                    afterDrop = InventoryStateCodec.Deserialize(repository.Load().InventoryJson);
                 timeout -= Time.deltaTime;
                 yield return null;
             }
@@ -713,13 +754,14 @@ namespace ImmortalLoot.Tests.PlayMode
                 "No equipment reward backlog may remain queued while a durable pending item blocks settlement.");
             controller.SaveForTests();
 
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var restored = Object.FindAnyObjectByType<PrototypeGameController>();
             Assert.That(restored.LatestLoot?.InstanceId, Is.EqualTo(pendingId));
             Assert.That(restored.PendingRewardWindowsForTests, Is.Zero,
                 "Reloading must not resurrect or silently drop a different pending-window count.");
-            var reloadedInventory = JsonUtility.FromJson<InventoryState>(repository.Load().InventoryJson);
+            var reloadedInventory = InventoryStateCodec.Deserialize(repository.Load().InventoryJson);
             Assert.That(reloadedInventory.PendingEquipment?.InstanceId, Is.EqualTo(pendingId));
             Assert.That(reloadedInventory.Equipment.Count, Is.EqualTo(120));
             Assert.That(reloadedInventory.Equipment.Exists(item => item.InstanceId == pendingId), Is.False,
@@ -728,13 +770,13 @@ namespace ImmortalLoot.Tests.PlayMode
             var firstAction = restored.ExecutePageAction("InventoryPage");
             Assert.That(firstAction, Does.Contain("再次执行"),
                 "Destroying a protected item must require an explicit second action.");
-            var afterWarning = JsonUtility.FromJson<InventoryState>(repository.Load().InventoryJson);
+            var afterWarning = InventoryStateCodec.Deserialize(repository.Load().InventoryJson);
             Assert.That(afterWarning.PendingEquipment?.InstanceId, Is.EqualTo(pendingId));
             Assert.That(afterWarning.Equipment, Has.Count.EqualTo(120));
 
             var replacement = restored.ExecutePageAction("InventoryPage");
             Assert.That(replacement, Does.Contain("已牺牲"));
-            var afterReplacement = JsonUtility.FromJson<InventoryState>(repository.Load().InventoryJson);
+            var afterReplacement = InventoryStateCodec.Deserialize(repository.Load().InventoryJson);
             Assert.That(afterReplacement.PendingEquipment, Is.Null);
             Assert.That(afterReplacement.Equipment, Has.Count.EqualTo(120));
             Assert.That(afterReplacement.Equipment.FindAll(item => item.InstanceId == pendingId), Has.Count.EqualTo(1));
@@ -758,12 +800,14 @@ namespace ImmortalLoot.Tests.PlayMode
                 LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.AddHours(-2).ToUnixTimeSeconds(),
                 InventoryJson = JsonUtility.ToJson(new InventoryState { EquipmentCapacity = 120 })
             });
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             var firstClaimCurrency = GameObject.Find("Currencies").GetComponent<Text>().text;
             Assert.That(firstClaimCurrency, Does.Not.Contain("灵砂 100 "));
             Object.FindAnyObjectByType<PrototypeGameController>().SaveForTests();
 
+            PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
             Assert.That(GameObject.Find("Currencies").GetComponent<Text>().text, Is.EqualTo(firstClaimCurrency));

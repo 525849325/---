@@ -86,6 +86,8 @@ namespace ImmortalLoot.UI
 #if UNITY_INCLUDE_TESTS
         private int _saveOperationCount;
         private long _configuredStageExperienceGranted;
+        private bool _battlePausedForTests;
+        private static bool _pauseNextBattleForTests;
 #endif
         private readonly CharacterStats _baseStats = new CharacterStats
         {
@@ -109,6 +111,10 @@ namespace ImmortalLoot.UI
 
         private void Start()
         {
+#if UNITY_INCLUDE_TESTS
+            _battlePausedForTests = _pauseNextBattleForTests;
+            _pauseNextBattleForTests = false;
+#endif
             _settings = new GameSettingsService(new PlayerPrefsSettingsStore());
             _settings.ApplySound();
             PrototypeVisualTheme.Apply(FindAnyObjectByType<Canvas>());
@@ -170,8 +176,16 @@ namespace ImmortalLoot.UI
 
         private void Update()
         {
+#if UNITY_INCLUDE_TESTS
+            if (!_battlePausedForTests)
+            {
+                _pacing.Advance(Time.unscaledDeltaTime * _pacingSpeed);
+                _battle.Tick(Time.deltaTime * _pacingSpeed);
+            }
+#else
             _pacing.Advance(Time.unscaledDeltaTime * _pacingSpeed);
             _battle.Tick(Time.deltaTime * _pacingSpeed);
+#endif
             enemyHealth.value = _battle.Enemy.Hp / _battle.Enemy.MaxHp;
             var stage = _catalog.Stages[_activeBattleStageId];
             var bossLabel = stage.IsBossStage ? "BOSS · " : string.Empty;
@@ -595,13 +609,7 @@ namespace ImmortalLoot.UI
 
         private static InventoryState RestoreInventory(PlayerSaveSnapshot saved)
         {
-            if (saved == null || string.IsNullOrWhiteSpace(saved.InventoryJson)) return new InventoryState { EquipmentCapacity = 120 };
-            var state = JsonUtility.FromJson<InventoryState>(saved.InventoryJson) ?? new InventoryState();
-            state.EquipmentCapacity = Math.Max(120, state.EquipmentCapacity);
-            state.Equipment ??= new List<EquipmentInstance>();
-            state.Materials ??= new List<ItemStack>();
-            state.Consumables ??= new List<ItemStack>();
-            return state;
+            return InventoryStateCodec.Deserialize(saved?.InventoryJson, minimumEquipmentCapacity: 120);
         }
 
         private void RestoreProgress(PlayerSaveSnapshot saved)
@@ -685,7 +693,7 @@ namespace ImmortalLoot.UI
                 Kills = _kills, SoftCurrency = _softCurrency,
                 PremiumCurrency = _premiumCurrency, StageElapsedSeconds = _pacing.ElapsedSeconds,
                 LastActiveUnixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                InventoryJson = JsonUtility.ToJson(_inventory.State),
+                InventoryJson = InventoryStateCodec.Serialize(_inventory.State),
                 EquippedInstanceIdsJson = JsonUtility.ToJson(equipped),
                 ProgressJson = PlayerProgressStateCodec.Serialize(progress)
             });
@@ -1064,6 +1072,8 @@ namespace ImmortalLoot.UI
         }
 
 #if UNITY_INCLUDE_TESTS
+        public static void PauseNextBattleForTests() => _pauseNextBattleForTests = true;
+        public void ResumeBattleForTests() => _battlePausedForTests = false;
         public void SetPacingSpeedForTests(float speed) => _pacingSpeed = Mathf.Max(1f, speed);
         public void AdvancePacingForTests(double seconds) => _pacing.Advance(Math.Max(0d, seconds));
         public void SaveForTests() => SaveProgress();
