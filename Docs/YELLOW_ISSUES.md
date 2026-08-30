@@ -10,4 +10,4 @@
 | Y-008 | UI 验收 | batch UI 结构审计 0 issue，但未捕获真实屏幕截图，`visualAuditComplete=false` | 不把 26/26 PlayMode 或结构审计描述成完整视觉通过 | QA-DEVICE-001 真机阶段完成 9:16、字体、触控和遮挡清单 |
 | Y-009 | Android 签名 | RC APK/AAB 使用 Unity 默认 Android 测试签名 | 当前产物可安装并用于商业验证，但不直接上架 | 商店上传前配置独立 upload/release keystore，并重新构建验证 |
 | Y-010 | Development 在线会话 | async 结算在场景销毁后仍缺少 generation guard/网络超时 | 后端 exact-current-stage、单活动会话、并发幂等、失联恢复和旧库升级已回归；正式 RC 仍隐藏服务器入口 | 对外开放在线入口前补延迟响应/场景重载测试、请求超时，并持久化客户端 pending intent |
-| Y-011 | 测试覆盖 | 真实 HTTP + UnityWebRequest 端到端契约尚未覆盖 | 非法 profile 负向恢复、DTO 契约、后端并发/升级及零副作用回归均已覆盖；EditMode 109/109、PlayMode 26/26、Backend Verification PASS | RC-QUALITY-001 后续按风险补最小 HTTP 契约测试，不阻塞离线商业验证 |
+| Y-011 | 测试覆盖 | UnityWebRequest 客户端到真实服务端的同进程/设备联调证据尚未覆盖 | 真实 Kestrel HTTP 39/39 已覆盖服务端路由、鉴权、profile、inventory、battle 成功/拒绝/幂等契约；EditMode 109/109、PlayMode 26/26、Backend Verification PASS | 对外启用 Development 在线入口或真机联调时补 UnityWebRequest 端到端证据，不阻塞离线商业验证 |

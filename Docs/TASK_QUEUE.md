@@ -14,6 +14,7 @@
 | CORE-LOGIN-GATE-001 | P0 | SAVE-HARDEN-001,SAVE-AGGREGATE-001,QA-UNITY-001 | DONE | D/E | 登录前不读取离线存档；服务器 profile/inventory 校验后才进入；服务器结算/暂停/退出不写本地存档；权威关卡与奖励回归通过 |
 | SERVER-PROFILE-RECONCILE-001 | P1 | CORE-LOGIN-GATE-001 | DONE | D/E | profile 刷新严格校验 current/cleared 契约并原子重建关卡镜像；RED→GREEN 1/1，完整 PlayMode 26/26 |
 | SERVER-BATTLE-AUTH-001 | P1 | SERVER-PROFILE-RECONCILE-001 | DONE | D/E | canonical/exact-current 开战、单活动会话、同键/异键并发合并、丢失响应恢复、过期 Boss 零副作用与旧 SQLite schema 升级全部通过 Backend Verification；检查点 `4a28d4c` |
+| SERVER-HTTP-CONTRACT-001 | P1 | SERVER-BATTLE-AUTH-001 | DONE | D/E | 真实 Kestrel HTTP 39/39：401/400/409、鉴权、profile/inventory、Start 恢复、Finish 幂等/欠战力拒绝与权威推进通过；500→409 RED→GREEN；检查点 `b7ea774` |
 | BUILD-ANDROID-001 | P0 | QA-UNITY-001 | DONE | E | 基线 `060f4df` APK/AAB 已通过 badging/zipalign/v2/bundletool；仅作为历史可构建证据 |
 | BUILD-ANDROID-002 | P0 | QA-REGRESSION-002,CORE-LOGIN-GATE-001,SERVER-PROFILE-RECONCILE-001 | DONE | E | 提交 `2bee3ac` 的 APK/AAB 构建均 exit 0；APK `F5AEBAD4...168C` 通过 metadata/zipalign/v2，AAB `E4633FC0...EE30` 通过 bundletool/Manifest/双 ABI 门禁 |
 | QA-DEVICE-001 | P0 | BUILD-ANDROID-002 | BLOCKED | E | 最新 APK 已就绪；DeviceCheckOnly 实测 ADB daemon 正常但 0 台已授权物理设备，未安装 APK；设备可用后执行 10/60 分钟、视觉与触控验收 |
@@ -29,6 +30,6 @@
 | IDENTITY-PRIVACY-001 | P1 | COMM-001 | DONE | D/E | 移除设备唯一标识，改为应用随机匿名 ID；服务器入口仅 Development 可见；清空无关 PS4 模板字段 |
 | SAVE-AGGREGATE-001 | P0 | SAVE-001 | DONE | D/E | v3 聚合存档、v1/v2 迁移及阶段/境界/功法/灵根/引导/任务恢复通过最新 EditMode/PlayMode；空壳对象归一化已覆盖 |
 | CORE-STAGE-002 | P0 | CORE-001 | DONE | A/B/E | 胜利推进、失败重试、Boss 回环、奖励窗口与在线无奖通关契约通过实际 Unity、核心离线及后端门禁 |
-| RC-QUALITY-001 | P0 | RC-AUDIT-001 | TESTING | E | Unity RC `2bee3ac`、后端检查点 `4a28d4c`、Edit 109/109、Play 26/26、后端并发/升级与离线回归全绿；物理设备验收单独 BLOCKED |
+| RC-QUALITY-001 | P0 | RC-AUDIT-001 | TESTING | E | Unity RC `2bee3ac`、后端 `4a28d4c`、HTTP 门禁 `b7ea774`、Edit 109/109、Play 26/26、真实 HTTP 39/39 与离线回归全绿；物理设备验收单独 BLOCKED |
 
-当前自动执行：`RC-QUALITY-001`（优先处理不依赖真机的最小 HTTP 契约与 P2 鲁棒性；设备可用时自动恢复 QA-DEVICE-001）。
+当前自动执行：`RC-QUALITY-001`（继续不依赖真机的残余 P2 鲁棒性审计；设备可用时自动恢复 QA-DEVICE-001）。

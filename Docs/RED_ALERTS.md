@@ -1,6 +1,6 @@
 # RED Alerts
 
-当前状态：**无 OPEN RED**。
+当前状态：**无 OPEN RED**。最近复核：真实 Kestrel HTTP 39/39、Backend Verification 与离线门禁均 PASS（检查点 `b7ea774`）。
 
 ## RED-001｜Unity Editor/headless entitlement
 
