@@ -17,8 +17,7 @@ namespace ImmortalLoot.Tests.PlayMode
             ("02-battle", null), ("03-character", "Nav_CharacterPage"),
             ("04-inventory", "Nav_InventoryPage"), ("05-equipment", "Nav_EquipmentPage"),
             ("06-cultivation", "Nav_CultivationPage"), ("07-shop", "Nav_ShopPage"),
-            ("08-task", "Nav_TaskPage"), ("09-ranking", "Nav_RankingPage"),
-            ("10-activity", "Nav_ActivityPage"), ("11-stage", "Nav_StagePage")
+            ("08-task", "Nav_TaskPage"), ("09-stage", "Nav_StagePage")
         };
 
         [UnityTest]

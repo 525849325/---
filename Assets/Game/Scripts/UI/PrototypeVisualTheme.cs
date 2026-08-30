@@ -55,6 +55,9 @@ namespace ImmortalLoot.UI
             SetLabel("LoginTitle", "《太初：无尽轮回》\n一念入青崖，万器皆有缘");
             var settings = canvas.GetComponent<PrototypeSettingsPanelController>() ?? canvas.gameObject.AddComponent<PrototypeSettingsPanelController>();
             settings.Initialize(Object.FindAnyObjectByType<PrototypeGameController>());
+            SetVisible("Nav_RankingPage", false);
+            SetVisible("Nav_MailPage", false);
+            SetVisible("Nav_ActivityPage", false);
         }
 
         public static Color QualityColor(EquipmentQuality quality)
@@ -99,6 +102,12 @@ namespace ImmortalLoot.UI
             var target = FindIncludingInactive(objectName);
             var label = target == null ? null : target.GetComponentInChildren<Text>(true);
             if (label != null) label.text = value;
+        }
+
+        private static void SetVisible(string objectName, bool visible)
+        {
+            var target = FindIncludingInactive(objectName);
+            if (target != null) target.SetActive(visible);
         }
 
         private static Color Hex(string value)

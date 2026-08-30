@@ -50,5 +50,25 @@ namespace ImmortalLoot.Tests
             }
             finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
         }
+
+        [Test]
+        public void Quarantine_NeverOverwritesAndNeverThrowsWhenDestinationConflicts()
+        {
+            var directory = Path.Combine(Path.GetTempPath(), "immortal-loot-test-" + Guid.NewGuid().ToString("N"));
+            var path = Path.Combine(directory, "save.json");
+            Directory.CreateDirectory(directory);
+            try
+            {
+                File.WriteAllText(path, "corrupt");
+                var now = new DateTime(2026, 8, 30, 1, 2, 3, DateTimeKind.Utc);
+                var destination = path + ".corrupt-20260830T010203-fixed";
+                File.WriteAllText(destination, "existing");
+
+                Assert.That(JsonPlayerSaveRepository.TryQuarantine(path, now, () => "fixed"), Is.Null);
+                Assert.That(File.ReadAllText(destination), Is.EqualTo("existing"));
+                Assert.That(File.Exists(path), Is.True);
+            }
+            finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+        }
     }
 }

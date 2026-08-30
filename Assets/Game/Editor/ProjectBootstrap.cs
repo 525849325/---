@@ -87,9 +87,9 @@ namespace ImmortalLoot.Editor
             side.rectTransform.sizeDelta = new Vector2(190, 700);
             side.rectTransform.anchoredPosition = new Vector2(440, 220);
             CreateButton(side.transform, "Nav_TaskPage", "任务", new Vector2(0, 250), 160, 90);
-            CreateButton(side.transform, "Nav_MailPage", "邮件", new Vector2(0, 140), 160, 90);
-            CreateButton(side.transform, "Nav_RankingPage", "排行", new Vector2(0, 30), 160, 90);
-            CreateButton(side.transform, "Nav_ActivityPage", "活动", new Vector2(0, -80), 160, 90);
+            CreateButton(side.transform, "Nav_MailPage", "邮件", new Vector2(0, 140), 160, 90).gameObject.SetActive(false);
+            CreateButton(side.transform, "Nav_RankingPage", "排行", new Vector2(0, 30), 160, 90).gameObject.SetActive(false);
+            CreateButton(side.transform, "Nav_ActivityPage", "活动", new Vector2(0, -80), 160, 90).gameObject.SetActive(false);
             CreateButton(side.transform, "Nav_StagePage", "关卡", new Vector2(0, -190), 160, 90);
             CreateButton(side.transform, "Nav_DebugPage", "设置", new Vector2(0, -300), 160, 90);
 

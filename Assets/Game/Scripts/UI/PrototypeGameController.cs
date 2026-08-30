@@ -60,8 +60,6 @@ namespace ImmortalLoot.UI
         private string _serverLatestInstanceId = string.Empty;
         private bool _settlingServerBattle;
         private CultivationMethodService _cultivation;
-        private GameDebugService _debugService;
-        private int _debugStep;
         private DemoPacingSession _pacing;
         private DemoPacingConfig _pacingConfig;
         private float _pacingSpeed = 1f;
@@ -119,7 +117,6 @@ namespace ImmortalLoot.UI
             RestoreProgress(saved);
             ClaimOfflineProgress(saved);
             _pacingSpeed = DevelopmentPlaytestOptions.Speed;
-            _debugService = new GameDebugService(new DebugGameState(), _catalog, new SystemRandomSource());
             _login = FindAnyObjectByType<PrototypeLoginController>();
             if (equipLatestButton != null) equipLatestButton.onClick.AddListener(EquipLatest);
             RefreshProgressDisplay();
@@ -306,8 +303,7 @@ namespace ImmortalLoot.UI
             {
                 _saveLoadWarning = "存档校验失败，已安全新开；损坏文件已保留。";
                 Debug.LogError("SAVE_RECOVERY: " + exception);
-                var source = JsonPlayerSaveRepository.DefaultPath;
-                if (File.Exists(source)) File.Move(source, source + ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss"));
+                JsonPlayerSaveRepository.TryQuarantine(JsonPlayerSaveRepository.DefaultPath);
                 return null;
             }
         }
@@ -552,33 +548,6 @@ namespace ImmortalLoot.UI
             var text = $"服务器掉落\n[{item.quality}] {item.baseId} Lv.{item.level}";
             if (item.affixes != null) foreach (var affix in item.affixes) text += $"\n  {affix.id} +{affix.value:0.##}";
             return text + "\n点击“穿戴最新装备”提交服务器";
-        }
-
-        private string ExecuteDebugStep()
-        {
-            _debugStep = (_debugStep + 1) % 5;
-            var state = _debugService.State;
-            switch (_debugStep)
-            {
-                case 1:
-                    _debugService.AddSoftCurrency(10000); _debugService.AddPremiumCurrency(100); _debugService.AddExp(500); _debugService.LevelUp(5);
-                    _softCurrency = state.SoftCurrency; _premiumCurrency = state.PremiumCurrency; _exp = state.Exp; _level = state.Level;
-                    RefreshProgressDisplay();
-                    return "GM 资源命令：灵砂 +10,000 / 仙晶 +100 / 经验 +500 / 等级 +5";
-                case 2:
-                    var item = _debugService.GenerateEquipment("weapon_cloudsteel_blade", 10, EquipmentQuality.Mythic, "attack_flat");
-                    _inventory.AddEquipment(item); _latestLoot = item; lootText.text = FormatLoot(item);
-                    return "GM 装备命令：生成 Mythic 云纹青锋，并指定攻击词条";
-                case 3:
-                    _debugService.Breakthrough(); _debugService.UnlockStage("stage_1_10"); _debugService.SetRoot("root_fire", 3); _debugService.LearnMethod("method_cinder_scripture");
-                    return "GM 进度命令：突破 / 解锁 1-10 / 火灵根 3 / 学习烬阳归藏篇";
-                case 4:
-                    _debugService.SimulateOffline8Hours(DateTime.UtcNow); _debugService.SimulatePayment(60);
-                    return "GM 模拟命令：离线 8 小时 / Mock 充值 60 仙晶\n再次点击执行清空 Debug 存档";
-                default:
-                    _debugService.ClearSave();
-                    return "GM 清档命令已执行；再次点击从资源命令开始。";
-            }
         }
 
 #if UNITY_INCLUDE_TESTS

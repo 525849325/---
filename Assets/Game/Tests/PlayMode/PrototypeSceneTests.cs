@@ -28,6 +28,9 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(feedback.GeneratedClipCount, Is.EqualTo(5), "Combat, critical, Boss, loot and equip cues must be available without external assets.");
             Assert.That(GameObject.Find("LoginTitle").GetComponent<Text>().text, Does.StartWith("《太初：无尽轮回》"));
             Assert.That(FindIncludingInactive("Nav_ShopPage").activeSelf, Is.False, "Commercial entry must stay hidden until the player understands equipment growth.");
+            Assert.That(FindIncludingInactive("Nav_RankingPage").activeSelf, Is.False, "Feature Freeze systems must not be exposed in V0.1.");
+            Assert.That(FindIncludingInactive("Nav_MailPage").activeSelf, Is.False, "Feature Freeze systems must not be exposed in V0.1.");
+            Assert.That(FindIncludingInactive("Nav_ActivityPage").activeSelf, Is.False, "Feature Freeze systems must not be exposed in V0.1.");
             var scaler = Object.FindAnyObjectByType<Canvas>().GetComponent<CanvasScaler>();
             Assert.That(scaler.referenceResolution, Is.EqualTo(new Vector2(1080f, 1920f)));
             Assert.That(scaler.uiScaleMode, Is.EqualTo(CanvasScaler.ScaleMode.ScaleWithScreenSize));
@@ -81,14 +84,6 @@ namespace ImmortalLoot.Tests.PlayMode
             controller.ExecutePageAction("SpiritualRootPage");
             Assert.That(controller.ExecutePageAction("SpiritualRootPage"), Does.Contain("火灵根 +1"));
 
-            GameObject.Find("Nav_RankingPage").GetComponent<Button>().onClick.Invoke();
-            GameObject.Find("Action_RankingPage").GetComponent<Button>().onClick.Invoke();
-            Assert.That(GameObject.Find("RankingPageContent").GetComponent<Text>().text, Does.Contain("永久榜/周榜"));
-
-            GameObject.Find("Nav_ActivityPage").GetComponent<Button>().onClick.Invoke();
-            GameObject.Find("Action_ActivityPage").GetComponent<Button>().onClick.Invoke();
-            Assert.That(GameObject.Find("ActivityPageContent").GetComponent<Text>().text, Does.Contain("挂机收益 ×2"));
-
             GameObject.Find("Nav_TaskPage").GetComponent<Button>().onClick.Invoke();
             GameObject.Find("Action_TaskPage").GetComponent<Button>().onClick.Invoke();
             Assert.That(GameObject.Find("TaskPageContent").GetComponent<Text>().text, Does.Contain("活跃度 20"));
@@ -114,10 +109,6 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(GameObject.Find("CultivationPageContent").GetComponent<Text>().text, Does.Contain("火修燃烧"));
             Assert.That(GameObject.Find("CultivationPageContent").GetComponent<Text>().text, Does.Contain("烬阳归藏篇"));
             Assert.That(GameObject.Find("CultivationPageContent").GetComponent<Text>().text, Does.Contain("流烬息法"));
-
-            GameObject.Find("Nav_MailPage").GetComponent<Button>().onClick.Invoke();
-            GameObject.Find("Action_MailPage").GetComponent<Button>().onClick.Invoke();
-            Assert.That(GameObject.Find("MailPageContent").GetComponent<Text>().text, Does.Contain("领取成功"));
 
             GameObject.Find("Nav_DebugPage").GetComponent<Button>().onClick.Invoke();
             Assert.That(GameObject.Find("PageHeader").GetComponent<Text>().text, Is.EqualTo("设置"));

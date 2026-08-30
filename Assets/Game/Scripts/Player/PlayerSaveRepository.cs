@@ -96,6 +96,25 @@ namespace ImmortalLoot.Player
             return a.Length == b.Length && CryptographicOperations.FixedTimeEquals(a, b);
         }
 
+        public static string TryQuarantine(string path, DateTime? utcNow = null, Func<string> uniqueSuffix = null)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
+            try
+            {
+                var stamp = (utcNow ?? DateTime.UtcNow).ToUniversalTime().ToString("yyyyMMdd'T'HHmmss");
+                var suffix = uniqueSuffix?.Invoke() ?? Guid.NewGuid().ToString("N");
+                var destination = path + ".corrupt-" + stamp + "-" + suffix;
+                if (File.Exists(destination)) return null;
+                File.Move(path, destination);
+                return destination;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("Unable to quarantine corrupt save: " + exception.Message);
+                return null;
+            }
+        }
+
         public static string DefaultPath => Path.Combine(Application.persistentDataPath, "immortal-loot-save.json");
         public static JsonPlayerSaveRepository CreateDefault() => new JsonPlayerSaveRepository(DefaultPath);
     }

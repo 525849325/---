@@ -17,5 +17,8 @@
 | BALANCE-001 | P1 | CORE-001 | DONE | A/B/E | 10m=22、60m=142；十槽 8%–12%，品质 40/30/20/10 门禁通过 |
 | WARNINGS-001 | P2 | — | DONE | E | 已迁移 Unity 6 查找与 NamedBuildTarget API；netstandard 2.1 全程序集门禁通过 |
 | AUTO-EQUIP-001 | P1 | CORE-001 | TESTING | B/C | 默认开启且可关闭；仅在含功法加成的统一战力严格提升时换装，程序集与领域门禁通过 |
+| RC-AUDIT-001 | P0 | CORE-001,SAVE-001,COMM-001 | DONE | Direction/E | P0/P1 静态矩阵完成；修复启动顺序、Feature Freeze 入口与残留 GM UI |
+| SAVE-HARDEN-001 | P0 | SAVE-001 | DONE | D/E | 唯一隔离名、不覆盖既有证据、隔离 I/O 失败安全降级；回归测试已编译 |
+| RC-QUALITY-001 | P0 | RC-AUDIT-001 | TODO | E | 扫描凭据/危险日志/无界热路径，运行完整非 Unity 门禁并固化报告 |
 
-当前自动执行：`RC-AUDIT-001`（P0/P1 静态完成审计）；若 Unity 授权恢复，立即抢占并执行 `QA-UNITY-001`。
+当前自动执行：`RC-QUALITY-001`（静态安全与性能门禁）；若 Unity 授权恢复，立即抢占并执行 `QA-UNITY-001`。
