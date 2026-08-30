@@ -4,7 +4,7 @@
 
 | ID | Priority | Dependencies | Status | Owner / Workstream | Result / 下一验收证据 |
 |---|---|---|---|---|---|
-| GITHUB-SYNC-001 | P0 | — | BLOCKED | Direction/E | 本地安全标签、Unity 忽略规则、敏感信息与大文件审计完成；RED-002 等待仓库 URL |
+| GITHUB-SYNC-001 | P0 | — | DONE | Direction/E | `origin/main` 首次 Push 成功；远端 HEAD/SHA 与新鲜克隆核验通过，Unity 必需目录、147 个 `.meta` 与状态文件齐全 |
 | AUDIT-001 | P0 | — | DONE | Direction | 审计、资产、冲刺、Backlog、人工事项与 Git 基线完成 |
 | CORE-001 | P0 | AUDIT-001 | TESTING | A/B/C | 1 分钟掉落、3 分钟 Boss、换装战力反馈已实现；待 Unity 4 分钟 PlayMode/真人试玩 |
 | SAVE-001 | P0 | CORE-001 | TESTING | D | v2 快照、迁移、损坏隔离、离线单次领取已实现；待 Unity 生命周期回归 |
@@ -20,6 +20,6 @@
 | AUTO-EQUIP-001 | P1 | CORE-001 | TESTING | B/C | 默认开启且可关闭；仅在含功法加成的统一战力严格提升时换装，程序集与领域门禁通过 |
 | RC-AUDIT-001 | P0 | CORE-001,SAVE-001,COMM-001 | DONE | Direction/E | P0/P1 静态矩阵完成；修复启动顺序、Feature Freeze 入口与残留 GM UI |
 | SAVE-HARDEN-001 | P0 | SAVE-001 | DONE | D/E | 唯一隔离名、不覆盖既有证据、隔离 I/O 失败安全降级；回归测试已编译 |
-| RC-QUALITY-001 | P0 | RC-AUDIT-001 | RUNNING | E | 凭据与大文件扫描无阻断项；程序集、领域、平衡、后端权威 API 门禁 PASS；继续静态安全/性能审计 |
+| RC-QUALITY-001 | P0 | RC-AUDIT-001 | RUNNING | E | 发现满背包无条件删除首件装备的数据安全 P0；正在补失败回归并修复，随后处理聚合进度存档 |
 
-当前自动执行：`RC-QUALITY-001`（静态安全与性能门禁）；收到仓库 URL 后恢复 `GITHUB-SYNC-001`。若 Unity 授权恢复，立即抢占并执行 `QA-UNITY-001`。
+当前自动执行：`RC-QUALITY-001`（P0 数据安全与完成度收口）。若 Unity 授权恢复，立即抢占并执行 `QA-UNITY-001`。

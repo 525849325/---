@@ -7,17 +7,17 @@
 | 版本 | V0.1 RC 开发中 |
 | 总体完成度 | GATE 1–3 实现完成；GATE 4 等待 Unity 授权与真机构建证据 |
 | 当前 Gate | GATE 4｜Build / Test / Release Readiness |
-| 当前 Task | RC-QUALITY-001｜静态安全与性能门禁 |
+| 当前 Task | RC-QUALITY-001｜P0 数据安全与完成度收口 |
 | Build | C# 全程序集 PASS；Android APK/AAB BLOCKED |
 | Tests | 非 Unity 门禁 PASS；Unity Test Runner BLOCKED |
 | P0 / P1 | P0：GitHub 同步与 RC 质量门禁；P1：场景体验验收待授权 |
-| Blocked | GITHUB-SYNC-001、QA-UNITY-001、BUILD-ANDROID-001、QA-DEVICE-001 |
-| RED | RED-001｜Unity entitlement；RED-002｜GitHub 仓库 URL |
+| Blocked | QA-UNITY-001、BUILD-ANDROID-001、QA-DEVICE-001 |
+| RED | RED-001｜Unity Editor/headless entitlement |
 | 最大风险 | 缺少真实 Unity 场景、Android 包与真机稳定性证据 |
-| Next | 继续 RC 静态安全/性能审计；收到 URL 后立即恢复 GitHub 同步 |
-| 是否需要老板决策 | 是：提供已创建 GitHub 仓库 URL；并在 RC 冻结前恢复 Unity 授权 |
+| Next | 修复满背包装备丢失等 P0；重要节点自动 Commit + Push |
+| 是否需要老板决策 | 是：在 RC 冻结前恢复 Unity 授权 |
 
-当前分支：`codex/task-000-audit`
+当前分支：`main`；远端：`origin/main`（GitHub `525849325/---`）
 
 ## TODAY
 
@@ -33,6 +33,7 @@
 - 完成 RC P0/P1 静态审计；修复设置启动顺序，并隐藏 Feature Freeze 入口与残留 GM UI。
 - 加固损坏存档隔离：唯一命名、不覆盖旧证据，隔离失败不阻断安全新开。
 - 完成 GitHub 接入前安全检查点、Unity 忽略规则、敏感信息和大文件审计；因缺少仓库 URL 转入 RED-002，不阻断 RC 质量工作。
+- 完成 GitHub 首次 Push 与新鲜克隆验收；远端 `main` 已包含 Unity 必需目录、`.meta` 与项目状态文件。
 
 ## BUILD
 
@@ -60,5 +61,5 @@
 
 ## NEXT
 
-- 继续 RC 静态安全与性能门禁；收到仓库 URL 后立即完成 GitHub 首次同步与远端树核验。
+- 修复完成度审计发现的满背包数据安全 P0，并继续聚合进度存档收口。
 - 授权一旦恢复，立即转入全量 Unity 测试与 Android RC 构建。
