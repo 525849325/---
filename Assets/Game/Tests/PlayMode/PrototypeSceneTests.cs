@@ -43,7 +43,7 @@ namespace ImmortalLoot.Tests.PlayMode
             }
 
             Assert.That(lootText.text, Does.Contain("最新掉落"));
-            Assert.That(lootText.text, Does.Contain("云纹青锋"));
+            Assert.That(lootText.text, Does.Contain(controller.LatestLoot.DisplayName));
             Assert.That(lootText.text, Does.Contain("+"));
             Assert.That(lootText.color, Is.EqualTo(PrototypeVisualTheme.QualityColor(controller.LatestLoot.Quality)));
             Assert.That(FindIncludingInactive("Nav_ShopPage").activeSelf, Is.True, "First equipment should unlock the optional shop entry without a popup.");

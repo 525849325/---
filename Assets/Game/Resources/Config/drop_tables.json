@@ -6,13 +6,26 @@
       { "itemId": "weapon_cloudsteel_blade", "weight": 400, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Epic", "condition": "" }
     ]},
     { "id": "drop_boss_1", "name": "石魇首领保底装备", "rollCount": 1, "entries": [
-      { "itemId": "weapon_cloudsteel_blade", "weight": 1, "minCount": 1, "maxCount": 1, "minQuality": "Rare", "maxQuality": "Legendary", "condition": "" }
+      { "itemId": "weapon_cloudsteel_blade", "weight": 20, "minCount": 1, "maxCount": 1, "minQuality": "Rare", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "helmet_mistveil", "weight": 20, "minCount": 1, "maxCount": 1, "minQuality": "Rare", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "armor_cloudtrace", "weight": 20, "minCount": 1, "maxCount": 1, "minQuality": "Rare", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "gloves_starseal", "weight": 20, "minCount": 1, "maxCount": 1, "minQuality": "Rare", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "boots_windstep", "weight": 20, "minCount": 1, "maxCount": 1, "minQuality": "Rare", "maxQuality": "Legendary", "condition": "" }
     ]},
     { "id": "drop_first_clear_1", "name": "首通奖励", "rollCount": 1, "entries": [
       { "itemId": "premium_currency", "weight": 1, "minCount": 10, "maxCount": 10, "minQuality": "Common", "maxQuality": "Common", "condition": "FirstClear" }
     ]},
     { "id": "drop_prototype_equipment", "name": "原型场景装备验证", "rollCount": 1, "entries": [
-      { "itemId": "weapon_cloudsteel_blade", "weight": 1, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Legendary", "condition": "" }
+      { "itemId": "weapon_cloudsteel_blade", "weight": 10, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "helmet_mistveil", "weight": 10, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "armor_cloudtrace", "weight": 10, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "gloves_starseal", "weight": 10, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "boots_windstep", "weight": 10, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "necklace_emberjade", "weight": 10, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "ring_sunscar", "weight": 10, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "ring_moonpulse", "weight": 10, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "belt_earthbind", "weight": 10, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "artifact_firstlight", "weight": 10, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Legendary", "condition": "" }
     ]}
   ]
 }

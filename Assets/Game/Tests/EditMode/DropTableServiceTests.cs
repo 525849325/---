@@ -44,6 +44,25 @@ namespace ImmortalLoot.Tests
         }
 
         [Test]
+        public void PrototypeTable_LargeSampleUsesEveryEquipmentSlotWithoutDominatingOneSlot()
+        {
+            var catalog = Catalog();
+            var random = new SystemRandomSource(20260830);
+            var service = new DropTableService(catalog, new EquipmentGenerator(random, catalog), random);
+            var slots = new Dictionary<EquipmentSlot, int>();
+            for (var i = 0; i < 10000; i++)
+            {
+                var result = service.Roll("drop_prototype_equipment", new DropContext(DropSourceType.Monster, 10, "simulation"))[0];
+                Assert.That(result.Equipment, Is.Not.Null);
+                var slot = catalog.GetEquipment(result.ItemId).Slot;
+                slots.TryGetValue(slot, out var count);
+                slots[slot] = count + 1;
+            }
+            Assert.That(slots, Has.Count.EqualTo(10));
+            foreach (var count in slots.Values) Assert.That(count, Is.InRange(800, 1200));
+        }
+
+        [Test]
         public void FirstClearCondition_BlocksIneligibleClaim()
         {
             var service = CreateService(1);
