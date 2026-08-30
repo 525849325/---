@@ -12,6 +12,7 @@ using ImmortalLoot.Cultivation;
 using ImmortalLoot.Realm;
 using ImmortalLoot.Debugging;
 using ImmortalLoot.Player;
+using ImmortalLoot.Payment;
 using ImmortalLoot.Stage;
 using ImmortalLoot.Settings;
 using System.Collections.Generic;
@@ -69,6 +70,7 @@ namespace ImmortalLoot.UI
         private string _offlineRewardSummary;
         private GameSettingsService _settings;
         private int _settingsActionStep;
+        private IReadOnlyList<CommercialProductConfig> _commercialProducts;
         private readonly CharacterStats _baseStats = new CharacterStats
         {
             HP = 180f, Attack = 12f, Defense = 3f, CritRate = 0.1f, CritDamage = 1.5f, AttackSpeed = 1f, FireDamage = 0.1f
@@ -76,6 +78,7 @@ namespace ImmortalLoot.UI
         public EquipmentInstance LatestLoot => _latestLoot;
         public long Power => _power;
         public int StageNumber => _stageNumber;
+        public bool CommercialUnlocked => _latestLoot != null || !string.IsNullOrEmpty(_serverLatestInstanceId) || (_inventory?.State.Equipment.Count ?? 0) > 0;
 
         private void Start()
         {
@@ -83,6 +86,7 @@ namespace ImmortalLoot.UI
             _settings = new GameSettingsService(new PlayerPrefsSettingsStore());
             _settings.ApplySound();
             _catalog = new JsonConfigRepository(new ResourcesConfigSource()).LoadAll();
+            _commercialProducts = CommercialEntitlementService.LoadProducts(new ResourcesConfigSource());
             _saveRepository = JsonPlayerSaveRepository.CreateDefault();
             var saved = LoadSnapshotSafely();
             _generator = new EquipmentGenerator(new SystemRandomSource(), _catalog);
@@ -392,10 +396,11 @@ namespace ImmortalLoot.UI
                     return $"渡劫灵根成长：火灵根 +1\n累计 {_spiritualRootPoints} 点";
                 case "StagePage": return $"当前推进 1-{_stageNumber}\n1-10 为石魇 Boss，战斗会自动推进。";
                 case "ShopPage":
-                    if (_premiumCurrency < 50) return "仙晶不足，Mock 支付或任务可补充。";
-                    _premiumCurrency -= 50; _softCurrency += 1000;
-                    RefreshProgressDisplay();
-                    return "服务器定价商品购买成功\n仙晶 -50，灵砂 +1,000";
+                    if (!CommercialUnlocked) return "完成首件装备并理解战力成长后解锁商店。";
+                    var offerText = "商业化验证商品（离线预览，不执行支付）\n";
+                    foreach (var product in _commercialProducts)
+                        offerText += $"{product.name} · {product.amountMinorUnits / 100m:0.##} {product.currencyCode}\n";
+                    return offerText + "真实购买必须由服务器建单、平台回执并由服务器验证发放。";
                 case "RankingPage": return $"本地预览：战力榜 · {_power} 分\n正式榜单由服务器计算永久榜/周榜。";
                 case "MailPage":
                     if (_mailClaimed) return "补偿飞简附件已领取，重复点击不会再发放。";

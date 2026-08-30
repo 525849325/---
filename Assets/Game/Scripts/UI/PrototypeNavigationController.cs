@@ -13,6 +13,7 @@ namespace ImmortalLoot.UI
         private Text _header;
         private PrototypeGameController _game;
         private PrototypeLoginController _login;
+        private GameObject _shopButton;
 
         private void Start()
         {
@@ -28,9 +29,17 @@ namespace ImmortalLoot.UI
                 var actionTarget = button.gameObject.name.StartsWith("Action_", StringComparison.Ordinal) ? button.gameObject.name.Substring(7) : string.Empty;
                 if (actionTarget.Length > 0) button.onClick.AddListener(() => Execute(actionTarget));
             }
+            _shopButton = GameObject.Find("Nav_ShopPage");
+            if (_shopButton != null) _shopButton.SetActive(_game != null && _game.CommercialUnlocked);
             var enter = GameObject.Find("EnterGameButton")?.GetComponent<Button>();
             if (enter != null) enter.onClick.AddListener(() => { GameObject.Find("LoginPage")?.SetActive(false); Show("BattlePage"); });
             Show("BattlePage");
+        }
+
+        private void Update()
+        {
+            if (_shopButton != null && !_shopButton.activeSelf && _game != null && _game.CommercialUnlocked)
+                _shopButton.SetActive(true);
         }
 
         private async void Execute(string pageName)

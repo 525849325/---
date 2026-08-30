@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using UnityEngine;
 
 namespace ImmortalLoot.Payment
 {
@@ -28,12 +29,18 @@ namespace ImmortalLoot.Payment
     public sealed class MockPaymentProvider : IPaymentProvider
     {
         private readonly bool _succeed;
-        public MockPaymentProvider(bool succeed = true) => _succeed = succeed;
+        private readonly bool _allowMock;
+        public MockPaymentProvider(bool succeed = true, bool? allowMock = null)
+        {
+            _succeed = succeed;
+            _allowMock = allowMock ?? Debug.isDebugBuild;
+        }
 
         public Task<PlatformPaymentResult> PurchaseAsync(PaymentRequest request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.OrderNo) || string.IsNullOrWhiteSpace(request.ProductId))
                 throw new ArgumentException("A server-created order and product are required.");
+            if (!_allowMock) return Task.FromResult(new PlatformPaymentResult(false, "mock", string.Empty, "Mock payment is available only in Development builds."));
             if (!_succeed) return Task.FromResult(new PlatformPaymentResult(false, "mock", string.Empty, "Mock cancellation"));
             var receipt = "mock-receipt:" + request.OrderNo + ":" + request.ProductId;
             return Task.FromResult(new PlatformPaymentResult(true, "mock", receipt, string.Empty));

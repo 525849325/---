@@ -48,6 +48,22 @@ namespace ImmortalLoot.Payment
 
         public IReadOnlyCollection<CommercialProductConfig> Products => _products.Values;
 
+        public static IReadOnlyList<CommercialProductConfig> LoadProducts(IConfigSource source)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            var file = JsonUtility.FromJson<CommercialProductFile>(source.LoadText("commercial_products"));
+            if (file == null || file.schemaVersion != 1 || file.products == null) throw new ConfigException("Commercial product config is invalid.");
+            var products = new List<CommercialProductConfig>(file.products.Length);
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var product in file.products)
+            {
+                if (string.IsNullOrWhiteSpace(product.id) || product.amountMinorUnits <= 0 || product.immediatePremium < 0 || product.durationDays < -1 || !ids.Add(product.id))
+                    throw new ConfigException("Commercial product row is invalid or duplicated.");
+                products.Add(product);
+            }
+            return products;
+        }
+
         public void ApplyServerVerifiedPurchase(string productId, string serverOrderNo, DateTime nowUtc, Func<string, bool> realmUnlocked)
         {
             if (!_products.TryGetValue(productId, out var product)) throw new ConfigException("Commercial product was not found.");

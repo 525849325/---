@@ -26,5 +26,15 @@ namespace ImmortalLoot.Tests
             Assert.That(result.Provider, Is.EqualTo("mock"));
             Assert.That(result.Receipt, Does.Contain("order-1"));
         }
+
+        [Test]
+        public async Task MockPaymentProvider_IsRejectedOutsideDevelopmentBuilds()
+        {
+            var result = await new MockPaymentProvider(succeed: true, allowMock: false)
+                .PurchaseAsync(new PaymentRequest("order-production", "jade_60"));
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Error, Does.Contain("Development"));
+            Assert.That(result.Receipt, Is.Empty);
+        }
     }
 }

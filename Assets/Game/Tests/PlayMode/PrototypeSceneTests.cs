@@ -23,6 +23,7 @@ namespace ImmortalLoot.Tests.PlayMode
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(FindIncludingInactive("Nav_ShopPage").activeSelf, Is.False, "Commercial entry must stay hidden until the player understands equipment growth.");
             var scaler = Object.FindAnyObjectByType<Canvas>().GetComponent<CanvasScaler>();
             Assert.That(scaler.referenceResolution, Is.EqualTo(new Vector2(1080f, 1920f)));
             Assert.That(scaler.uiScaleMode, Is.EqualTo(CanvasScaler.ScaleMode.ScaleWithScreenSize));
@@ -44,6 +45,7 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(lootText.text, Does.Contain("云纹青锋"));
             Assert.That(lootText.text, Does.Contain("+"));
             Assert.That(lootText.color, Is.EqualTo(PrototypeVisualTheme.QualityColor(controller.LatestLoot.Quality)));
+            Assert.That(FindIncludingInactive("Nav_ShopPage").activeSelf, Is.True, "First equipment should unlock the optional shop entry without a popup.");
             var before = controller.Power;
             GameObject.Find("EquipLatestButton").GetComponent<Button>().onClick.Invoke();
             yield return null;
@@ -89,8 +91,10 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(GameObject.Find("TaskPageContent").GetComponent<Text>().text, Does.Contain("已领取"));
 
             GameObject.Find("Nav_ShopPage").GetComponent<Button>().onClick.Invoke();
+            var currencyBeforeShop = GameObject.Find("Currency").GetComponent<Text>().text;
             GameObject.Find("Action_ShopPage").GetComponent<Button>().onClick.Invoke();
-            Assert.That(GameObject.Find("ShopPageContent").GetComponent<Text>().text, Does.Contain("购买成功"));
+            Assert.That(GameObject.Find("ShopPageContent").GetComponent<Text>().text, Does.Contain("望月修行契"));
+            Assert.That(GameObject.Find("Currency").GetComponent<Text>().text, Is.EqualTo(currencyBeforeShop), "Offline product preview must never grant or debit paid currency.");
 
             GameObject.Find("Nav_CultivationPage").GetComponent<Button>().onClick.Invoke();
             GameObject.Find("Action_CultivationPage").GetComponent<Button>().onClick.Invoke();
@@ -197,6 +201,13 @@ namespace ImmortalLoot.Tests.PlayMode
         private static void DeleteLocalSave()
         {
             if (File.Exists(JsonPlayerSaveRepository.DefaultPath)) File.Delete(JsonPlayerSaveRepository.DefaultPath);
+        }
+
+        private static GameObject FindIncludingInactive(string name)
+        {
+            foreach (var transform in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (transform.name == name) return transform.gameObject;
+            return null;
         }
 
         private sealed class ServerLoopTransport : IApiTransport
