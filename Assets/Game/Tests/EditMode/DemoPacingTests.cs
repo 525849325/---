@@ -57,7 +57,11 @@ namespace ImmortalLoot.Tests
             session.Restore(config.firstBossMinute * 60d);
             Assert.That(session.CurrentStageNumber, Is.EqualTo(10));
             Assert.That(session.PendingRewards, Is.Zero);
-            session.Advance(config.equipmentDropSeconds - 1);
+            var elapsed = config.firstBossMinute * 60d;
+            var firstReward = config.firstEquipmentMinute * 60d;
+            var completedWindows = System.Math.Floor((elapsed - firstReward) / config.equipmentDropSeconds) + 1d;
+            var secondsUntilNextReward = firstReward + completedWindows * config.equipmentDropSeconds - elapsed;
+            session.Advance(secondsUntilNextReward - 1d);
             Assert.That(session.TryConsumeBattleReward(), Is.False);
             session.Advance(1);
             Assert.That(session.TryConsumeBattleReward(), Is.True);

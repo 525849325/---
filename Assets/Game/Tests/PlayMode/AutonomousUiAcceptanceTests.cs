@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using ImmortalLoot.UI;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -21,27 +22,42 @@ namespace ImmortalLoot.Tests.PlayMode
         };
 
         [UnityTest]
-        public IEnumerator CriticalPages_AreCapturedAndPassStructuralAudit()
+        public IEnumerator CriticalPages_PassStructuralAudit_AndCaptureWhenInteractive()
         {
             SceneManager.LoadScene("Main");
             yield return null;
             var output = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "TestResults", "UI"));
             Directory.CreateDirectory(output);
             yield return Capture(Path.Combine(output, "01-login.png"));
+            var controller = UnityEngine.Object.FindAnyObjectByType<PrototypeGameController>();
+            controller.SetPacingSpeedForTests(240f);
             GameObject.Find("EnterGameButton").GetComponent<Button>().onClick.Invoke();
             yield return null;
+            var unlockTimeout = 5f;
+            while (!controller.CommercialUnlocked && unlockTimeout > 0f)
+            {
+                unlockTimeout -= Time.deltaTime;
+                yield return null;
+            }
+            Assert.That(controller.CommercialUnlocked, Is.True, "Critical-page audit requires the normal first-loot shop unlock.");
 
             var issues = new List<string>();
+            var auditScreenBounds = !Application.isBatchMode;
             foreach (var page in Pages)
             {
                 if (!string.IsNullOrEmpty(page.Button))
-                    GameObject.Find(page.Button).GetComponent<Button>().onClick.Invoke();
+                {
+                    var buttonObject = GameObject.Find(page.Button);
+                    Assert.That(buttonObject, Is.Not.Null, page.Button + " must be available for the critical-page audit.");
+                    buttonObject.GetComponent<Button>().onClick.Invoke();
+                }
                 yield return null;
-                AuditVisibleUi(issues);
+                AuditVisibleUi(issues, auditScreenBounds);
                 yield return Capture(Path.Combine(output, page.File + ".png"));
             }
 
             var json = "{\n  \"passed\": " + (issues.Count == 0 ? "true" : "false") +
+                       ",\n  \"screenBoundsAudited\": " + (auditScreenBounds ? "true" : "false") +
                        ",\n  \"issueCount\": " + issues.Count + ",\n  \"issues\": [";
             for (var i = 0; i < issues.Count; i++)
                 json += (i == 0 ? "" : ",") + "\n    \"" + Escape(issues[i]) + "\"";
@@ -52,6 +68,7 @@ namespace ImmortalLoot.Tests.PlayMode
 
         private static IEnumerator Capture(string path)
         {
+            if (Application.isBatchMode) yield break;
             yield return new WaitForEndOfFrame();
             ScreenCapture.CaptureScreenshot(path, 1);
             var timeout = 120;
@@ -59,7 +76,7 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(File.Exists(path), Is.True, "Screenshot was not written: " + path);
         }
 
-        private static void AuditVisibleUi(List<string> issues)
+        private static void AuditVisibleUi(List<string> issues, bool auditScreenBounds)
         {
             foreach (var graphic in UnityEngine.Object.FindObjectsByType<Graphic>(FindObjectsInactive.Exclude))
             {
@@ -73,7 +90,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 var maxX = Mathf.Max(corners[0].x, corners[2].x);
                 var minY = Mathf.Min(corners[0].y, corners[2].y);
                 var maxY = Mathf.Max(corners[0].y, corners[2].y);
-                if (minX < -1 || minY < -1 || maxX > Screen.width + 1 || maxY > Screen.height + 1)
+                if (auditScreenBounds && (minX < -1 || minY < -1 || maxX > Screen.width + 1 || maxY > Screen.height + 1))
                     issues.Add(graphic.name + " is outside the visible screen.");
 
                 var text = graphic as Text;

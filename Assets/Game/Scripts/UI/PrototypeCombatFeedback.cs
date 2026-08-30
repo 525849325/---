@@ -21,7 +21,9 @@ namespace ImmortalLoot.UI
         public void Initialize()
         {
             if (_source != null) return;
-            _source = gameObject.GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
+            EnsureAudioListener();
+            _source = gameObject.GetComponent<AudioSource>();
+            if (_source == null) _source = gameObject.AddComponent<AudioSource>();
             _source.playOnAwake = false;
             _source.spatialBlend = 0f;
             _source.volume = 0.42f;
@@ -30,6 +32,15 @@ namespace ImmortalLoot.UI
             _boss = CreateCue("boss", 92f, 0.32f, 0.48f, 46f);
             _loot = CreateCue("loot", 660f, 0.16f, 0.3f, 990f);
             _equip = CreateCue("equip", 330f, 0.13f, 0.28f, 495f);
+        }
+
+        private void EnsureAudioListener()
+        {
+            if (FindAnyObjectByType<AudioListener>() != null) return;
+            var camera = Camera.main;
+            if (camera == null) camera = FindAnyObjectByType<Camera>();
+            var listenerHost = camera == null ? gameObject : camera.gameObject;
+            listenerHost.AddComponent<AudioListener>();
         }
 
         public void PlayHit(bool critical)

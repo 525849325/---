@@ -91,10 +91,10 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(GameObject.Find("TaskPageContent").GetComponent<Text>().text, Does.Contain("已领取"));
 
             GameObject.Find("Nav_ShopPage").GetComponent<Button>().onClick.Invoke();
-            var currencyBeforeShop = GameObject.Find("Currency").GetComponent<Text>().text;
+            var currencyBeforeShop = GameObject.Find("Currencies").GetComponent<Text>().text;
             GameObject.Find("Action_ShopPage").GetComponent<Button>().onClick.Invoke();
             Assert.That(GameObject.Find("ShopPageContent").GetComponent<Text>().text, Does.Contain("望月修行契"));
-            Assert.That(GameObject.Find("Currency").GetComponent<Text>().text, Is.EqualTo(currencyBeforeShop), "Offline product preview must never grant or debit paid currency.");
+            Assert.That(GameObject.Find("Currencies").GetComponent<Text>().text, Is.EqualTo(currencyBeforeShop), "Offline product preview must never grant or debit paid currency.");
 
             GameObject.Find("Nav_CultivationPage").GetComponent<Button>().onClick.Invoke();
             GameObject.Find("Action_CultivationPage").GetComponent<Button>().onClick.Invoke();
@@ -192,13 +192,13 @@ namespace ImmortalLoot.Tests.PlayMode
             });
             SceneManager.LoadScene("Main");
             yield return null;
-            var firstClaimCurrency = GameObject.Find("Currency").GetComponent<Text>().text;
+            var firstClaimCurrency = GameObject.Find("Currencies").GetComponent<Text>().text;
             Assert.That(firstClaimCurrency, Does.Not.Contain("灵砂 100 "));
             Object.FindAnyObjectByType<PrototypeGameController>().SaveForTests();
 
             SceneManager.LoadScene("Main");
             yield return null;
-            Assert.That(GameObject.Find("Currency").GetComponent<Text>().text, Is.EqualTo(firstClaimCurrency));
+            Assert.That(GameObject.Find("Currencies").GetComponent<Text>().text, Is.EqualTo(firstClaimCurrency));
             DeleteLocalSave();
         }
 
