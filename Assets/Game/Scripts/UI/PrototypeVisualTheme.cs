@@ -29,12 +29,12 @@ namespace ImmortalLoot.UI
             background.color = Ink;
             background.raycastTarget = false;
 
-            foreach (var text in Object.FindObjectsByType<Text>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var text in Object.FindObjectsByType<Text>(FindObjectsInactive.Include))
             {
                 text.color = TextPrimary;
                 text.supportRichText = true;
             }
-            foreach (var button in Object.FindObjectsByType<Button>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var button in Object.FindObjectsByType<Button>(FindObjectsInactive.Include))
                 StyleButton(button);
             foreach (var pageName in new[] { "BattlePage", "CharacterPage", "EquipmentPage", "InventoryPage", "CultivationPage", "SpiritualRootPage", "StagePage", "ShopPage", "RankingPage", "MailPage", "TaskPage", "ActivityPage", "DebugPage" })
             {
@@ -89,7 +89,7 @@ namespace ImmortalLoot.UI
 
         private static GameObject FindIncludingInactive(string name)
         {
-            foreach (var transform in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var transform in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include))
                 if (transform.name == name) return transform.gameObject;
             return null;
         }

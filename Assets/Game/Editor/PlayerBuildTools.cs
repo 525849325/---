@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
@@ -63,7 +64,7 @@ namespace ImmortalLoot.Editor
             var stagingOutput = Path.Combine(Path.GetTempPath(), "ImmortalLootBuild", spec.OutputFileName);
             Directory.CreateDirectory(Path.GetDirectoryName(stagingOutput));
             if (File.Exists(stagingOutput)) File.Delete(stagingOutput);
-            PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.immortalloot.prototype");
+            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "com.immortalloot.prototype");
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARMv7 | AndroidArchitecture.ARM64;
             PlayerSettings.Android.applicationEntry = AndroidApplicationEntry.Activity;
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26;

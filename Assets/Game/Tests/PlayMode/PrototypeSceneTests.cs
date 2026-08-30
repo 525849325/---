@@ -216,7 +216,7 @@ namespace ImmortalLoot.Tests.PlayMode
 
         private static GameObject FindIncludingInactive(string name)
         {
-            foreach (var transform in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var transform in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include))
                 if (transform.name == name) return transform.gameObject;
             return null;
         }

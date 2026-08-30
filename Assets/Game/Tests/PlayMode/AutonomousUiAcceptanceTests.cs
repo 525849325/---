@@ -62,7 +62,7 @@ namespace ImmortalLoot.Tests.PlayMode
 
         private static void AuditVisibleUi(List<string> issues)
         {
-            foreach (var graphic in UnityEngine.Object.FindObjectsByType<Graphic>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            foreach (var graphic in UnityEngine.Object.FindObjectsByType<Graphic>(FindObjectsInactive.Exclude))
             {
                 if (!graphic.isActiveAndEnabled || graphic.canvasRenderer.GetAlpha() <= 0.01f) continue;
                 var corners = new Vector3[4];
@@ -82,7 +82,7 @@ namespace ImmortalLoot.Tests.PlayMode
                     (text.preferredWidth > text.rectTransform.rect.width + 2 || text.preferredHeight > text.rectTransform.rect.height + 2))
                     issues.Add(text.name + " text is clipped.");
             }
-            foreach (var button in UnityEngine.Object.FindObjectsByType<Button>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            foreach (var button in UnityEngine.Object.FindObjectsByType<Button>(FindObjectsInactive.Exclude))
             {
                 var size = button.GetComponent<RectTransform>().rect.size;
                 if (size.x < 44 || size.y < 44) issues.Add(button.name + " touch target is smaller than 44px.");
