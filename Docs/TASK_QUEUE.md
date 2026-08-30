@@ -4,6 +4,7 @@
 
 | ID | Priority | Dependencies | Status | Owner / Workstream | Result / 下一验收证据 |
 |---|---|---|---|---|---|
+| GITHUB-SYNC-001 | P0 | — | RUNNING | Direction/E | 本地安全标签、Unity 忽略规则、敏感信息与大文件审计完成；等待仓库 URL 后配置 remote、提交、推送并核验远端树 |
 | AUDIT-001 | P0 | — | DONE | Direction | 审计、资产、冲刺、Backlog、人工事项与 Git 基线完成 |
 | CORE-001 | P0 | AUDIT-001 | TESTING | A/B/C | 1 分钟掉落、3 分钟 Boss、换装战力反馈已实现；待 Unity 4 分钟 PlayMode/真人试玩 |
 | SAVE-001 | P0 | CORE-001 | TESTING | D | v2 快照、迁移、损坏隔离、离线单次领取已实现；待 Unity 生命周期回归 |
@@ -21,4 +22,4 @@
 | SAVE-HARDEN-001 | P0 | SAVE-001 | DONE | D/E | 唯一隔离名、不覆盖既有证据、隔离 I/O 失败安全降级；回归测试已编译 |
 | RC-QUALITY-001 | P0 | RC-AUDIT-001 | TODO | E | 扫描凭据/危险日志/无界热路径，运行完整非 Unity 门禁并固化报告 |
 
-当前自动执行：`RC-QUALITY-001`（静态安全与性能门禁）；若 Unity 授权恢复，立即抢占并执行 `QA-UNITY-001`。
+当前自动执行：`GITHUB-SYNC-001`；同步完成后恢复 `RC-QUALITY-001`（静态安全与性能门禁）。若 Unity 授权恢复，立即抢占并执行 `QA-UNITY-001`。

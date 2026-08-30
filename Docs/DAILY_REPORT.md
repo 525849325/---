@@ -1,6 +1,23 @@
 # Daily Boss Report
 
-日期：2026-08-30　版本：V0.1 RC 开发中　分支：`codex/task-000-audit`
+日期：2026-08-30
+
+| 状态 | 当前值 |
+|---|---|
+| 版本 | V0.1 RC 开发中 |
+| 总体完成度 | GATE 1–3 实现完成；GATE 4 等待 Unity 授权与真机构建证据 |
+| 当前 Gate | GATE 4｜Build / Test / Release Readiness |
+| 当前 Task | GITHUB-SYNC-001｜GitHub 首次安全同步 |
+| Build | C# 全程序集 PASS；Android APK/AAB BLOCKED |
+| Tests | 非 Unity 门禁 PASS；Unity Test Runner BLOCKED |
+| P0 / P1 | P0：GitHub 同步与 RC 质量门禁；P1：场景体验验收待授权 |
+| Blocked | QA-UNITY-001、BUILD-ANDROID-001、QA-DEVICE-001 |
+| RED | RED-001｜Unity Editor/headless entitlement |
+| 最大风险 | 缺少真实 Unity 场景、Android 包与真机稳定性证据 |
+| Next | 完成 GitHub 同步后自动恢复 RC-QUALITY-001 |
+| 是否需要老板决策 | 是：提供已创建 GitHub 仓库 URL；并在 RC 冻结前恢复 Unity 授权 |
+
+当前分支：`codex/task-000-audit`
 
 ## TODAY
 
@@ -42,5 +59,5 @@
 
 ## NEXT
 
-- 自动执行 RC 静态安全与性能门禁；随后继续剩余可执行 P0/P1 审查项。
+- 完成 GitHub 首次安全同步后，自动执行 RC 静态安全与性能门禁。
 - 授权一旦恢复，立即转入全量 Unity 测试与 Android RC 构建。
