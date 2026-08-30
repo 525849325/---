@@ -31,6 +31,7 @@ namespace ImmortalLoot.UI
             }
             _shopButton = GameObject.Find("Nav_ShopPage");
             if (_shopButton != null) _shopButton.SetActive(_game != null && _game.CommercialUnlocked);
+            if (_shopButton != null && _shopButton.activeSelf && _game != null) _game.RecordShopExposure();
             var enter = GameObject.Find("EnterGameButton")?.GetComponent<Button>();
             if (enter != null) enter.onClick.AddListener(() => { GameObject.Find("LoginPage")?.SetActive(false); Show("BattlePage"); });
             Show("BattlePage");
@@ -39,7 +40,10 @@ namespace ImmortalLoot.UI
         private void Update()
         {
             if (_shopButton != null && !_shopButton.activeSelf && _game != null && _game.CommercialUnlocked)
+            {
                 _shopButton.SetActive(true);
+                _game.RecordShopExposure();
+            }
         }
 
         private async void Execute(string pageName)

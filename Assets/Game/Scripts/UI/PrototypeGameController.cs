@@ -1,6 +1,7 @@
 using System;
 using ImmortalLoot.Battle;
 using ImmortalLoot.AFK;
+using ImmortalLoot.Analytics;
 using ImmortalLoot.Character;
 using ImmortalLoot.Core;
 using ImmortalLoot.Config;
@@ -71,6 +72,7 @@ namespace ImmortalLoot.UI
         private GameSettingsService _settings;
         private int _settingsActionStep;
         private IReadOnlyList<CommercialProductConfig> _commercialProducts;
+        private ValidationFunnelTracker _validationTelemetry;
         private readonly CharacterStats _baseStats = new CharacterStats
         {
             HP = 180f, Attack = 12f, Defense = 3f, CritRate = 0.1f, CritDamage = 1.5f, AttackSpeed = 1f, FireDamage = 0.1f
@@ -87,6 +89,7 @@ namespace ImmortalLoot.UI
             _settings.ApplySound();
             _catalog = new JsonConfigRepository(new ResourcesConfigSource()).LoadAll();
             _commercialProducts = CommercialEntitlementService.LoadProducts(new ResourcesConfigSource());
+            _validationTelemetry = new ValidationFunnelTracker(new JsonlValidationEventSink(Path.Combine(Application.persistentDataPath, "validation-funnel.jsonl")));
             _saveRepository = JsonPlayerSaveRepository.CreateDefault();
             var saved = LoadSnapshotSafely();
             _generator = new EquipmentGenerator(new SystemRandomSource(), _catalog);
@@ -111,6 +114,8 @@ namespace ImmortalLoot.UI
             _login = FindAnyObjectByType<PrototypeLoginController>();
             if (equipLatestButton != null) equipLatestButton.onClick.AddListener(EquipLatest);
             RefreshProgressDisplay();
+            _validationTelemetry.TrackOnce("session_started", _pacing.ElapsedSeconds, _stageNumber, _power);
+            _validationTelemetry.TrackOnce("battle_visible", _pacing.ElapsedSeconds, _stageNumber, _power);
             if (guideText != null)
             {
                 if (!string.IsNullOrEmpty(_saveLoadWarning)) guideText.text = _saveLoadWarning;
@@ -181,7 +186,12 @@ namespace ImmortalLoot.UI
                     var item = row == null || string.IsNullOrEmpty(row.instanceJson) ? null : JsonUtility.FromJson<ServerEquipmentDto>(row.instanceJson);
                     lootText.text = FormatServerLoot(item, row) + $"\n\n服务器奖励：经验 +{finished.rewardExp:N0} · 灵砂 +{finished.rewardSoftCurrency:N0}";
                     _kills++;
-                    if (_stageNumber == 10 && guideText != null) guideText.text = "服务器 Boss 已击败：可领取挂机收益并准备境界突破";
+                    _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, _stageNumber, _power, row?.quality ?? string.Empty);
+                    if (_stageNumber == 10)
+                    {
+                        _validationTelemetry.TrackOnce("first_boss_defeated", _pacing.ElapsedSeconds, _stageNumber, _power, row?.quality ?? string.Empty);
+                        if (guideText != null) guideText.text = "服务器 Boss 已击败：可领取挂机收益并准备境界突破";
+                    }
                     await RefreshServerProfile();
                 }
                 catch (Exception exception) { if (guideText != null) guideText.text = "服务器战斗结算失败：" + exception.Message; }
@@ -200,9 +210,14 @@ namespace ImmortalLoot.UI
             if (_inventory.State.Equipment.Count >= _inventory.State.EquipmentCapacity)
                 _inventory.RemoveEquipment(_inventory.State.Equipment[0].InstanceId, out _);
             _inventory.AddEquipment(_latestLoot);
+            _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString());
             lootText.text = FormatLoot(_latestLoot) + "\n\n点击“穿戴最新装备”提升战力";
             lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
-            if (_stageNumber == 10 && guideText != null) guideText.text = "Boss 已击败：可领取挂机收益并准备境界突破";
+            if (_stageNumber == 10)
+            {
+                _validationTelemetry.TrackOnce("first_boss_defeated", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString());
+                if (guideText != null) guideText.text = "Boss 已击败：可领取挂机收益并准备境界突破";
+            }
             RefreshProgressDisplay();
             SaveProgress();
             Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
@@ -215,8 +230,10 @@ namespace ImmortalLoot.UI
                 if (string.IsNullOrEmpty(_serverLatestInstanceId)) { if (guideText != null) guideText.text = "尚无服务器装备，先完成一场在线战斗。"; return; }
                 try
                 {
+                    var serverPowerBefore = _power;
                     var result = ImmortalLootApiClient.Parse<EquipResultDto>(await _login.ApiClient.EquipAsync(_serverLatestInstanceId));
                     await RefreshServerProfile();
+                    _validationTelemetry.TrackOnce("first_equipment_equipped", _pacing.ElapsedSeconds, _stageNumber, _power, value: Math.Max(0, _power - serverPowerBefore));
                     if (guideText != null) guideText.text = $"服务器装备成功：{result.slot}{(result.replaced ? "，已替换旧装备" : string.Empty)}";
                 }
                 catch (Exception exception) { if (guideText != null) guideText.text = "服务器穿戴失败：" + exception.Message; }
@@ -226,6 +243,7 @@ namespace ImmortalLoot.UI
             var before = _power;
             _loadout.Equip(_latestLoot);
             RefreshProgressDisplay();
+            _validationTelemetry.TrackOnce("first_equipment_equipped", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString(), Math.Max(0, _power - before));
             StartCoroutine(FlashPowerGain());
             SaveProgress();
             if (guideText != null) guideText.text = $"装备成功，战力 {before} → {_power}。继续推图挑战 1-10 Boss";
@@ -388,6 +406,7 @@ namespace ImmortalLoot.UI
                     _buildIndex = (_buildIndex + 1) % 3;
                     EquipBuild(_buildIndex);
                     RefreshProgressDisplay();
+                    _validationTelemetry.TrackOnce("first_realm_breakthrough", _pacing.ElapsedSeconds, _stageNumber, _power, value: _realmStage);
                     return $"境界突破至 {_realmStage} 阶\n已学习并装备 {BuildName()}\n主修：{PrimaryMethodName()} · 辅修：{AuxiliaryMethodName()}\n统一属性服务重算战力 {_power}";
                 case "SpiritualRootPage":
                     _spiritualRootPoints++;
@@ -419,6 +438,11 @@ namespace ImmortalLoot.UI
                     return $"声音：{(_settings.SoundEnabled ? "开启" : "关闭")}\n震动：{(_settings.VibrationEnabled ? "开启" : "关闭")}\n再次点击依次切换声音与震动\n隐私政策 / 用户协议：发布前由渠道主体确认";
                 default: return "功能已就绪。";
             }
+        }
+
+        public void RecordShopExposure()
+        {
+            if (CommercialUnlocked) _validationTelemetry?.TrackOnce("shop_exposed", _pacing?.ElapsedSeconds ?? 0f, _stageNumber, _power);
         }
 
         private string BuildName() => _buildIndex == 0 ? "火修燃烧" : _buildIndex == 1 ? "雷修暴击" : "血修吸血";
@@ -459,6 +483,7 @@ namespace ImmortalLoot.UI
         private async System.Threading.Tasks.Task RefreshServerProfile()
         {
             var profile = ImmortalLootApiClient.Parse<PlayerProfileDto>(await _login.ApiClient.GetProfileAsync());
+            _power = Math.Max(0, profile.power);
             if (profileText != null) profileText.text = $"{profile.nickname}  Lv.{profile.level}\n战力 {profile.power:N0}";
             if (currencyText != null) currencyText.text = $"灵砂 {profile.softCurrency:N0}    仙晶 {profile.premiumCurrency:N0}";
         }

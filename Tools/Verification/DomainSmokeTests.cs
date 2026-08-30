@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using ImmortalLoot.Battle;
+using ImmortalLoot.Analytics;
 using ImmortalLoot.Config;
 using ImmortalLoot.Core;
 using ImmortalLoot.Equipment;
@@ -12,6 +13,7 @@ internal static class DomainSmokeTests
         try
         {
             VerifyBattle();
+            VerifyValidationTelemetry();
             VerifyTenThousandEquipmentItems();
             Console.WriteLine("PASS: all domain smoke tests completed.");
             return 0;
@@ -34,6 +36,17 @@ internal static class DomainSmokeTests
         for (var i = 0; i < 10 && battle.State == BattleState.Running; i++) battle.Tick(0.25f);
         Require(!battle.Enemy.IsAlive, "enemy should be defeated automatically");
         Require(defeatedCount == 1, "victory event must fire exactly once");
+    }
+
+    private static void VerifyValidationTelemetry()
+    {
+        var sink = new MemoryValidationSink();
+        var tracker = new ValidationFunnelTracker(sink, "verification-session", () => new DateTime(2026, 8, 30, 0, 0, 0, DateTimeKind.Utc));
+        tracker.TrackOnce("first_equipment_drop", 42.5, 3, 120, "Rare", 18);
+        tracker.TrackOnce("first_equipment_drop", 99, 9, 999, "Mythic", 800);
+        Require(sink.Events.Count == 1, "funnel milestone must be emitted once per session");
+        Require(sink.Events[0].sessionId == "verification-session", "funnel event must carry its correlation session");
+        Require(sink.Events[0].elapsedSeconds == 42.5 && sink.Events[0].itemQuality == "Rare", "funnel event fields must remain structured");
     }
 
     private static void VerifyTenThousandEquipmentItems()
@@ -118,4 +131,16 @@ internal static class DomainSmokeTests
         public int Range(int minInclusive, int maxExclusive) => minInclusive;
         public float Value() => 0.99f;
     }
+
+    private sealed class MemoryValidationSink : IValidationEventSink
+    {
+        public readonly List<ValidationEvent> Events = new List<ValidationEvent>();
+        public void Write(ValidationEvent value) => Events.Add(value);
+    }
+}
+
+namespace UnityEngine
+{
+    internal static class JsonUtility { public static string ToJson(object value) => "{}"; }
+    internal static class Debug { public static void LogWarning(object value) { } }
 }
