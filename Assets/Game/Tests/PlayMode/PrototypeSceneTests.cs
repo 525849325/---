@@ -14,6 +14,7 @@ using ImmortalLoot.Equipment;
 using ImmortalLoot.Battle;
 using ImmortalLoot.Cultivation;
 using ImmortalLoot.SpiritualRoot;
+using ImmortalLoot.Analytics;
 using System.IO;
 
 namespace ImmortalLoot.Tests.PlayMode
@@ -22,6 +23,8 @@ namespace ImmortalLoot.Tests.PlayMode
     {
         private string _saveDirectory;
         private System.IDisposable _saveOverride;
+        private RecordingValidationSink _validationSink;
+        private System.IDisposable _validationOverride;
 
         [OneTimeSetUp]
         public void UseTemporarySaveRepository()
@@ -29,6 +32,8 @@ namespace ImmortalLoot.Tests.PlayMode
             _saveDirectory = Path.Combine(Path.GetTempPath(), "immortal-loot-playmode-" + System.Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_saveDirectory);
             _saveOverride = JsonPlayerSaveRepository.OverrideDefaultPathForTests(Path.Combine(_saveDirectory, "save.json"));
+            _validationSink = new RecordingValidationSink();
+            _validationOverride = PrototypeGameController.OverrideValidationSinkForTests(_validationSink);
         }
 
         [OneTimeTearDown]
@@ -36,9 +41,68 @@ namespace ImmortalLoot.Tests.PlayMode
         {
             foreach (var controller in Object.FindObjectsByType<PrototypeGameController>(FindObjectsInactive.Include))
                 Object.DestroyImmediate(controller.gameObject);
+            _validationOverride?.Dispose();
             _saveOverride?.Dispose();
             if (!string.IsNullOrEmpty(_saveDirectory) && Directory.Exists(_saveDirectory))
                 Directory.Delete(_saveDirectory, recursive: true);
+        }
+
+        [UnityTest]
+        public IEnumerator LoginPage_BlocksGameplayUntilOfflineEntry()
+        {
+            DeleteLocalSave();
+            _validationSink.Events.Clear();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            controller.SetPacingSpeedForTests(240f);
+            var pacingBeforeWait = controller.PacingElapsedSecondsForTests;
+
+            var wait = 0.35f;
+            while (wait > 0f)
+            {
+                wait -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            Assert.That(controller.PacingElapsedSecondsForTests, Is.EqualTo(pacingBeforeWait).Within(0.01d),
+                "Pacing must not advance behind the login page.");
+            Assert.That(controller.LatestLoot, Is.Null, "Hidden gameplay must not generate loot before entry.");
+            Assert.That(controller.GameplayActive, Is.False);
+            Assert.That(controller.HasActiveBattleForTests, Is.False, "No encounter may be created behind the login page.");
+            Assert.That(controller.SaveOperationCountForTests, Is.Zero, "Waiting at login must not checkpoint or consume offline time.");
+            Assert.That(_validationSink.Events, Is.Empty, "Gameplay funnel events must wait for actual entry.");
+            Assert.That(FindIncludingInactive("LoginPage").activeSelf, Is.True);
+            Assert.That(FindIncludingInactive("BattlePage").activeSelf, Is.False);
+
+            GameObject.Find("EnterGameButton").GetComponent<Button>().onClick.Invoke();
+            Assert.That(controller.GameplayActive, Is.True);
+            Assert.That(controller.ServerGameplayActive, Is.False);
+            Assert.That(controller.HasActiveBattleForTests, Is.True);
+            Assert.That(FindIncludingInactive("LoginPage").activeSelf, Is.False);
+            Assert.That(FindIncludingInactive("BattlePage").activeSelf, Is.True);
+            Assert.That(_validationSink.Events.ConvertAll(value => value.eventName),
+                Is.EqualTo(new[] { "session_started", "battle_visible" }));
+            Assert.That(controller.TryEnterOfflineGameplay(), Is.False, "Repeated entry must be idempotent.");
+            Assert.That(_validationSink.Events, Has.Count.EqualTo(2));
+            var timeout = 2f;
+            while (timeout > 0f && controller.PacingElapsedSecondsForTests <= pacingBeforeWait)
+            {
+                timeout -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+            Assert.That(controller.PacingElapsedSecondsForTests, Is.GreaterThan(pacingBeforeWait),
+                "The same production entry button must activate gameplay.");
+
+            var lateClient = new ImmortalLootApiClient(new ServerLoopTransport());
+            var lateLogin = lateClient.LoginAsync("late-server-after-offline", "迟到认证");
+            while (!lateLogin.IsCompleted) yield return null;
+            Assert.That(lateLogin.Exception, Is.Null);
+            var login = Object.FindAnyObjectByType<PrototypeLoginController>();
+            Assert.Throws<System.InvalidOperationException>(() => login.UseAuthenticatedClientForTests(
+                lateClient, CreateServerProfile(), CreateServerInventory()));
+            Assert.That(controller.ServerGameplayActive, Is.False,
+                "A completed offline session must never switch authority mode because of a late token.");
         }
 
         [UnityTest]
@@ -152,7 +216,151 @@ namespace ImmortalLoot.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator ServerMode_WindowlessVictoryAdvancesBeforeRewardWindowSynchronizesLoot()
+        public IEnumerator ServerMode_NeverMutatesLocalSave()
+        {
+            DeleteLocalSave();
+            JsonPlayerSaveRepository.CreateDefault().Save(new PlayerSaveSnapshot
+            {
+                SoftCurrency = 100,
+                LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.AddHours(-2).ToUnixTimeSeconds(),
+                InventoryJson = JsonUtility.ToJson(new InventoryState { EquipmentCapacity = 120 })
+            });
+            var saveBeforeServerEntry = File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath);
+            PrototypeGameController.PauseNextBattleForTests();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(controller.GameplayActive, Is.False);
+            Assert.That(controller.SoftCurrencyForTests, Is.Zero,
+                "The login screen must not load the offline snapshot before the player chooses offline mode.");
+
+            var transport = new ServerLoopTransport();
+            var client = new ImmortalLootApiClient(transport);
+            var loginTask = client.LoginAsync("server-entry-no-local-afk", "在线修士");
+            while (!loginTask.IsCompleted) yield return null;
+            Assert.That(loginTask.Exception, Is.Null);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
+                client, CreateServerProfile(), CreateServerInventory());
+
+            Assert.That(controller.GameplayActive, Is.True);
+            Assert.That(controller.ServerGameplayActive, Is.True);
+            Assert.That(File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath), Is.EqualTo(saveBeforeServerEntry),
+                "Server entry must leave the complete offline save byte-for-byte unchanged.");
+
+            controller.PauseApplicationForTests();
+            Assert.That(File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath), Is.EqualTo(saveBeforeServerEntry),
+                "Pausing a server session must not consume the local offline window.");
+            controller.SaveForTests();
+            Assert.That(File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath), Is.EqualTo(saveBeforeServerEntry),
+                "An explicit checkpoint in server mode must not overwrite the offline save.");
+
+            controller.ResolveCurrentBattleForTests();
+            var timeout = 2f;
+            while (timeout > 0f && transport.FinishRequestBodies.Count < 1) { timeout -= Time.deltaTime; yield return null; }
+            Assert.That(transport.FinishRequestBodies, Has.Count.EqualTo(1));
+            Assert.That(File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath), Is.EqualTo(saveBeforeServerEntry),
+                "A confirmed authoritative settlement must not mirror into the offline save.");
+            Assert.That(controller.SaveOperationCountForTests, Is.Zero,
+                "No local repository write is allowed during a server-authoritative session.");
+            Assert.That(controller.TryEnterOfflineGameplay(), Is.False);
+            Assert.That(controller.ServerGameplayActive, Is.True, "Authority mode must remain fixed for the session.");
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator FreshServerAccount_IgnoresAdvancedLocalStageAndPacing()
+        {
+            DeleteLocalSave();
+            var localProgress = new PlayerProgressState { CurrentStageId = "stage_1_7" };
+            for (var stage = 1; stage <= 6; stage++) localProgress.Stage.ClearedStageIds.Add("stage_1_" + stage);
+            SaveSeededProgress(localProgress, elapsedSeconds: 600d);
+            var saveBeforeServerEntry = File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath);
+
+            PrototypeGameController.PauseNextBattleForTests();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var transport = new ServerLoopTransport(requiredStartStageId: "stage_1_1");
+            var client = new ImmortalLootApiClient(transport);
+            var loginTask = client.LoginAsync("fresh-server-ignores-local", "在线修士");
+            while (!loginTask.IsCompleted) yield return null;
+            Assert.That(loginTask.Exception, Is.Null);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
+                client, CreateServerProfile(), CreateServerInventory());
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+
+            Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_1"),
+                "A fresh server account must start from the server-authoritative stage, not local stage 1-7.");
+            Assert.That(controller.PacingElapsedSecondsForTests, Is.EqualTo(0d),
+                "Server reward pacing must start from a fresh server session, not the offline clock.");
+            controller.ResolveCurrentBattleForTests();
+            var timeout = 2f;
+            while (timeout > 0f && transport.FinishRequestBodies.Count < 1) { timeout -= Time.deltaTime; yield return null; }
+
+            Assert.That(transport.BattleStartStageIds, Is.EqualTo(new[] { "stage_1_1" }));
+            Assert.That(transport.FinishRequestBodies, Has.Count.EqualTo(1),
+                "The authoritative stage should settle instead of looping on a locked local stage.");
+            Assert.That(File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath), Is.EqualTo(saveBeforeServerEntry));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator InvalidServerProfile_StaysAtLoginAndPreservesOfflineSave()
+        {
+            DeleteLocalSave();
+            SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_4" }, elapsedSeconds: 180d);
+            var saveBeforeEntry = File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath);
+            SceneManager.LoadScene("Main");
+            yield return null;
+
+            var client = new ImmortalLootApiClient(new ServerLoopTransport());
+            var loginTask = client.LoginAsync("invalid-server-profile", "在线修士");
+            while (!loginTask.IsCompleted) yield return null;
+            Assert.That(loginTask.Exception, Is.Null);
+            var login = Object.FindAnyObjectByType<PrototypeLoginController>();
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("SERVER_ENTRY_REJECTED:"));
+            login.UseAuthenticatedClientForTests(
+                client, CreateServerProfile("stage_missing"), CreateServerInventory());
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+
+            Assert.That(controller.GameplayActive, Is.False);
+            Assert.That(controller.HasActiveBattleForTests, Is.False);
+            Assert.That(login.CanEnterOffline, Is.True, "A rejected server snapshot must leave both retry and offline entry available.");
+            Assert.That(FindIncludingInactive("LoginPage").activeSelf, Is.True);
+            Assert.That(File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath), Is.EqualTo(saveBeforeEntry));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator ExistingServerProgress_AdvancesFromAuthoritativeStageWithoutLocalClock()
+        {
+            DeleteLocalSave();
+            SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_1" }, elapsedSeconds: 0d);
+            PrototypeGameController.PauseNextBattleForTests();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var transport = new ServerLoopTransport(requiredStartStageId: "stage_1_7");
+            var client = new ImmortalLootApiClient(transport);
+            var loginTask = client.LoginAsync("existing-server-progress", "在线修士");
+            while (!loginTask.IsCompleted) yield return null;
+            Assert.That(loginTask.Exception, Is.Null);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
+                client, CreateServerProfile("stage_1_7", ClearedStages(6)), CreateServerInventory());
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+
+            Assert.That(controller.PacingElapsedSecondsForTests, Is.Zero);
+            Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_7"));
+            controller.ResolveCurrentBattleForTests();
+            var timeout = 2f;
+            while (timeout > 0f && transport.FinishRequestBodies.Count < 1) { timeout -= Time.deltaTime; yield return null; }
+
+            Assert.That(transport.BattleStartStageIds, Is.EqualTo(new[] { "stage_1_7" }));
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_8"),
+                "The server lock check, not the local demo clock, owns online stage advancement.");
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator ServerMode_ClientPacingCannotAuthorizeNormalRewards()
         {
             DeleteLocalSave();
             PrototypeGameController.PauseNextBattleForTests();
@@ -163,8 +371,11 @@ namespace ImmortalLoot.Tests.PlayMode
             var loginTask = client.LoginAsync("playmode-server", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
-            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(client);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
+                client, CreateServerProfile(), CreateServerInventory());
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(controller.GameplayActive, Is.True);
+            Assert.That(controller.ServerGameplayActive, Is.True, "Authentication must commit a fixed server-authoritative session.");
             var loot = GameObject.Find("Loot").GetComponent<Text>();
 
             controller.AdvancePacingForTests(20d);
@@ -175,7 +386,7 @@ namespace ImmortalLoot.Tests.PlayMode
 
             Assert.That(transport.FinishRequestBodies[0], Does.Contain("\"RewardWindowEligible\""), "New clients must send the additive reward-window flag explicitly.");
             Assert.That(transport.FinishRewardWindowEligibility[0], Is.False);
-            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_1"), "A windowless authenticated victory must still be recorded locally after server settlement.");
+            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_1"), "A windowless authenticated victory must still advance the in-memory server mirror.");
             Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_2"), "A windowless victory may advance when the time gate is open.");
             Assert.That(controller.ServerLatestInstanceIdForTests, Is.Empty);
             Assert.That(transport.Paths, Does.Not.Contain("/player/inventory"), "A zero-equipment response must not trigger a fake inventory lookup.");
@@ -187,31 +398,17 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(controller.PendingRewardWindowsForTests, Is.EqualTo(1));
             controller.ResolveCurrentBattleForTests();
             timeout = 2f;
-            while (timeout > 0f && (transport.FinishRewardWindowEligibility.Count < 2 || !loot.text.Contains("服务器掉落"))) { timeout -= Time.deltaTime; yield return null; }
+            while (timeout > 0f && transport.FinishRewardWindowEligibility.Count < 2) { timeout -= Time.deltaTime; yield return null; }
 
-            Assert.That(transport.FinishRewardWindowEligibility[1], Is.True);
-            Assert.That(controller.PendingRewardWindowsForTests, Is.Zero, "A reward window is consumed only after the rewarded finish succeeds.");
-            Assert.That(loot.text, Does.Contain("[Rare] gloves_starseal"));
-            Assert.That(loot.text, Does.Contain("affix_attack"));
+            Assert.That(transport.FinishRewardWindowEligibility[1], Is.False,
+                "Until the server owns a persisted reward clock, client pacing must never authorize a normal-stage reward.");
+            Assert.That(controller.PendingRewardWindowsForTests, Is.Zero,
+                "The unsupported client-side window is explicitly consumed after a confirmed windowless settlement.");
             Assert.That(transport.Paths, Does.Contain("/battle/start"));
             Assert.That(transport.Paths, Does.Contain("/battle/finish"));
-            Assert.That(transport.Paths, Does.Contain("/player/inventory"));
-            Assert.That(controller.ServerLatestInstanceIdForTests, Is.EqualTo("equip-online"));
-
-            var rewardedLootText = loot.text;
-            controller.RespawnCurrentBattleForTests();
-            controller.ResolveCurrentBattleForTests();
-            timeout = 2f;
-            while (timeout > 0f && transport.FinishRewardWindowEligibility.Count < 3) { timeout -= Time.deltaTime; yield return null; }
-            Assert.That(transport.FinishRewardWindowEligibility[2], Is.False);
-            Assert.That(controller.ServerLatestInstanceIdForTests, Is.EqualTo("equip-online"), "A later windowless finish must not clear the last real server equipment.");
-            Assert.That(loot.text, Is.EqualTo(rewardedLootText), "A windowless finish must not fabricate or replace equipment copy.");
-
-            GameObject.Find("EquipLatestButton").GetComponent<Button>().onClick.Invoke();
-            timeout = 2f;
-            while (timeout > 0f && !transport.Paths.Contains("/equipment/equip")) { timeout -= Time.deltaTime; yield return null; }
-            Assert.That(transport.Paths, Does.Contain("/equipment/equip"));
-            Assert.That(GameObject.Find("Profile").GetComponent<Text>().text, Does.Contain("战力 180"));
+            Assert.That(transport.Paths, Does.Not.Contain("/player/inventory"));
+            Assert.That(controller.ServerLatestInstanceIdForTests, Is.Empty);
+            Assert.That(loot.text, Does.Not.Contain("服务器掉落"));
             DeleteLocalSave();
         }
 
@@ -219,7 +416,7 @@ namespace ImmortalLoot.Tests.PlayMode
         public IEnumerator ServerBossWithoutPendingWindowStillRequestsAuthoritativeReward()
         {
             DeleteLocalSave();
-            SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_10" });
+            SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_1" });
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
@@ -228,7 +425,8 @@ namespace ImmortalLoot.Tests.PlayMode
             var loginTask = client.LoginAsync("playmode-server-boss", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
-            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(client);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
+                client, CreateServerProfile("stage_1_10", ClearedStages(9)), CreateServerInventory());
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
             Assert.That(controller.PendingRewardWindowsForTests, Is.Zero);
 
@@ -240,6 +438,8 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(controller.PendingRewardWindowsForTests, Is.Zero);
             Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"));
             Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_10"));
+            Assert.That(controller.ServerLatestInstanceIdForTests, Is.EqualTo("equip-online"));
+            Assert.That(GameObject.Find("Loot").GetComponent<Text>().text, Does.Contain("服务器掉落"));
             DeleteLocalSave();
         }
 
@@ -255,7 +455,8 @@ namespace ImmortalLoot.Tests.PlayMode
             var loginTask = client.LoginAsync("playmode-server-failure", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
-            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(client);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
+                client, CreateServerProfile(), CreateServerInventory());
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
 
             controller.AdvancePacingForTests(60d);
@@ -265,7 +466,8 @@ namespace ImmortalLoot.Tests.PlayMode
             while (timeout > 0f && transport.FinishRewardWindowEligibility.Count < 1) { timeout -= Time.deltaTime; yield return null; }
 
             Assert.That(transport.Paths, Does.Contain("/battle/finish"));
-            Assert.That(transport.FinishRewardWindowEligibility[0], Is.True, "The failed request must exercise the rewarded finish path.");
+            Assert.That(transport.FinishRewardWindowEligibility[0], Is.False,
+                "A failed normal-stage request must still carry the fail-closed reward decision.");
             Assert.That(controller.PendingRewardWindowsForTests, Is.EqualTo(1), "A failed finish must retain its pending reward window for retry.");
             Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"));
             Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Not.Contain("stage_1_1"));
@@ -287,7 +489,8 @@ namespace ImmortalLoot.Tests.PlayMode
             var loginTask = client.LoginAsync("playmode-server-response-loss", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
-            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(client);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
+                client, CreateServerProfile(), CreateServerInventory());
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
             controller.AdvancePacingForTests(60d);
 
@@ -338,7 +541,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var restored = Object.FindAnyObjectByType<PrototypeGameController>();
+            var restored = EnterOfflineGameplay();
             Assert.That(restored.Power, Is.EqualTo(savedPower));
             Assert.That(restored.StageNumber, Is.EqualTo(savedStage));
             DeleteLocalSave();
@@ -379,7 +582,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var restored = Object.FindAnyObjectByType<PrototypeGameController>();
+            var restored = EnterOfflineGameplay();
             var after = restored.ProgressForTests;
             Assert.That(after.CurrentStageId, Is.EqualTo(before.CurrentStageId));
             Assert.That(after.Stage.ClearedStageIds, Is.EquivalentTo(before.Stage.ClearedStageIds));
@@ -408,7 +611,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var controller = EnterOfflineGameplay();
             Assert.That(controller.StageNumber, Is.EqualTo(7));
             Assert.That(controller.PacingElapsedSecondsForTests, Is.LessThan(1d),
                 "Restoring stage 7 must not move pacing time into a synthetic stage band.");
@@ -425,7 +628,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            Assert.That(Object.FindAnyObjectByType<PrototypeGameController>().StageNumber, Is.EqualTo(7));
+            Assert.That(EnterOfflineGameplay().StageNumber, Is.EqualTo(7));
             DeleteLocalSave();
         }
 
@@ -436,7 +639,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var controller = EnterOfflineGameplay();
             var experienceBefore = controller.ExperienceForTests;
             var softCurrencyBefore = controller.SoftCurrencyForTests;
             var premiumCurrencyBefore = controller.PremiumCurrencyForTests;
@@ -461,7 +664,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var controller = EnterOfflineGameplay();
             var savesBeforeVictory = controller.SaveOperationCountForTests;
             var experienceBefore = controller.ExperienceForTests;
             var softCurrencyBefore = controller.SoftCurrencyForTests;
@@ -490,7 +693,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var controller = EnterOfflineGameplay();
             Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_1"));
             var experienceBefore = controller.ExperienceForTests;
             var softCurrencyBefore = controller.SoftCurrencyForTests;
@@ -533,7 +736,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var controller = EnterOfflineGameplay();
             var experienceBefore = controller.ExperienceForTests;
             var softCurrencyBefore = controller.SoftCurrencyForTests;
             controller.AdvancePacingForTests(60d);
@@ -555,7 +758,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var controller = EnterOfflineGameplay();
 
             controller.RecordDefeatForTests();
 
@@ -573,7 +776,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var controller = EnterOfflineGameplay();
             Assert.That(controller.PendingRewardWindowsForTests, Is.Zero);
             Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_10"));
             var configuredExperienceBefore = controller.ConfiguredStageExperienceGrantedForTests;
@@ -606,7 +809,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var partial = Object.FindAnyObjectByType<PrototypeGameController>();
+            var partial = EnterOfflineGameplay();
             Assert.That(partial.ProgressForTests.Cultivation.PrimaryMethodId, Is.Empty);
             Assert.That(partial.ExecutePageAction("CultivationPage"), Does.Contain("安全未装配"));
             Assert.That(partial.ProgressForTests.Cultivation.PrimaryMethodId, Is.Empty);
@@ -623,7 +826,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var primaryOnly = Object.FindAnyObjectByType<PrototypeGameController>();
+            var primaryOnly = EnterOfflineGameplay();
             Assert.That(primaryOnly.ProgressForTests.Cultivation.PrimaryMethodId, Is.EqualTo("method_cinder_scripture"));
             Assert.That(primaryOnly.ExecutePageAction("CultivationPage"), Does.Contain("保留当前功法"));
             Assert.That(primaryOnly.ProgressForTests.Cultivation.PrimaryMethodId, Is.EqualTo("method_cinder_scripture"));
@@ -645,7 +848,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var doubleAuxiliary = Object.FindAnyObjectByType<PrototypeGameController>();
+            var doubleAuxiliary = EnterOfflineGameplay();
             Assert.That(doubleAuxiliary.ExecutePageAction("CultivationPage"), Does.Contain("雷修暴击"));
             var restored = doubleAuxiliary.ProgressForTests.Cultivation;
             Assert.That(restored.PrimaryMethodId, Is.EqualTo("method_thunder_pulse"));
@@ -674,7 +877,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var controller = EnterOfflineGameplay();
             var powerBefore = controller.Power;
             Assert.That(controller.ExecutePageAction("SpiritualRootPage"), Does.Contain("已达上限"));
             Assert.That(controller.ProgressForTests.SpiritualRoots.Roots.Find(value => value != null && value.RootId == "root_fire")?.Level,
@@ -757,7 +960,7 @@ namespace ImmortalLoot.Tests.PlayMode
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var restored = Object.FindAnyObjectByType<PrototypeGameController>();
+            var restored = EnterOfflineGameplay();
             Assert.That(restored.LatestLoot?.InstanceId, Is.EqualTo(pendingId));
             Assert.That(restored.PendingRewardWindowsForTests, Is.Zero,
                 "Reloading must not resurrect or silently drop a different pending-window count.");
@@ -800,23 +1003,76 @@ namespace ImmortalLoot.Tests.PlayMode
                 LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.AddHours(-2).ToUnixTimeSeconds(),
                 InventoryJson = JsonUtility.ToJson(new InventoryState { EquipmentCapacity = 120 })
             });
+            var saveBeforeEntry = File.ReadAllText(JsonPlayerSaveRepository.DefaultPath);
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
+            var waitingController = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(GameObject.Find("Currencies").GetComponent<Text>().text, Does.Not.Contain("灵砂 100 "),
+                "The login screen must not read or expose the offline snapshot before explicit offline entry.");
+            waitingController.PauseApplicationForTests();
+            Assert.That(File.ReadAllText(JsonPlayerSaveRepository.DefaultPath), Is.EqualTo(saveBeforeEntry),
+                "Pausing on login must not rewrite LastActive or consume the offline window.");
+
+            var activeController = EnterOfflineGameplay();
             var firstClaimCurrency = GameObject.Find("Currencies").GetComponent<Text>().text;
             Assert.That(firstClaimCurrency, Does.Not.Contain("灵砂 100 "));
-            Object.FindAnyObjectByType<PrototypeGameController>().SaveForTests();
+            activeController.SaveForTests();
 
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            Assert.That(GameObject.Find("Currencies").GetComponent<Text>().text, Is.EqualTo(firstClaimCurrency));
+            Assert.That(GameObject.Find("Currencies").GetComponent<Text>().text, Is.Not.EqualTo(firstClaimCurrency),
+                "The login screen must stay on its neutral baseline until offline entry is chosen again.");
+            EnterOfflineGameplay();
+            yield return null;
+            Assert.That(GameObject.Find("Currencies").GetComponent<Text>().text, Is.EqualTo(firstClaimCurrency),
+                "Re-entering after the claimed checkpoint must not grant the same offline window twice.");
             DeleteLocalSave();
         }
 
         private static void DeleteLocalSave()
         {
             if (File.Exists(JsonPlayerSaveRepository.DefaultPath)) File.Delete(JsonPlayerSaveRepository.DefaultPath);
+        }
+
+        private static PrototypeGameController EnterOfflineGameplay()
+        {
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var enter = GameObject.Find("EnterGameButton")?.GetComponent<Button>();
+            Assert.That(controller, Is.Not.Null);
+            Assert.That(enter, Is.Not.Null, "Offline gameplay tests must use the production entry button.");
+            enter.onClick.Invoke();
+            Assert.That(controller.GameplayActive, Is.True);
+            Assert.That(controller.ServerGameplayActive, Is.False);
+            return controller;
+        }
+
+        private static PlayerProfileDto CreateServerProfile(string currentStageId = "stage_1_1", string[] clearedStageIds = null) =>
+            new PlayerProfileDto
+            {
+                playerId = "p1",
+                nickname = "在线修士",
+                level = 1,
+                realmId = "realm_body_tempering",
+                realmStage = 1,
+                power = 180,
+                currentStageId = currentStageId,
+                clearedStageIds = clearedStageIds ?? System.Array.Empty<string>(),
+                spiritualRoots = System.Array.Empty<SpiritualRootProfileDto>()
+            };
+
+        private static InventoryDto CreateServerInventory() => new InventoryDto
+        {
+            items = System.Array.Empty<InventoryItemDto>(),
+            equipment = System.Array.Empty<EquipmentItemDto>()
+        };
+
+        private static string[] ClearedStages(int count)
+        {
+            var stages = new string[count];
+            for (var index = 0; index < count; index++) stages[index] = "stage_1_" + (index + 1);
+            return stages;
         }
 
         private static void SaveSeededProgress(PlayerProgressState progress, double elapsedSeconds = 0d)
@@ -837,6 +1093,12 @@ namespace ImmortalLoot.Tests.PlayMode
             return null;
         }
 
+        private sealed class RecordingValidationSink : IValidationEventSink
+        {
+            public readonly List<ValidationEvent> Events = new List<ValidationEvent>();
+            public void Write(ValidationEvent value) => Events.Add(value);
+        }
+
         private sealed class ServerLoopTransport : IApiTransport
         {
             public readonly List<string> Paths = new List<string>();
@@ -844,20 +1106,26 @@ namespace ImmortalLoot.Tests.PlayMode
             public readonly List<bool> FinishRewardWindowEligibility = new List<bool>();
             public readonly List<string> FinishSessionIds = new List<string>();
             public readonly List<string> FinishIdempotencyKeys = new List<string>();
+            public readonly List<string> BattleStartStageIds = new List<string>();
             public int BattleStartCount { get; private set; }
             public int AuthoritativeFinishGrantCount { get; private set; }
             private readonly bool _failBattleFinish;
             private readonly bool _loseFirstFinishResponseAfterCommit;
+            private readonly string _requiredStartStageId;
             private bool _hasSuccessfulFinish;
             private bool _hasRewardedFinish;
             private bool _lostFirstFinishResponse;
             private string _currentSessionId = string.Empty;
             private readonly Dictionary<string, bool> _committedFinishEligibility = new Dictionary<string, bool>();
 
-            public ServerLoopTransport(bool failBattleFinish = false, bool loseFirstFinishResponseAfterCommit = false)
+            public ServerLoopTransport(
+                bool failBattleFinish = false,
+                bool loseFirstFinishResponseAfterCommit = false,
+                string requiredStartStageId = "")
             {
                 _failBattleFinish = failBattleFinish;
                 _loseFirstFinishResponseAfterCommit = loseFirstFinishResponseAfterCommit;
+                _requiredStartStageId = requiredStartStageId ?? string.Empty;
             }
 
             public Task<ApiResponse> SendAsync(ApiRequest request)
@@ -898,6 +1166,9 @@ namespace ImmortalLoot.Tests.PlayMode
                         BattleStartCount++;
                         _currentSessionId = System.Guid.NewGuid().ToString();
                         var start = JsonUtility.FromJson<BattleStartCapture>(request.JsonBody);
+                        BattleStartStageIds.Add(start?.StageId ?? string.Empty);
+                        if (_requiredStartStageId.Length > 0 && start?.StageId != _requiredStartStageId)
+                            return Task.FromResult(new ApiResponse(409, "{\"error\":\"Stage is locked.\"}"));
                         json = "{\"sessionId\":\"" + _currentSessionId + "\",\"stageId\":\"" + (start?.StageId ?? string.Empty) + "\",\"status\":\"Started\"}";
                         break;
                     case "/battle/finish":
@@ -910,7 +1181,8 @@ namespace ImmortalLoot.Tests.PlayMode
                     case "/player/profile":
                         json = "{\"playerId\":\"p1\",\"nickname\":\"在线修士\",\"level\":1,\"exp\":" + (_hasRewardedFinish ? 25 : 0) +
                                ",\"realmId\":\"realm_body_tempering\",\"realmStage\":1,\"power\":180,\"softCurrency\":" + (_hasRewardedFinish ? 10 : 0) +
-                               ",\"premiumCurrency\":" + (_hasSuccessfulFinish ? 10 : 0) + "}";
+                               ",\"premiumCurrency\":" + (_hasSuccessfulFinish ? 10 : 0) +
+                               ",\"currentStageId\":\"stage_1_1\",\"clearedStageIds\":[],\"spiritualRoots\":[]}";
                         break;
                     default: json = "{}"; break;
                 }

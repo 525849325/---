@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using ImmortalLoot.Debugging;
 using ImmortalLoot.Network;
 using ImmortalLoot.Payment;
 using UnityEngine;
@@ -14,12 +16,14 @@ namespace ImmortalLoot.UI
         private PrototypeGameController _game;
         private PrototypeLoginController _login;
         private GameObject _shopButton;
+        private Button _enterButton;
 
         private void Start()
         {
             _header = GameObject.Find("PageHeader")?.GetComponent<Text>();
             _game = FindAnyObjectByType<PrototypeGameController>();
             _login = FindAnyObjectByType<PrototypeLoginController>();
+            if (_login != null) _login.ServerAuthenticated += EnterServerGameplay;
             foreach (var rect in GetComponentsInChildren<RectTransform>(true))
                 if (rect.gameObject.CompareTag("Finish")) _pages[rect.name] = rect.gameObject;
             foreach (var button in GetComponentsInChildren<Button>(true))
@@ -30,15 +34,18 @@ namespace ImmortalLoot.UI
                 if (actionTarget.Length > 0) button.onClick.AddListener(() => Execute(actionTarget));
             }
             _shopButton = GameObject.Find("Nav_ShopPage");
-            if (_shopButton != null) _shopButton.SetActive(_game != null && _game.CommercialUnlocked);
-            if (_shopButton != null && _shopButton.activeSelf && _game != null) _game.RecordShopExposure();
-            var enter = GameObject.Find("EnterGameButton")?.GetComponent<Button>();
-            if (enter != null) enter.onClick.AddListener(() => { GameObject.Find("LoginPage")?.SetActive(false); Show("BattlePage"); });
-            Show("BattlePage");
+            if (_shopButton != null) _shopButton.SetActive(false);
+            _enterButton = GameObject.Find("EnterGameButton")?.GetComponent<Button>();
+            if (_enterButton != null) _enterButton.onClick.AddListener(EnterOfflineGameplay);
+            HideGameplayPages();
+            if (Debug.isDebugBuild && DevelopmentPlaytestOptions.AutoQuit) StartCoroutine(EnterOfflineAfterInitialization());
         }
 
         private void Update()
         {
+            if (_enterButton != null)
+                _enterButton.interactable = _game != null && !_game.GameplayActive && (_login == null || _login.CanEnterOffline);
+            if (_game == null || !_game.GameplayActive) return;
             if (_shopButton != null && !_shopButton.activeSelf && _game != null && _game.CommercialUnlocked)
             {
                 _shopButton.SetActive(true);
@@ -51,14 +58,73 @@ namespace ImmortalLoot.UI
             if (_game == null) return;
             var content = GameObject.Find(pageName + "Content")?.GetComponent<Text>();
             if (content == null) return;
-            if (_login == null || !_login.IsServerAuthenticated)
+            if (!_game.ServerGameplayActive)
             {
                 content.text = _game.ExecutePageAction(pageName);
+                return;
+            }
+            if (_login == null || !_login.IsServerAuthenticated || _login.ApiClient == null)
+            {
+                content.text = "服务器会话不可用；为保护本地进度，本次操作已取消。";
                 return;
             }
             content.text = "正在请求权威服务器……";
             try { content.text = await ExecuteServerAction(pageName, _login.ApiClient); }
             catch (Exception exception) { content.text = "服务器操作失败：" + exception.Message; }
+        }
+
+        private void EnterOfflineGameplay()
+        {
+            if (_game == null || (_login != null && !_login.TryCommitOfflineEntry())) return;
+            CompleteGameplayEntry(_game.TryEnterOfflineGameplay());
+        }
+
+        private IEnumerator EnterOfflineAfterInitialization()
+        {
+            yield return null;
+            EnterOfflineGameplay();
+        }
+
+        private void EnterServerGameplay()
+        {
+            if (_game == null) return;
+            try
+            {
+                var entered = _game.TryEnterServerGameplay();
+                if (!entered) _login?.CancelPreparedServerEntry();
+                CompleteGameplayEntry(entered);
+            }
+            catch (Exception exception)
+            {
+                _login?.CancelPreparedServerEntry();
+                var feedback = GameObject.Find("LoginFeedback")?.GetComponent<Text>();
+                if (feedback != null) feedback.text = "服务器资料加载失败，可重试或进入离线模式：" + exception.Message;
+                Debug.LogError("SERVER_ENTRY_REJECTED: " + exception);
+            }
+        }
+
+        private void CompleteGameplayEntry(bool entered)
+        {
+            if (!entered && (_game == null || !_game.GameplayActive)) return;
+            var loginPage = GameObject.Find("LoginPage");
+            if (loginPage != null) loginPage.SetActive(false);
+            Show("BattlePage");
+            if (_shopButton != null)
+            {
+                _shopButton.SetActive(_game.CommercialUnlocked);
+                if (_shopButton.activeSelf) _game.RecordShopExposure();
+            }
+        }
+
+        private void HideGameplayPages()
+        {
+            foreach (var pair in _pages) pair.Value.SetActive(false);
+            if (_header != null) _header.text = string.Empty;
+        }
+
+        private void OnDestroy()
+        {
+            if (_login != null) _login.ServerAuthenticated -= EnterServerGameplay;
         }
 
         private static async System.Threading.Tasks.Task<string> ExecuteServerAction(string pageName, ImmortalLootApiClient api)

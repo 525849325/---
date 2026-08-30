@@ -71,7 +71,7 @@ namespace ImmortalLoot.Network
     [Serializable] public sealed class RankingEntryDto { public int rank; public string playerId; public string nickname; public long score; }
     [Serializable] public sealed class RankingPageDto { public int type; public string periodKey; public int page; public int pageSize; public int total; public RankingEntryDto[] entries; public RankingEntryDto self; }
     [Serializable] public sealed class SpiritualRootProfileDto { public string rootId; public string name; public string element; public int level; public int maxLevel; }
-    [Serializable] public sealed class PlayerProfileDto { public string playerId; public string nickname; public int level; public long exp; public string realmId; public int realmStage; public long power; public long softCurrency; public long premiumCurrency; public SpiritualRootProfileDto[] spiritualRoots; }
+    [Serializable] public sealed class PlayerProfileDto { public string playerId; public string nickname; public int level; public long exp; public string realmId; public int realmStage; public long power; public long softCurrency; public long premiumCurrency; public string currentStageId; public string[] clearedStageIds; public SpiritualRootProfileDto[] spiritualRoots; }
     [Serializable] public sealed class InventoryItemDto { public string itemId; public int count; public string category; }
     [Serializable] public sealed class EquipmentItemDto { public string instanceId; public string baseId; public string slot; public int level; public string quality; public bool isLocked; public bool isEquipped; public string instanceJson; }
     [Serializable] public sealed class InventoryDto { public InventoryItemDto[] items; public EquipmentItemDto[] equipment; }

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using ImmortalLoot.Analytics;
 using ImmortalLoot.Player;
 using ImmortalLoot.UI;
 using NUnit.Framework;
@@ -29,6 +30,8 @@ namespace ImmortalLoot.Tests.PlayMode
             var savePath = Path.Combine(saveDirectory, "save.json");
             Directory.CreateDirectory(saveDirectory);
             var saveOverride = JsonPlayerSaveRepository.OverrideDefaultPathForTests(savePath);
+            var telemetryOverride = PrototypeGameController.OverrideValidationSinkForTests(
+                new JsonlValidationEventSink(Path.Combine(saveDirectory, "validation-funnel.jsonl")));
             try
             {
                 SceneManager.LoadScene("Main");
@@ -82,6 +85,7 @@ namespace ImmortalLoot.Tests.PlayMode
             {
                 var activeController = UnityEngine.Object.FindAnyObjectByType<PrototypeGameController>();
                 if (activeController != null) UnityEngine.Object.DestroyImmediate(activeController.gameObject);
+                telemetryOverride.Dispose();
                 saveOverride.Dispose();
                 if (Directory.Exists(saveDirectory)) Directory.Delete(saveDirectory, recursive: true);
             }

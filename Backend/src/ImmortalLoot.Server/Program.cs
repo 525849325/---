@@ -323,7 +323,7 @@ app.MapPost("/battle/finish", async (BattleFinishRequest request, HttpRequest ht
     {
         var playerId = await auth.ResolvePlayerAsync(httpRequest.Headers.Authorization, cancellationToken);
         if (!playerId.HasValue) return Results.Unauthorized();
-        return Results.Ok(await service.FinishAsync(playerId.Value, request.SessionId, request.IdempotencyKey, request.RewardWindowEligible ?? true, cancellationToken));
+        return Results.Ok(await service.FinishAsync(playerId.Value, request.SessionId, request.IdempotencyKey, request.RewardWindowEligible ?? false, cancellationToken));
     }
     catch (KeyNotFoundException exception) { return Results.NotFound(new { error = exception.Message }); }
     catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }

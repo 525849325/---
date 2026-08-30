@@ -47,7 +47,7 @@ namespace ImmortalLoot.Tests
             await client.FinishBattleAsync(sessionId, "windowless-finish", false);
 
             Assert.That(transport.Requests[1].JsonBody, Does.Not.Contain("RewardWindowEligible"),
-                "Legacy clients must omit the additive field so null retains rewarded semantics.");
+                "Legacy request JSON must remain wire-compatible even though the server now fails closed.");
             Assert.That(transport.Requests[2].JsonBody, Does.Contain("\"RewardWindowEligible\":false"),
                 "New clients must explicitly send a false reward-window decision.");
         }
@@ -81,6 +81,10 @@ namespace ImmortalLoot.Tests
             var parsed = ImmortalLootApiClient.Parse<AfkRewardDto>(new ApiResponse(200, "{\"effectiveSeconds\":600,\"exp\":120,\"softCurrency\":80,\"materialCount\":2,\"equipmentRolls\":2}"));
             Assert.That(parsed.effectiveSeconds, Is.EqualTo(600));
             Assert.That(parsed.equipmentRolls, Is.EqualTo(2));
+            var profile = ImmortalLootApiClient.Parse<PlayerProfileDto>(new ApiResponse(200,
+                "{\"playerId\":\"p1\",\"nickname\":\"修士\",\"currentStageId\":\"stage_1_3\",\"clearedStageIds\":[\"stage_1_1\",\"stage_1_2\"],\"spiritualRoots\":[]}"));
+            Assert.That(profile.currentStageId, Is.EqualTo("stage_1_3"));
+            Assert.That(profile.clearedStageIds, Is.EqualTo(new[] { "stage_1_1", "stage_1_2" }));
         }
 
         private sealed class FakeTransport : IApiTransport

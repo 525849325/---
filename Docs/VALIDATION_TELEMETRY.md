@@ -1,6 +1,8 @@
 # V0.1 商业验证漏斗
 
-本地验证事件写入 `Application.persistentDataPath/validation-funnel.jsonl`。每行是独立 JSON，不记录玩家 ID、昵称、设备标识、Token、订单或其他个人信息。未来接入第三方 Analytics 时替换 `IValidationEventSink`，玩法层事件契约保持不变。
+本地验证事件写入 `Application.persistentDataPath/validation-funnel-v1.jsonl`。每行是独立 JSON，不记录玩家 ID、昵称、设备标识、Token、订单或其他个人信息。未来接入第三方 Analytics 时替换 `IValidationEventSink`，玩法层事件契约保持不变。
+
+旧文件 `validation-funnel.jsonl` 已确认包含自动化红色基线产生的测试事件，文件保留作审计，但不得计入商业玩家漏斗。干净统计从 `validation-funnel-v1.jsonl` 启用后开始；EditMode/PlayMode 已改用临时或内存 sink，不再写生产漏斗文件。
 
 ## 要回答的问题
 

@@ -41,3 +41,24 @@ TestResults.xml
 Backend/.packages/
 sysinfo.txt
 crashlytics-build.properties
+
+# Local credentials, signing material, and environment overrides
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+*.der
+*.keystore
+*.jks
+*.mobileprovision
+*.provisionprofile
+*.secrets.*
+secrets.*
+!secrets.example.*
+!secrets.template.*

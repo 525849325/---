@@ -33,7 +33,7 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
     }
 
     public Task<BattleFinishResult> FinishAsync(Guid playerId, Guid sessionId, string finishIdempotencyKey, CancellationToken cancellationToken) =>
-        FinishAsync(playerId, sessionId, finishIdempotencyKey, true, cancellationToken);
+        FinishAsync(playerId, sessionId, finishIdempotencyKey, false, cancellationToken);
 
     public async Task<BattleFinishResult> FinishAsync(Guid playerId, Guid sessionId, string finishIdempotencyKey, bool rewardWindowEligible, CancellationToken cancellationToken)
     {
@@ -60,7 +60,10 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
         var effectivePower = Math.Max(player.Power, player.Level * 100L);
         if (effectivePower < stageConfig.RecommendedPower)
             throw new InvalidOperationException($"Player power {effectivePower} is below stage requirement {stageConfig.RecommendedPower}.");
-        var grantsBattleRewards = rewardWindowEligible || stageConfig.IsBossStage;
+        // Reward-window timing is not yet persisted server-side. Never trust the compatibility
+        // flag from an untrusted client; only the authoritative Boss classification can grant here.
+        _ = rewardWindowEligible;
+        var grantsBattleRewards = stageConfig.IsBossStage;
         var reward = grantsBattleRewards ? stageConfig.RewardSoftCurrency : 0;
         var expReward = grantsBattleRewards ? stageConfig.RewardExp : 0;
         if (reward > 0)

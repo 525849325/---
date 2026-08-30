@@ -33,11 +33,14 @@ Require(await auth.ResolvePlayerAsync("Bearer " + firstLogin.AccessToken, Cancel
 Require(await auth.ResolvePlayerAsync("Bearer invalid", CancellationToken.None) is null, "invalid access token was accepted");
 var profile = await new PlayerQueryService(db, catalog).GetProfileAsync(firstLogin.PlayerId, CancellationToken.None);
 Require(profile.Nickname == "云游客" && profile.Level == 1 && profile.RealmStage == 1, "default player profile was not persisted");
+Require(profile.CurrentStageId == "stage_1_1" && profile.ClearedStageIds.Count == 0, "fresh profile did not expose the authoritative first stage");
 
 var account = new Account { ExternalAccountId = "verify", Provider = "test" };
 var player = new Player { AccountId = account.Id, Nickname = "Verifier" };
 db.Accounts.Add(account);
 db.Players.Add(player);
+db.PlayerCurrencies.Add(new PlayerCurrency { PlayerId = player.Id });
+db.PlayerStats.Add(new PlayerStats { PlayerId = player.Id });
 await db.SaveChangesAsync();
 
 var equipmentDrops = new ServerEquipmentDropService(db, clock, catalog);
@@ -46,20 +49,20 @@ var firstStart = await service.StartAsync(player.Id, "stage_1_1", "start-key", C
 var repeatedStart = await service.StartAsync(player.Id, "stage_1_1", "start-key", CancellationToken.None);
 Require(firstStart.SessionId == repeatedStart.SessionId, "battle start must be idempotent");
 
-var firstFinish = await service.FinishAsync(player.Id, firstStart.SessionId, "finish-key", CancellationToken.None);
-var repeatedFinish = await service.FinishAsync(player.Id, firstStart.SessionId, "finish-key", CancellationToken.None);
+var firstFinish = await service.FinishAsync(player.Id, firstStart.SessionId, "finish-key", true, CancellationToken.None);
+var repeatedFinish = await service.FinishAsync(player.Id, firstStart.SessionId, "finish-key", true, CancellationToken.None);
 Require(!firstFinish.Replayed && repeatedFinish.Replayed, "battle finish replay state is incorrect");
-Require(firstFinish.RewardExp == 25 && repeatedFinish.RewardExp == firstFinish.RewardExp, "battle experience reward is missing or replay-unstable");
-Require(firstFinish.EquipmentInstanceId.Length == 32 && repeatedFinish.EquipmentInstanceId == firstFinish.EquipmentInstanceId, "battle equipment drop must be server generated and replay stable");
-Require(await db.PlayerEquipment.CountAsync(value => value.PlayerId == player.Id && value.InstanceId == firstFinish.EquipmentInstanceId) == 1, "battle equipment drop was duplicated or missing");
-var configuredNormalDrop = await db.PlayerEquipment.SingleAsync(value => value.InstanceId == firstFinish.EquipmentInstanceId);
-Require(configuredNormalDrop.BaseId == "weapon_cloudsteel_blade" && new[] { "Fine", "Rare", "Epic" }.Contains(configuredNormalDrop.Quality), "normal battle equipment ignored the configured drop table or quality bounds");
+Require(firstFinish.RewardExp == 0 && firstFinish.RewardSoftCurrency == 0 && string.IsNullOrEmpty(firstFinish.EquipmentInstanceId), "an untrusted client reward-window flag granted a normal-stage reward");
+Require(repeatedFinish.RewardExp == 0 && string.IsNullOrEmpty(repeatedFinish.EquipmentInstanceId), "normal-stage replay changed the server-owned reward decision");
+Require(await db.PlayerEquipment.CountAsync(value => value.PlayerId == player.Id) == 0, "normal-stage client flag generated equipment");
 await RequireThrows<InvalidOperationException>(() => service.StartAsync(player.Id, "stage_1_3", "locked-stage", CancellationToken.None), "locked stage battle was accepted");
-Require((await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == player.Id)).SoftCurrency == 10, "reward was duplicated or missing");
+Require((await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == player.Id)).SoftCurrency == 0, "normal-stage client flag changed soft currency");
 Require(await db.RewardGrants.CountAsync() == 1, "reward grant must be unique");
-Require(await db.CurrencyLogs.CountAsync(value => value.PlayerId == player.Id && value.Reason == "Battle") == 1 && await db.CurrencyLogs.CountAsync(value => value.PlayerId == player.Id && value.Reason == "StageFirstClear") == 1, "battle and first-clear currency logs must each be written once");
+Require(await db.CurrencyLogs.CountAsync(value => value.PlayerId == player.Id && value.Reason == "Battle") == 0 && await db.CurrencyLogs.CountAsync(value => value.PlayerId == player.Id && value.Reason == "StageFirstClear") == 1, "normal-stage client flag bypassed the server reward boundary or first-clear grant was missing");
 Require(await db.RewardLogs.CountAsync() == 1, "reward log must be written once");
 Require(await db.BattleLogs.CountAsync() == 1, "battle log must be written once");
+var profileAfterFirstClear = await new PlayerQueryService(db, catalog).GetProfileAsync(player.Id, CancellationToken.None);
+Require(profileAfterFirstClear.CurrentStageId == "stage_1_2" && profileAfterFirstClear.ClearedStageIds.SequenceEqual(new[] { "stage_1_1" }), "profile did not advance its authoritative current stage after stage 1");
 
 var windowlessWalletBefore = await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == player.Id);
 var windowlessSoftBefore = windowlessWalletBefore.SoftCurrency;
@@ -81,6 +84,8 @@ Require(await db.PlayerEquipment.CountAsync(value => value.PlayerId == player.Id
 Require(await db.PlayerStages.AnyAsync(value => value.PlayerId == player.Id && value.StageId == "stage_1_2" && value.Cleared), "windowless normal clear was not authoritatively persisted");
 Require(await db.RewardGrants.CountAsync(value => value.PlayerId == player.Id) == 2 && await db.RewardLogs.CountAsync(value => value.PlayerId == player.Id) == 2 && await db.BattleLogs.CountAsync(value => value.PlayerId == player.Id) == 2, "windowless clear did not write exactly one grant, reward log, and battle log");
 Require((await tasks.ListAsync(player.Id, CancellationToken.None)).Tasks.Single(value => value.Id == "daily_stage_3").Progress == 2, "windowless clear did not advance the stage-clear task");
+var profileAfterSecondClear = await new PlayerQueryService(db, catalog).GetProfileAsync(player.Id, CancellationToken.None);
+Require(profileAfterSecondClear.CurrentStageId == "stage_1_3" && profileAfterSecondClear.ClearedStageIds.SequenceEqual(new[] { "stage_1_1", "stage_1_2" }), "profile did not expose the next unlocked server stage");
 var unlockedAfterWindowlessClear = await service.StartAsync(player.Id, "stage_1_3", "windowless-unlocked-stage", CancellationToken.None);
 Require(unlockedAfterWindowlessClear.StageId == "stage_1_3", "windowless clear did not unlock the next stage");
 db.BattleSessions.Remove(await db.BattleSessions.SingleAsync(value => value.Id == unlockedAfterWindowlessClear.SessionId));
@@ -89,8 +94,12 @@ await db.SaveChangesAsync();
 var weakAccount = new Account { ExternalAccountId = "weak", Provider = "test" };
 var weakPlayer = new Player { AccountId = weakAccount.Id, Nickname = "Underpowered", Level = 1, Power = 0 };
 db.Accounts.Add(weakAccount); db.Players.Add(weakPlayer);
+db.PlayerCurrencies.Add(new PlayerCurrency { PlayerId = weakPlayer.Id });
+db.PlayerStats.Add(new PlayerStats { PlayerId = weakPlayer.Id });
 db.PlayerStages.Add(new PlayerStage { PlayerId = weakPlayer.Id, StageId = "stage_1_9", Cleared = true });
 await db.SaveChangesAsync();
+var gappedProfile = await new PlayerQueryService(db, catalog).GetProfileAsync(weakPlayer.Id, CancellationToken.None);
+Require(gappedProfile.CurrentStageId == "stage_1_1" && gappedProfile.ClearedStageIds.SequenceEqual(new[] { "stage_1_9" }), "a non-contiguous clear incorrectly unlocked a later authoritative stage");
 var weakBossStart = await service.StartAsync(weakPlayer.Id, "stage_1_10", "weak-boss-start", CancellationToken.None);
 await RequireThrows<InvalidOperationException>(() => service.FinishAsync(weakPlayer.Id, weakBossStart.SessionId, "weak-boss-finish", CancellationToken.None), "underpowered player received a boss reward");
 Require(!await db.RewardGrants.AnyAsync(value => value.PlayerId == weakPlayer.Id) && !await db.PlayerEquipment.AnyAsync(value => value.PlayerId == weakPlayer.Id), "rejected underpowered battle mutated rewards or inventory");
@@ -273,6 +282,8 @@ var bossEquipment = await db.PlayerEquipment.SingleAsync(value => value.Instance
 Require(finalBoss.RewardSoftCurrency == 25 && finalBoss.RewardExp == 250, "chapter boss rewards are incorrect");
 Require(new[] { "Rare", "Epic", "Legendary" }.Contains(bossEquipment.Quality), "boss did not improve equipment quality floor");
 Require(await db.PlayerStages.CountAsync(value => value.PlayerId == firstLogin.PlayerId && value.Cleared) == 10, "chapter 1-1 through 1-10 was not authoritatively cleared");
+var completedChapterProfile = await new PlayerQueryService(db, catalog).GetProfileAsync(firstLogin.PlayerId, CancellationToken.None);
+Require(completedChapterProfile.CurrentStageId == "stage_1_1" && completedChapterProfile.ClearedStageIds.Count == 10, "completed chapter profile did not cycle to the authoritative first stage");
 
 rankedPlayer.RealmId = "realm_body_tempering"; rankedPlayer.RealmStage = 10; rankedPlayer.Exp = 1000;
 (await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == firstLogin.PlayerId)).SoftCurrency = 2000;

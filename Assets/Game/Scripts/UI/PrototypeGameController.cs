@@ -70,6 +70,9 @@ namespace ImmortalLoot.UI
         private float _pacingSpeed = 1f;
         private bool _playtestQuitRequested;
         private IPlayerSaveRepository _saveRepository;
+        private bool _gameplayActive;
+        private bool _serverGameplay;
+        private bool _serverInventoryHasEquipment;
         private string _saveLoadWarning;
         private AfkState _afkState;
         private string _offlineRewardSummary;
@@ -84,20 +87,22 @@ namespace ImmortalLoot.UI
         private int _guideStep;
         private static readonly float[] ServerSettlementRetryDelays = { 1f, 2f, 4f, 8f, 15f, 30f };
 #if UNITY_INCLUDE_TESTS
+        private static IValidationEventSink _validationSinkOverride;
         private int _saveOperationCount;
         private long _configuredStageExperienceGranted;
         private bool _battlePausedForTests;
         private static bool _pauseNextBattleForTests;
 #endif
-        private readonly CharacterStats _baseStats = new CharacterStats
-        {
-            HP = 180f, Attack = 12f, Defense = 3f, CritRate = 0.1f, CritDamage = 1.5f, AttackSpeed = 1f, FireDamage = 0.1f
-        };
+        private CharacterStats _baseStats = CreateBaseStats();
         public EquipmentInstance LatestLoot => _latestLoot;
         public long Power => _power;
         public int StageNumber => _stageNumber;
         public bool AutoEquipEnabled => _settings?.AutoEquipEnabled ?? true;
-        public bool CommercialUnlocked => _latestLoot != null || !string.IsNullOrEmpty(_serverLatestInstanceId) || (_inventory?.State.Equipment.Count ?? 0) > 0;
+        public bool CommercialUnlocked => _serverGameplay
+            ? _serverInventoryHasEquipment || !string.IsNullOrEmpty(_serverLatestInstanceId)
+            : _latestLoot != null || (_inventory?.State.Equipment.Count ?? 0) > 0;
+        public bool GameplayActive => _gameplayActive;
+        public bool ServerGameplayActive => _gameplayActive && _serverGameplay;
 
         private sealed class PendingServerBattleSettlement
         {
@@ -120,15 +125,69 @@ namespace ImmortalLoot.UI
             PrototypeVisualTheme.Apply(FindAnyObjectByType<Canvas>());
             _catalog = new JsonConfigRepository(new ResourcesConfigSource()).LoadAll();
             _commercialProducts = CommercialEntitlementService.LoadProducts(new ResourcesConfigSource());
-            _validationTelemetry = new ValidationFunnelTracker(new JsonlValidationEventSink(Path.Combine(Application.persistentDataPath, "validation-funnel.jsonl")));
+            IValidationEventSink validationSink = new JsonlValidationEventSink(Path.Combine(Application.persistentDataPath, "validation-funnel-v1.jsonl"));
+#if UNITY_INCLUDE_TESTS
+            validationSink = _validationSinkOverride ?? validationSink;
+#endif
+            _validationTelemetry = new ValidationFunnelTracker(validationSink);
             _feedback = gameObject.GetComponent<PrototypeCombatFeedback>() ?? gameObject.AddComponent<PrototypeCombatFeedback>();
             _feedback.Initialize();
             _saveRepository = JsonPlayerSaveRepository.CreateDefault();
-            var saved = LoadSnapshotSafely();
-            _progressState = PlayerProgressStateCodec.Deserialize(saved?.ProgressJson);
-            _stageLoop = new VictoryDrivenStageLoop(_catalog, _progressState.Stage, _progressState.CurrentStageId);
             _generator = new EquipmentGenerator(new SystemRandomSource(), _catalog);
             _drops = new DropTableService(_catalog, _generator, new SystemRandomSource());
+            _powerCalculator = PowerCalculator.Load(new ResourcesConfigSource());
+            _upgradeEvaluator = new EquipmentUpgradeEvaluator(_catalog, _powerCalculator);
+            _pacingConfig = DemoPacingLoader.Load(new ResourcesConfigSource());
+            _stageBattleFactory = new StageBattleFactory(
+                _catalog,
+                new MonsterFactory(_catalog),
+                new DamageCalculator(DamageFormulaConfigLoader.Load(new ResourcesConfigSource()), new SystemRandomSource()));
+            InitializeRuntimeFromSnapshot(null);
+            _pacingSpeed = DevelopmentPlaytestOptions.Speed;
+            _login = FindAnyObjectByType<PrototypeLoginController>();
+            if (equipLatestButton != null) equipLatestButton.onClick.AddListener(EquipLatest);
+            RefreshProgressDisplay();
+            RefreshStartupGuide();
+        }
+
+        private static CharacterStats CreateBaseStats() => new CharacterStats
+        {
+            HP = 180f,
+            Attack = 12f,
+            Defense = 3f,
+            CritRate = 0.1f,
+            CritDamage = 1.5f,
+            AttackSpeed = 1f,
+            FireDamage = 0.1f
+        };
+
+        private void InitializeRuntimeFromSnapshot(PlayerSaveSnapshot saved)
+        {
+            _baseStats = CreateBaseStats();
+            _kills = 0;
+            _stageNumber = 1;
+            _level = 1;
+            _exp = 0;
+            _softCurrency = 0;
+            _premiumCurrency = 60;
+            _realmStage = 1;
+            _spiritualRootPoints = 0;
+            _buildIndex = 0;
+            _mailClaimed = false;
+            _taskClaimed = false;
+            _guideStep = 0;
+            _latestLoot = null;
+            _serverLatestInstanceId = string.Empty;
+            _serverInventoryHasEquipment = false;
+            _offlineRewardSummary = string.Empty;
+            _afkState = null;
+            _pendingSacrificeConfirmationKey = string.Empty;
+            _skippedPendingRewardWindows = 0;
+            _pendingServerBattleSettlement = null;
+            _settlingServerBattle = false;
+
+            _progressState = PlayerProgressStateCodec.Deserialize(saved?.ProgressJson);
+            _stageLoop = new VictoryDrivenStageLoop(_catalog, _progressState.Stage, _progressState.CurrentStageId);
             _inventory = new InventoryService(RestoreInventory(saved), _catalog);
             _latestLoot = _inventory.State.PendingEquipment;
             _decomposition = new EquipmentDecompositionService(_inventory, DecompositionFormulaLoader.Load(new ResourcesConfigSource()));
@@ -144,38 +203,107 @@ namespace ImmortalLoot.UI
             _stats.AddProvider(cultivationStats);
             _progressionStats = new CharacterStatService();
             _progressionStats.AddProvider(cultivationStats);
-            _powerCalculator = PowerCalculator.Load(new ResourcesConfigSource());
-            _upgradeEvaluator = new EquipmentUpgradeEvaluator(_catalog, _powerCalculator);
-            _pacingConfig = DemoPacingLoader.Load(new ResourcesConfigSource());
             _pacing = new DemoPacingSession(_pacingConfig);
-            _stageBattleFactory = new StageBattleFactory(
-                _catalog,
-                new MonsterFactory(_catalog),
-                new DamageCalculator(DamageFormulaConfigLoader.Load(new ResourcesConfigSource()), new SystemRandomSource()));
             RestoreProgress(saved);
-            ClaimOfflineProgress(saved);
-            _pacingSpeed = DevelopmentPlaytestOptions.Speed;
-            _login = FindAnyObjectByType<PrototypeLoginController>();
-            if (equipLatestButton != null) equipLatestButton.onClick.AddListener(EquipLatest);
-            RefreshProgressDisplay();
-            if (_latestLoot != null && lootText != null)
+        }
+
+        private PlayerSaveSnapshot CreateServerRuntimeSnapshot(PlayerProfileDto profile)
+        {
+            if (profile == null || string.IsNullOrWhiteSpace(profile.currentStageId) ||
+                !_catalog.Stages.ContainsKey(profile.currentStageId) || profile.clearedStageIds == null)
+                throw new InvalidOperationException("Server profile contained an invalid authoritative stage.");
+            var progress = new PlayerProgressState { CurrentStageId = profile.currentStageId };
+            foreach (var stageId in profile.clearedStageIds)
+                if (!string.IsNullOrWhiteSpace(stageId) && _catalog.Stages.ContainsKey(stageId) &&
+                    !progress.Stage.ClearedStageIds.Contains(stageId))
+                    progress.Stage.ClearedStageIds.Add(stageId);
+            progress.Realm.PlayerLevel = Math.Max(1, profile.level);
+            progress.Realm.Experience = Math.Max(0, profile.exp);
+            progress.Realm.RealmId = string.IsNullOrWhiteSpace(profile.realmId) ? "realm_body_tempering" : profile.realmId;
+            progress.Realm.RealmStage = Math.Max(1, profile.realmStage);
+            if (profile.spiritualRoots != null)
+            {
+                foreach (var root in profile.spiritualRoots)
+                {
+                    if (root == null || string.IsNullOrWhiteSpace(root.rootId)) continue;
+                    progress.SpiritualRoots.Roots.Add(new SpiritualRootProgress
+                    {
+                        RootId = root.rootId,
+                        Level = Math.Max(0, root.level)
+                    });
+                }
+            }
+            return new PlayerSaveSnapshot
+            {
+                PlayerId = profile.playerId,
+                Nickname = profile.nickname,
+                Level = Math.Max(1, profile.level),
+                Exp = Math.Max(0, profile.exp),
+                RealmId = progress.Realm.RealmId,
+                RealmStage = progress.Realm.RealmStage,
+                SoftCurrency = Math.Max(0, profile.softCurrency),
+                PremiumCurrency = Math.Max(0, profile.premiumCurrency),
+                StageElapsedSeconds = 0d,
+                InventoryJson = InventoryStateCodec.Serialize(new InventoryState { EquipmentCapacity = 120 }),
+                ProgressJson = PlayerProgressStateCodec.Serialize(progress)
+            };
+        }
+
+        public bool TryEnterOfflineGameplay() => TryEnterGameplay(serverGameplay: false);
+
+        public bool TryEnterServerGameplay()
+        {
+            if (_login == null || !_login.HasPreparedServerSession) return false;
+            return TryEnterGameplay(serverGameplay: true);
+        }
+
+        private bool TryEnterGameplay(bool serverGameplay)
+        {
+            if (_gameplayActive) return false;
+            PlayerProfileDto serverProfile = null;
+            PlayerSaveSnapshot offlineSnapshot = null;
+            if (serverGameplay)
+            {
+                serverProfile = _login.ServerProfile;
+                var serverSnapshot = CreateServerRuntimeSnapshot(serverProfile);
+                InitializeRuntimeFromSnapshot(serverSnapshot);
+                _serverInventoryHasEquipment = (_login.ServerInventory?.equipment?.Length ?? 0) > 0;
+                if (!_login.TryCommitServerEntry()) return false;
+                _saveLoadWarning = string.Empty;
+            }
+            else
+            {
+                offlineSnapshot = LoadSnapshotSafely();
+                InitializeRuntimeFromSnapshot(offlineSnapshot);
+            }
+            _gameplayActive = true;
+            _serverGameplay = serverGameplay;
+            if (!serverGameplay) ClaimOfflineProgress(offlineSnapshot);
+            if (serverGameplay) ApplyServerProfileDisplay(serverProfile);
+            else RefreshProgressDisplay();
+            if (!serverGameplay && _latestLoot != null && lootText != null)
             {
                 lootText.text = FormatLoot(_latestLoot) + "\n\n已从存档恢复到待领取区。请先清理背包，再穿戴或领取。";
                 lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
             }
+            RefreshStartupGuide();
             _validationTelemetry.TrackOnce("session_started", _pacing.ElapsedSeconds, _stageNumber, _power);
-            _validationTelemetry.TrackOnce("battle_visible", _pacing.ElapsedSeconds, _stageNumber, _power);
-            if (guideText != null)
-            {
-                if (!string.IsNullOrEmpty(_saveLoadWarning)) guideText.text = _saveLoadWarning;
-                else if (!string.IsNullOrEmpty(_offlineRewardSummary)) guideText.text = _offlineRewardSummary;
-                else if (_guideStep > 0) guideText.text = $"引导进度已恢复：{_guideStep}/4。继续推进当前成长目标。";
-            }
             SpawnEnemy();
+            _validationTelemetry.TrackOnce("battle_visible", _pacing.ElapsedSeconds, _stageNumber, _power);
+            return true;
+        }
+
+        private void RefreshStartupGuide()
+        {
+            if (guideText == null) return;
+            if (!string.IsNullOrEmpty(_saveLoadWarning)) guideText.text = _saveLoadWarning;
+            else if (!string.IsNullOrEmpty(_offlineRewardSummary)) guideText.text = _offlineRewardSummary;
+            else if (_guideStep > 0) guideText.text = $"引导进度已恢复：{_guideStep}/4。继续推进当前成长目标。";
         }
 
         private void Update()
         {
+            if (!_gameplayActive || _battle == null) return;
 #if UNITY_INCLUDE_TESTS
             if (!_battlePausedForTests)
             {
@@ -230,8 +358,7 @@ namespace ImmortalLoot.UI
             var completedStageId = _activeBattleStageId;
             if (!_catalog.Stages.TryGetValue(completedStageId, out var completedStage))
                 throw new ConfigException($"Completed stage '{completedStageId}' was not found.");
-            var serverAuthenticated = _login != null && _login.IsServerAuthenticated;
-            if (serverAuthenticated)
+            if (_serverGameplay)
             {
                 if (_settlingServerBattle || _pendingServerBattleSettlement != null) return;
                 _settlingServerBattle = true;
@@ -259,7 +386,7 @@ namespace ImmortalLoot.UI
                     StageId = completedStageId,
                     FinishKey = "ui-finish-" + nonce,
                     SessionId = started.sessionId,
-                    RewardWindowEligible = completedStage.IsBossStage || hadPendingRewardWindow,
+                    RewardWindowEligible = completedStage.IsBossStage,
                     ConsumeRewardWindow = hadPendingRewardWindow
                 };
                 await ConfirmPendingServerSettlementAsync();
@@ -314,8 +441,6 @@ namespace ImmortalLoot.UI
             }
 
             string postConfirmationWarning = null;
-            try { SaveProgress(); }
-            catch (Exception exception) { postConfirmationWarning = "本地进度暂未落盘：" + exception.Message; }
             try
             {
                 await SynchronizeConfirmedServerVictoryAsync(pendingSettlement, completedStage, finished);
@@ -329,7 +454,7 @@ namespace ImmortalLoot.UI
             finally
             {
                 if (!string.IsNullOrEmpty(postConfirmationWarning) && guideText != null)
-                    guideText.text = "服务器结算与本地进度已确认，但" + postConfirmationWarning;
+                    guideText.text = "服务器结算已确认，但" + postConfirmationWarning;
                 _settlingServerBattle = false;
                 CancelInvoke(nameof(SpawnEnemy));
                 Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
@@ -531,14 +656,16 @@ namespace ImmortalLoot.UI
         {
             if (!string.Equals(_stageLoop.CurrentStageId, completedStage.Id, StringComparison.Ordinal))
                 throw new InvalidOperationException($"Cannot settle '{completedStage.Id}' while current stage is '{_stageLoop.CurrentStageId}'.");
-            var transition = _stageLoop.RecordVictory(_pacing.CurrentStageNumber);
+            var maximumUnlockedStage = _serverGameplay ? 10 : _pacing.CurrentStageNumber;
+            var transition = _stageLoop.RecordVictory(maximumUnlockedStage);
             _stageNumber = _stageLoop.CurrentStageNumber;
             return transition;
         }
 
         public async void EquipLatest()
         {
-            if (_login != null && _login.IsServerAuthenticated)
+            if (!_gameplayActive) return;
+            if (_serverGameplay)
             {
                 if (string.IsNullOrEmpty(_serverLatestInstanceId)) { if (guideText != null) guideText.text = "尚无服务器装备，先完成一场在线战斗。"; return; }
                 try
@@ -682,7 +809,7 @@ namespace ImmortalLoot.UI
 
         private void SaveProgress()
         {
-            if (_saveRepository == null || _inventory == null || _pacing == null) return;
+            if (!_gameplayActive || _serverGameplay || _saveRepository == null || _inventory == null || _pacing == null) return;
             var equipped = new EquippedIds();
             foreach (var item in _loadout.Equipped.Values) equipped.ids.Add(item.InstanceId);
             var progress = CaptureProgressState();
@@ -843,14 +970,14 @@ namespace ImmortalLoot.UI
 
         public string ExecutePageAction(string pageName)
         {
+            if (!_gameplayActive) return "请先进入游戏，再执行修炼与背包操作。";
+            if (_serverGameplay) return "在线模式仅执行服务器权威操作；本地进度保持只读。";
             switch (pageName)
             {
                 case "CharacterPage":
                     RefreshProgressDisplay();
                     return $"等级 {_level} · 战力 {_power}\n经验 {_exp}/{_level * 50L}\n当前境界 {_realmStage} 阶";
                 case "EquipmentPage":
-                    if (_login != null && _login.IsServerAuthenticated)
-                        return "在线模式装备操作由服务器背包处理；本地待领取区不会被误报为已穿戴。";
                     if (_latestLoot == null) return "尚无装备，先完成一场战斗。";
                     var comparison = new EquipmentComparisonService(_catalog).Compare(_progressionStats.Calculate(_baseStats), _loadout.Equipped, _latestLoot);
                     var comparisonText = $"穿戴比较：攻击 {comparison.AttackDelta:+0.##;-0.##;0} · 生命 {comparison.HpDelta:+0.##;-0.##;0} · 防御 {comparison.DefenseDelta:+0.##;-0.##;0}";
@@ -915,7 +1042,8 @@ namespace ImmortalLoot.UI
 
         public void RecordShopExposure()
         {
-            if (CommercialUnlocked) _validationTelemetry?.TrackOnce("shop_exposed", _pacing?.ElapsedSeconds ?? 0f, _stageNumber, _power);
+            if (_gameplayActive && CommercialUnlocked)
+                _validationTelemetry?.TrackOnce("shop_exposed", _pacing?.ElapsedSeconds ?? 0f, _stageNumber, _power);
         }
 
         public string SettingsSummary() =>
@@ -1058,7 +1186,18 @@ namespace ImmortalLoot.UI
         private async System.Threading.Tasks.Task RefreshServerProfile()
         {
             var profile = ImmortalLootApiClient.Parse<PlayerProfileDto>(await _login.ApiClient.GetProfileAsync());
+            ApplyServerProfileDisplay(profile);
+        }
+
+        private void ApplyServerProfileDisplay(PlayerProfileDto profile)
+        {
+            if (profile == null) throw new ArgumentNullException(nameof(profile));
+            _level = Math.Max(1, profile.level);
+            _exp = Math.Max(0, profile.exp);
+            _realmStage = Math.Max(1, profile.realmStage);
             _power = Math.Max(0, profile.power);
+            _softCurrency = Math.Max(0, profile.softCurrency);
+            _premiumCurrency = Math.Max(0, profile.premiumCurrency);
             if (profileText != null) profileText.text = $"{profile.nickname}  Lv.{profile.level}\n战力 {profile.power:N0}";
             if (currencyText != null) currencyText.text = $"灵砂 {profile.softCurrency:N0}    仙晶 {profile.premiumCurrency:N0}";
         }
@@ -1072,15 +1211,25 @@ namespace ImmortalLoot.UI
         }
 
 #if UNITY_INCLUDE_TESTS
+        public static IDisposable OverrideValidationSinkForTests(IValidationEventSink sink)
+        {
+            if (sink == null) throw new ArgumentNullException(nameof(sink));
+            var previous = _validationSinkOverride;
+            _validationSinkOverride = sink;
+            return new ValidationSinkOverrideScope(previous);
+        }
+
         public static void PauseNextBattleForTests() => _pauseNextBattleForTests = true;
         public void ResumeBattleForTests() => _battlePausedForTests = false;
         public void SetPacingSpeedForTests(float speed) => _pacingSpeed = Mathf.Max(1f, speed);
-        public void AdvancePacingForTests(double seconds) => _pacing.Advance(Math.Max(0d, seconds));
+        public void AdvancePacingForTests(double seconds) { if (_gameplayActive) _pacing.Advance(Math.Max(0d, seconds)); }
         public void SaveForTests() => SaveProgress();
+        public void PauseApplicationForTests() => OnApplicationPause(true);
         public int SkippedPendingRewardWindowsForTests => _skippedPendingRewardWindows;
         public int PendingRewardWindowsForTests => _pacing.PendingRewards;
         public int SaveOperationCountForTests => _saveOperationCount;
         public double PacingElapsedSecondsForTests => _pacing.ElapsedSeconds;
+        public bool HasActiveBattleForTests => _battle != null;
         public long ExperienceForTests => _exp;
         public long ConfiguredStageExperienceGrantedForTests => _configuredStageExperienceGranted;
         public long SoftCurrencyForTests => _softCurrency;
@@ -1090,10 +1239,10 @@ namespace ImmortalLoot.UI
         public int DefeatsOnCurrentStageForTests => _stageLoop.DefeatsOnCurrentStage;
         public string ServerLatestInstanceIdForTests => _serverLatestInstanceId;
         public bool HasPendingServerSettlementForTests => _pendingServerBattleSettlement != null;
-        public void ResolveCurrentBattleForTests() => _battle.SkipToResult();
+        public void ResolveCurrentBattleForTests() { if (_gameplayActive && _battle != null) _battle.SkipToResult(); }
         public void RespawnCurrentBattleForTests()
         {
-            if (_pendingServerBattleSettlement != null) return;
+            if (!_gameplayActive || _pendingServerBattleSettlement != null) return;
             CancelInvoke(nameof(SpawnEnemy));
             SpawnEnemy();
         }
@@ -1102,9 +1251,24 @@ namespace ImmortalLoot.UI
             CancelInvoke(nameof(RetryPendingServerSettlement));
             RetryPendingServerSettlement();
         }
-        public void RecordDefeatForTests() => RecordBattleDefeat(scheduleRetry: false);
+        public void RecordDefeatForTests() { if (_gameplayActive) RecordBattleDefeat(scheduleRetry: false); }
         public PlayerProgressState ProgressForTests =>
             PlayerProgressStateCodec.Deserialize(PlayerProgressStateCodec.Serialize(CaptureProgressState()));
+
+        private sealed class ValidationSinkOverrideScope : IDisposable
+        {
+            private readonly IValidationEventSink _previous;
+            private bool _disposed;
+
+            public ValidationSinkOverrideScope(IValidationEventSink previous) => _previous = previous;
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+                _validationSinkOverride = _previous;
+            }
+        }
 #endif
     }
 }
