@@ -1,6 +1,6 @@
 # 《太初：无尽轮回》V0.1 项目审计
 
-> 当前状态补充（2026-08-30）：本文主体是启动审计快照。最新权威状态见 `DAILY_REPORT.md` 与 `TASK_QUEUE.md`。当前源码为 `bffd195`：离线境界/渡劫闭环已接入，程序集编译及离线 smoke PASS；当前 Unity EditMode 111 与 PlayMode 28 尚未运行。`2bee3ac` 的 109/109、26/26 和 APK/AAB 仅为历史证据且产物已过期。GATE 4 仍缺当前 Unity 回归、重建双产物、完整竖屏视觉与物理真机验收。
+> 当前状态补充（2026-08-30）：本文主体是启动审计快照。最新权威状态见 `DAILY_REPORT.md` 与 `TASK_QUEUE.md`。当前源码为 `6597769`：离线境界/渡劫与在线累计修为闭环已接入，程序集、离线 smoke、Backend 与 HTTP 40/40 PASS；当前 Unity EditMode 111 与 PlayMode 28 尚未运行。`2bee3ac` 的 109/109、26/26 和 APK/AAB 仅为历史证据且产物已过期。GATE 4 仍缺当前 Unity 回归、重建双产物、完整竖屏视觉与物理真机验收。
 
 审计日期：2026-08-30  
 审计基线：安全检查点 `ced7a07` 之后的当前工作区。状态只依据当前源码与本轮重新运行的测试/构建结果；旧报告中的历史 PASS 不自动继承。
@@ -34,7 +34,7 @@
 | 数值/战力 | READY | 统一属性与战力计算存在并测试单调性。 |
 | 关卡 | READY | 1-1～1-10 配置链、Boss 关与服务存在。 |
 | 地图 | MISSING | 独立地图系统不存在；V0.1 用关卡进度条即可，不新增大地图。 |
-| 境界 | TESTING | `bffd195` 已接入真实突破成本、累计修为、Boss 破境石、跨重启渡劫、灵根与统一战力；待当前 Unity 111/28 实跑。 |
+| 境界 | TESTING | `6597769` 已接入离线真实突破/Boss/渡劫/灵根/统一战力及在线累计修为 profile；待当前 Unity 111/28 实跑。 |
 | 技能 | REFACTOR | 主动/被动/CD/AOE/DOT 等战斗支持存在；缺少可理解的玩家反馈。 |
 | 本地存档 | REFACTOR | 原子写入、版本、SHA-256 仓库存在且单测覆盖，但主场景未调用。 |
 | 离线收益 | REFACTOR | 计算/领取与后端接口存在；离线本地闭环及回归测试未接入主场景。 |
@@ -47,7 +47,7 @@
 | Analytics | MISSING | 只有本地 playtest JSONL；缺少事件接口和关键漏斗定义。 |
 | 设置 | MISSING | 未发现音量、震动、隐私或存档操作页面。 |
 | 测试 | TESTING | 当前源码预计 EditMode 111、PlayMode 28；静态程序集与离线 smoke PASS，Unity Test Runner 因目标项目会话绑定阻塞尚未运行。 |
-| Build Pipeline | TESTING | RC APK/AAB 方法及产物门禁已存在；`2bee3ac` 历史双产物通过，但必须为 `bffd195` 重建。 |
+| Build Pipeline | TESTING | RC APK/AAB 方法及产物门禁已存在；`2bee3ac` 历史双产物通过，但必须为 `6597769` 重建。 |
 
 ## 3. 修旧与重写比较
 

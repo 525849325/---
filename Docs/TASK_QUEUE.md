@@ -15,15 +15,16 @@
 | CORE-LOGIN-GATE-001 | P0 | SAVE-AGGREGATE-001 | DONE | D/E | 本地/服务器状态隔离和登录门禁完成 |
 | SERVER-PROFILE-RECONCILE-001 | P1 | CORE-LOGIN-GATE-001 | DONE | D/E | 权威 profile/current-stage 镜像校正完成 |
 | SERVER-BATTLE-AUTH-001 | P1 | SERVER-PROFILE-RECONCILE-001 | DONE | D/E | exact-current、单活动会话、并发幂等、失联恢复与旧 SQLite 升级通过 |
-| SERVER-HTTP-CONTRACT-001 | P1 | SERVER-BATTLE-AUTH-001 | DONE | D/E | 真实 Kestrel HTTP 39/39 基线通过 |
+| SERVER-HTTP-CONTRACT-001 | P1 | SERVER-BATTLE-AUTH-001 | DONE | D/E | 真实 Kestrel HTTP 40/40 通过；含权威累计修为 profile 附加字段 |
 | QA-UNITY-001 | P0 | CORE-STAGE-002,SAVE-AGGREGATE-001 | DONE | E | 历史检查点 `2bee3ac`：EditMode 109/109、PlayMode 26/26；不代表当前源码 |
 | BUILD-ANDROID-002 | P0 | QA-UNITY-001 | DONE | E | 历史 `2bee3ac` APK/AAB 曾通过静态产物门禁；当前已 STALE |
-| CORE-REALM-INTEGRATION-001 | P0 | CORE-STAGE-002,SAVE-AGGREGATE-001 | TESTING | B/D/E | `bffd195`：修为分池、Boss 破境石、小突破、跨重启渡劫、幂等灵根、统一战力与存档已实现；编译/离线 smoke PASS，待 Unity 111/28 |
+| CORE-REALM-INTEGRATION-001 | P0 | CORE-STAGE-002,SAVE-AGGREGATE-001 | TESTING | B/D/E | `6597769`：离线修为/Boss/渡劫/灵根闭环及在线累计修为/profile 映射已实现；静态编译、离线 smoke、Backend 与 HTTP 40/40 PASS，待 Unity 111/28 |
 | QA-UNITY-POSTCHANGE-002 | P0 | CORE-REALM-INTEGRATION-001 | BLOCKED | E | 当前授权 Editor 打开另一项目；目标项目 IPC/交互替代均未取得 entitlement；无账号动作、非 RED |
-| BUILD-ANDROID-003 | P0 | QA-UNITY-POSTCHANGE-002 | BLOCKED | E | 必须在当前 Unity 111/28 全绿后重建 `bffd195` 对应 APK 与 AAB 并重跑签名/ABI/Manifest 门禁 |
+| BUILD-ANDROID-003 | P0 | QA-UNITY-POSTCHANGE-002 | BLOCKED | E | 必须在当前 Unity 111/28 全绿后重建 `6597769` 对应 APK 与 AAB 并重跑签名/ABI/Manifest 门禁 |
 | QA-UI-PORTRAIT-001 | P0 | QA-UNITY-POSTCHANGE-002 | BLOCKED | C/E | 生成真正 1080×1920 九页截图，隔离 run 证据，使非 batch UI audit 完整通过 |
 | QA-DEVICE-001 | P0 | BUILD-ANDROID-003,QA-UI-PORTRAIT-001 | BLOCKED | E | 0 台已授权物理设备；待新 APK 后执行安装、10/60 分钟、触控、后台/锁屏、性能与日志验收 |
-| SERVER-REALM-XP-001 | P1 | SERVER-HTTP-CONTRACT-001 | TODO | D/E | Development 在线境界仍使用等级经验残值与软币且无 pending→Boss；需与离线累计修为/渡劫语义对齐后回归 |
+| SERVER-REALM-XP-001 | P1 | SERVER-HTTP-CONTRACT-001 | DONE | D/E | `6597769`：在线等级经验/累计修为分池、Battle/AFK/Quick AFK 双发放、旧 SQLite 一次迁移、突破消费与 profile/Unity 映射已通过 Backend Verification、HTTP 40/40 和独立审查 |
+| SERVER-REALM-MATERIAL-002 | P1 | SERVER-REALM-XP-001 | TODO | D/E | Development 在线仍以软币代替破境石、未校验 RequiredLevel，且大境界立即晋升而非 pending→Boss；默认离线 RC 不受阻 |
 | SETTINGS-UI-001 | P1 | SAVE-001 | DONE | C/D | 声音、震动、自动换装、保存、法律入口完成；真机触控待 QA-DEVICE |
 | FUNNEL-001 | P1 | CORE-001 | DONE | D/E | 无 PII 本地 JSONL 漏斗完成；`bffd195` 增加首次大境界事件 |
 | FEEDBACK-001 | P1 | CORE-001 | TESTING | C | 五类程序化音效与品质/战力反馈已编译；待场景听感和真机音量 |
@@ -31,4 +32,4 @@
 | AUTO-EQUIP-001 | P1 | CORE-001 | DONE | B/C | 默认开启、可关闭，只在统一战力严格提升时换装 |
 | RC-QUALITY-001 | P0 | CORE-REALM-INTEGRATION-001,BUILD-ANDROID-003,QA-UI-PORTRAIT-001,QA-DEVICE-001 | TESTING | Direction/E | GATE 4 OPEN；不得用旧 109/26 或旧 APK/AAB放行当前源码 |
 
-当前自动执行：`SERVER-REALM-XP-001`（最高优先级的不依赖 Unity/真机任务）；环境恢复后立即抢占回到 `QA-UNITY-POSTCHANGE-002`。
+当前自动执行：`BALANCE-001`（最高优先级且直接影响离线商业验证的非阻塞任务）；环境恢复后立即抢占回到 `QA-UNITY-POSTCHANGE-002`。

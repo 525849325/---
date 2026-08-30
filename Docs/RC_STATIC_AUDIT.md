@@ -1,6 +1,6 @@
 # V0.1 RC 静态完成审计
 
-日期：2026-08-30。本文主体保留为首次静态审计快照；实时状态以 `DAILY_REPORT.md` 与 `TASK_QUEUE.md` 为准。`2bee3ac` 的 EditMode 109/109、PlayMode 26/26 和 APK/AAB 是历史基线。当前源码 `bffd195` 新增境界/渡劫闭环，静态程序集与离线 smoke PASS，但当前 Unity 111/28 尚未运行，APK/AAB 已过期。GATE 4 因当前运行回归、重建、竖屏视觉与物理真机证据未完成而保持开放。
+日期：2026-08-30。本文主体保留为首次静态审计快照；实时状态以 `DAILY_REPORT.md` 与 `TASK_QUEUE.md` 为准。`2bee3ac` 的 EditMode 109/109、PlayMode 26/26 和 APK/AAB 是历史基线。当前源码 `6597769` 新增离线境界/渡劫和在线累计修为闭环，静态程序集、离线 smoke、Backend 与 HTTP 40/40 PASS，但当前 Unity 111/28 尚未运行，APK/AAB 已过期。GATE 4 因当前运行回归、重建、竖屏视觉与物理真机证据未完成而保持开放。
 
 ## P0
 
@@ -10,7 +10,7 @@
 | 地图 / 关卡推进 | 当前由时间推进且 3 分钟后永久停留 Boss | P0 GAP；CORE-STAGE-002 |
 | 装备掉落 / 品质 / 随机词条 | 十槽等权池、品质规则、冲突词条生成；10,000 次门禁 | VERIFIED（领域）；待 UI 场景 |
 | 比较 / 手动与自动换装 / 战力 | 统一属性聚合、严格增益自动换装、可关闭设置、手动按钮 | IMPLEMENTED；待 PlayMode |
-| 境界 / 修炼 / 角色成长 | `bffd195` 已真实接入累计修为、成本、Boss 破境石、渡劫、灵根、战力与存档 | TESTING；待当前 Unity 111/28 |
+| 境界 / 修炼 / 角色成长 | `6597769` 已真实接入离线累计修为/Boss/渡劫/灵根/战力/存档及在线累计修为 profile | TESTING；待当前 Unity 111/28 |
 | 离线收益 / 本地存档 | 基础字段与背包可保存；Stage/Realm/Cultivation/Root/Guide/Task 未聚合 | P0 GAP；SAVE-AGGREGATE-001 |
 | 基础引导 | 当前只有动态提示语，没有可持久化步骤状态机 | P0 GAP；待最小四步引导 |
 | 商店 / 商品 / 商业接口 | 配置商品、成长后曝光、UI 不直接发币、Development-only Mock | VERIFIED（程序集+后端）；待场景 |
@@ -38,7 +38,7 @@
 
 ## 未闭合证据
 
-- `2bee3ac` 已执行 EditMode 109/109 与 PlayMode 26/26；这是历史基线，不是 `bffd195` 当前 PASS。
+- `2bee3ac` 已执行 EditMode 109/109 与 PlayMode 26/26；这是历史基线，不是 `6597769` 当前 PASS。
 - `2bee3ac` 对应 APK/AAB 曾完成静态校验；当前已 STALE，必须重建。
 - 10 分钟与 60 分钟真机测试未执行。
 
