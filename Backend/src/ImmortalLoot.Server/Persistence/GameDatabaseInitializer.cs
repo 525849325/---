@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace ImmortalLoot.Server.Persistence;
 
@@ -13,6 +14,17 @@ public static class GameDatabaseInitializer
     {
         await db.Database.EnsureCreatedAsync(cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        if (db.Database.IsSqlite() &&
+            !await HasColumnAsync(db, "Player", "CultivationExperience", cancellationToken))
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE \"Player\" ADD COLUMN \"CultivationExperience\" INTEGER NOT NULL DEFAULT 0;",
+                cancellationToken);
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE \"Player\" SET \"CultivationExperience\" = MAX(\"Exp\", 0);",
+                cancellationToken);
+        }
 
         var activeSessions = await db.BattleSessions
             .Where(value => value.Status == "Started")
@@ -36,5 +48,25 @@ public static class GameDatabaseInitializer
             "ON \"BattleSession\" (\"PlayerId\") WHERE \"Status\" = 'Started';",
             cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static async Task<bool> HasColumnAsync(
+        GameDbContext db,
+        string tableName,
+        string columnName,
+        CancellationToken cancellationToken)
+    {
+        var connection = db.Database.GetDbConnection();
+        await using var command = connection.CreateCommand();
+        command.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
+        command.CommandText =
+            $"SELECT COUNT(*) FROM pragma_table_info('{tableName.Replace("'", "''", StringComparison.Ordinal)}') " +
+            "WHERE name = $columnName;";
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "$columnName";
+        parameter.Value = columnName;
+        command.Parameters.Add(parameter);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt64(result) > 0;
     }
 }

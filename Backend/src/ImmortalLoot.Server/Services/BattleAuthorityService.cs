@@ -130,14 +130,7 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
         if (reward > 0)
             await currencies.ChangeAsync(playerId, GameCurrency.SoftCurrency, reward, "Battle", session.Id.ToString("N"), cancellationToken);
         if (expReward > 0)
-        {
-            player.Exp = checked(player.Exp + expReward);
-            while (player.Exp >= player.Level * 100L)
-            {
-                player.Exp -= player.Level * 100L;
-                player.Level++;
-            }
-        }
+            PlayerExperienceProgression.Grant(player, expReward);
         session.Status = "Finished";
         session.FinishedAtUtc = clock.UtcNow;
         session.RewardSoftCurrency = reward;

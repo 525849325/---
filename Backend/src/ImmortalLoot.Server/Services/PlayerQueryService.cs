@@ -7,7 +7,7 @@ namespace ImmortalLoot.Server.Services;
 public sealed record SpiritualRootProfile(string RootId, string Name, string Element, int Level, int MaxLevel);
 
 public sealed record PlayerProfileResult(
-    Guid PlayerId, string Nickname, int Level, long Exp, string RealmId, int RealmStage,
+    Guid PlayerId, string Nickname, int Level, long Exp, long CultivationExperience, string RealmId, int RealmStage,
     long Power, long SoftCurrency, long PremiumCurrency, string CurrentStageId,
     IReadOnlyList<string> ClearedStageIds, string StatsJson,
     DateTime LastLoginTimeUtc, DateTime LastOfflineTimeUtc, IReadOnlyList<SpiritualRootProfile> SpiritualRoots);
@@ -46,7 +46,7 @@ public sealed class PlayerQueryService(GameDbContext db, ServerGameConfigCatalog
             .Select(value => value.StageId)
             .ToListAsync(cancellationToken);
         var stageSnapshot = AuthoritativeStageProgression.Resolve(catalog.Stages, persistedClears);
-        return new PlayerProfileResult(player.Id, player.Nickname, player.Level, player.Exp, player.RealmId,
+        return new PlayerProfileResult(player.Id, player.Nickname, player.Level, player.Exp, player.CultivationExperience, player.RealmId,
             player.RealmStage, player.Power, currency.SoftCurrency, currency.PremiumCurrency,
             stageSnapshot.CurrentStageId, stageSnapshot.ClearedStageIds, stats.StatsJson,
             player.LastLoginTimeUtc, player.LastOfflineTimeUtc, roots);

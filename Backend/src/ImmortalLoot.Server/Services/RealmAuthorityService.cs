@@ -40,13 +40,13 @@ public sealed class RealmAuthorityService(GameDbContext db, CurrencyService curr
         var index = Realms.ToList().FindIndex(value => value.Id == player.RealmId);
         if (index < 0) throw new InvalidOperationException("Player realm is invalid.");
         var config = Realms[index];
-        if (player.Exp < config.RequiredExp) throw new InvalidOperationException("Insufficient experience.");
+        if (player.CultivationExperience < config.RequiredExp) throw new InvalidOperationException("Insufficient experience.");
         await currencies.ChangeAsync(playerId, GameCurrency.SoftCurrency, -config.BreakthroughCost, "RealmBreakthrough", key, cancellationToken);
         var succeeded = random.Roll(config.BreakthroughSuccessRate);
         var spiritualRootId = string.Empty;
         if (succeeded)
         {
-            player.Exp -= config.RequiredExp;
+            player.CultivationExperience -= config.RequiredExp;
             if (player.RealmStage < 10) player.RealmStage++;
             else if (index + 1 < Realms.Count)
             {

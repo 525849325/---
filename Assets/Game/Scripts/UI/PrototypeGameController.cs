@@ -232,7 +232,7 @@ namespace ImmortalLoot.UI
             };
             progress.Realm.PlayerLevel = Math.Max(1, profile.level);
             progress.Realm.Experience = Math.Max(0, profile.exp);
-            progress.Realm.CultivationExperience = Math.Max(0, profile.exp);
+            progress.Realm.CultivationExperience = Math.Max(0, profile.cultivationExperience);
             progress.Realm.RealmId = string.IsNullOrWhiteSpace(profile.realmId) ? "realm_body_tempering" : profile.realmId;
             progress.Realm.RealmStage = Math.Max(1, profile.realmStage);
             if (profile.spiritualRoots != null)
@@ -1342,11 +1342,18 @@ namespace ImmortalLoot.UI
             _level = Math.Max(1, profile.level);
             _exp = Math.Max(0, profile.exp);
             _realmStage = Math.Max(1, profile.realmStage);
+            _progressState.Realm.PlayerLevel = _level;
+            _progressState.Realm.Experience = _exp;
+            _progressState.Realm.CultivationExperience = Math.Max(0, profile.cultivationExperience);
+            _progressState.Realm.RealmId = string.IsNullOrWhiteSpace(profile.realmId)
+                ? "realm_body_tempering"
+                : profile.realmId;
+            _progressState.Realm.RealmStage = _realmStage;
             _power = Math.Max(0, profile.power);
             _softCurrency = Math.Max(0, profile.softCurrency);
             _premiumCurrency = Math.Max(0, profile.premiumCurrency);
             if (profileText != null) profileText.text = $"{profile.nickname}  Lv.{profile.level}\n战力 {profile.power:N0}";
-            if (currencyText != null) currencyText.text = $"灵砂 {profile.softCurrency:N0}    仙晶 {profile.premiumCurrency:N0}";
+            if (currencyText != null) currencyText.text = $"灵砂 {profile.softCurrency:N0}    仙晶 {profile.premiumCurrency:N0}\n修为 {profile.cultivationExperience:N0}";
         }
 
         private static string FormatServerLoot(ServerEquipmentDto item, EquipmentItemDto row)

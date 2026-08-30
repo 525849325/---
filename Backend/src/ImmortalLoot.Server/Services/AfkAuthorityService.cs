@@ -32,7 +32,7 @@ public sealed class AfkAuthorityService(GameDbContext db, RewardService rewards,
         var player = await db.Players.SingleOrDefaultAsync(value => value.Id == playerId, cancellationToken) ?? throw new KeyNotFoundException("Player was not found.");
         var entitlement = await CommercialEntitlementCalculator.CalculateAsync(db, catalog, clock.UtcNow, playerId, cancellationToken);
         var preview = Calculate(player.LastOfflineTimeUtc, entitlement.AfkCapBonusHours);
-        player.Exp = checked(player.Exp + preview.Exp);
+        PlayerExperienceProgression.Grant(player, preview.Exp);
         player.LastOfflineTimeUtc = clock.UtcNow;
         IReadOnlyDictionary<string, int>? items = preview.MaterialCount > 0 ? new Dictionary<string, int> { ["item_spirit_dust"] = preview.MaterialCount } : null;
         await GenerateEquipmentAsync(playerId, preview.EquipmentRolls, cancellationToken);
@@ -65,7 +65,7 @@ public sealed class AfkAuthorityService(GameDbContext db, RewardService rewards,
         if (used >= allowance) throw new InvalidOperationException("No Quick AFK claims remain today.");
         var player = await db.Players.SingleOrDefaultAsync(value => value.Id == playerId, cancellationToken) ?? throw new KeyNotFoundException("Player was not found.");
         var preview = CalculateDuration(catalog.Afk.QuickAfkHours * 60L * 60L);
-        player.Exp = checked(player.Exp + preview.Exp);
+        PlayerExperienceProgression.Grant(player, preview.Exp);
         IReadOnlyDictionary<string, int>? items = preview.MaterialCount > 0 ? new Dictionary<string, int> { ["item_spirit_dust"] = preview.MaterialCount } : null;
         await GenerateEquipmentAsync(playerId, preview.EquipmentRolls, cancellationToken);
         await rewards.GrantTrackedAsync(playerId, key, "QuickAfk", new RewardPayload(preview.SoftCurrency, 0, items), cancellationToken);

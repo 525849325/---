@@ -10,6 +10,8 @@ await connection.OpenAsync();
 var options = new DbContextOptionsBuilder<GameDbContext>().UseSqlite(connection).Options;
 await using var db = new GameDbContext(options);
 await db.Database.EnsureCreatedAsync();
+Require(typeof(Player).GetProperty("CultivationExperience") is not null,
+    "Player schema does not expose an independent cumulative cultivation experience pool");
 
 var clock = new FixedClock();
 var catalog = ServerGameConfigCatalog.LoadDefault();
@@ -34,6 +36,8 @@ Require(await auth.ResolvePlayerAsync("Bearer " + firstLogin.AccessToken, Cancel
 Require(await auth.ResolvePlayerAsync("Bearer invalid", CancellationToken.None) is null, "invalid access token was accepted");
 var profile = await new PlayerQueryService(db, catalog).GetProfileAsync(firstLogin.PlayerId, CancellationToken.None);
 Require(profile.Nickname == "云游客" && profile.Level == 1 && profile.RealmStage == 1, "default player profile was not persisted");
+Require(profile.Exp == 0 && profile.CultivationExperience == 0,
+    "fresh profile did not expose independent level and cultivation experience pools");
 Require(profile.CurrentStageId == "stage_1_1" && profile.ClearedStageIds.Count == 0, "fresh profile did not expose the authoritative first stage");
 
 var account = new Account { ExternalAccountId = "verify", Provider = "test" };
@@ -293,6 +297,9 @@ rankedPlayer.LastOfflineTimeUtc = clock.UtcNow.AddHours(-10);
 await db.SaveChangesAsync();
 var afk = new AfkAuthorityService(db, rewards, clock, activityService, catalog, equipmentDrops);
 var equipmentBeforeAfk = await db.PlayerEquipment.CountAsync(value => value.PlayerId == firstLogin.PlayerId);
+var levelBeforeAfk = rankedPlayer.Level;
+var levelExperienceBeforeAfk = rankedPlayer.Exp;
+var cultivationExperienceBeforeAfk = GetCultivationExperience(rankedPlayer);
 Require((await afk.PreviewAsync(firstLogin.PlayerId, CancellationToken.None)).EffectiveSeconds == 10 * 60 * 60, "AFK preview did not apply active card cap bonuses");
 var afkClaim = await afk.ClaimAsync(firstLogin.PlayerId, "afk-key", CancellationToken.None);
 var afkReplay = await afk.ClaimAsync(firstLogin.PlayerId, "afk-key", CancellationToken.None);
@@ -304,17 +311,42 @@ var quickReplay = await afk.ClaimQuickAsync(firstLogin.PlayerId, "quick-1", Canc
 var secondQuickAfk = await afk.ClaimQuickAsync(firstLogin.PlayerId, "quick-2", CancellationToken.None);
 Require(!quickAfk.Replayed && quickReplay.Replayed && !secondQuickAfk.Replayed && quickAfk.Reward.EffectiveSeconds == catalog.Afk.QuickAfkHours * 60L * 60L, "Quick AFK reward or replay is incorrect");
 Require(await db.PlayerEquipment.CountAsync(value => value.PlayerId == firstLogin.PlayerId) == equipmentBeforeAfk + expectedEquipmentRolls + quickAfk.Reward.EquipmentRolls + secondQuickAfk.Reward.EquipmentRolls, "Quick AFK equipment rewards were not materialized exactly once");
+var totalAfkExperience = checked(afkClaim.Reward.Exp + quickAfk.Reward.Exp + secondQuickAfk.Reward.Exp);
+var expectedLevelProgress = ApplyLevelExperience(levelBeforeAfk, levelExperienceBeforeAfk, totalAfkExperience);
+Require(rankedPlayer.Level == expectedLevelProgress.Level && rankedPlayer.Exp == expectedLevelProgress.Exp,
+    "AFK and Quick AFK experience did not use the shared level progression rules");
+Require(GetCultivationExperience(rankedPlayer) == cultivationExperienceBeforeAfk + totalAfkExperience,
+    "AFK and Quick AFK did not grant cumulative cultivation experience exactly once");
 await RequireThrows<InvalidOperationException>(() => afk.ClaimQuickAsync(firstLogin.PlayerId, "quick-3", CancellationToken.None), "monthly Quick AFK daily allowance was not enforced");
 
 rankedPlayer.Exp = 1000;
+SetCultivationExperience(rankedPlayer, 99);
 (await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == firstLogin.PlayerId)).SoftCurrency = 2000;
 rankedPlayer.RealmId = "realm_body_tempering";
 rankedPlayer.RealmStage = 1;
 await db.SaveChangesAsync();
 var realms = new RealmAuthorityService(db, currencies, tasks, catalog, new FixedServerRandomSource());
+var realmWalletBeforeRejection = (await db.PlayerCurrencies.AsNoTracking()
+    .SingleAsync(value => value.PlayerId == firstLogin.PlayerId)).SoftCurrency;
+var realmGrantsBeforeRejection = await db.RewardGrants.CountAsync(value => value.PlayerId == firstLogin.PlayerId);
+var realmLogsBeforeRejection = await db.RewardLogs.CountAsync(value => value.PlayerId == firstLogin.PlayerId);
+await RequireThrows<InvalidOperationException>(
+    () => realms.BreakthroughAsync(firstLogin.PlayerId, "realm-insufficient-cultivation", CancellationToken.None),
+    "realm breakthrough consumed residual level experience instead of cumulative cultivation experience");
+Require(rankedPlayer.Exp == 1000 && GetCultivationExperience(rankedPlayer) == 99 && rankedPlayer.RealmStage == 1,
+    "rejected realm breakthrough mutated either experience pool or realm progress");
+Require((await db.PlayerCurrencies.AsNoTracking().SingleAsync(value => value.PlayerId == firstLogin.PlayerId)).SoftCurrency == realmWalletBeforeRejection &&
+        await db.RewardGrants.CountAsync(value => value.PlayerId == firstLogin.PlayerId) == realmGrantsBeforeRejection &&
+        await db.RewardLogs.CountAsync(value => value.PlayerId == firstLogin.PlayerId) == realmLogsBeforeRejection,
+    "rejected realm breakthrough mutated currency or idempotency logs");
+rankedPlayer.Exp = 7;
+SetCultivationExperience(rankedPlayer, 1000);
+await db.SaveChangesAsync();
 var realmResult = await realms.BreakthroughAsync(firstLogin.PlayerId, "realm-key", CancellationToken.None);
 var realmReplay = await realms.BreakthroughAsync(firstLogin.PlayerId, "realm-key", CancellationToken.None);
 Require(realmResult.Succeeded && !realmResult.Replayed && realmReplay.Replayed && realmResult.RealmStage == 2, "server realm breakthrough or replay is incorrect");
+Require(rankedPlayer.Exp == 7 && GetCultivationExperience(rankedPlayer) == 900,
+    "realm breakthrough did not consume only cumulative cultivation experience exactly once");
 
 BattleFinishResult? bossFinish = null;
 for (var stageNumber = 4; stageNumber <= 10; stageNumber++)
@@ -327,6 +359,13 @@ for (var stageNumber = 4; stageNumber <= 10; stageNumber++)
 var finalBoss = bossFinish ?? throw new InvalidOperationException("boss battle was not executed");
 var bossEquipment = await db.PlayerEquipment.SingleAsync(value => value.InstanceId == finalBoss.EquipmentInstanceId);
 Require(finalBoss.RewardSoftCurrency == 25 && finalBoss.RewardExp == 250, "chapter boss rewards are incorrect");
+Require(GetCultivationExperience(rankedPlayer) == 1150,
+    "authoritative Boss reward did not add its experience to cumulative cultivation progress");
+var cultivationExperienceAfterBoss = GetCultivationExperience(rankedPlayer);
+var finalBossReplay = await service.FinishAsync(
+    firstLogin.PlayerId, finalBoss.SessionId, "chapter-finish-10", true, CancellationToken.None);
+Require(finalBossReplay.Replayed && GetCultivationExperience(rankedPlayer) == cultivationExperienceAfterBoss,
+    "Boss finish replay granted cumulative cultivation experience more than once");
 Require(new[] { "Rare", "Epic", "Legendary" }.Contains(bossEquipment.Quality), "boss did not improve equipment quality floor");
 Require(await db.PlayerStages.CountAsync(value => value.PlayerId == firstLogin.PlayerId && value.Cleared) == 10, "chapter 1-1 through 1-10 was not authoritatively cleared");
 var completedChapterProfile = await new PlayerQueryService(db, catalog).GetProfileAsync(firstLogin.PlayerId, CancellationToken.None);
@@ -340,13 +379,16 @@ await RequireThrows<InvalidOperationException>(
 Require(await CaptureBattleMutationSnapshotAsync(db, firstLogin.PlayerId) == postWrapState,
     "a rejected post-wrap stage mutated authoritative battle state");
 
-rankedPlayer.RealmId = "realm_body_tempering"; rankedPlayer.RealmStage = 10; rankedPlayer.Exp = 1000;
+rankedPlayer.RealmId = "realm_body_tempering"; rankedPlayer.RealmStage = 10; rankedPlayer.Exp = 13;
+SetCultivationExperience(rankedPlayer, 1000);
 (await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == firstLogin.PlayerId)).SoftCurrency = 2000;
 await db.SaveChangesAsync();
 var tribulation = await realms.BreakthroughAsync(firstLogin.PlayerId, "tribulation-key", CancellationToken.None);
 var tribulationReplay = await realms.BreakthroughAsync(firstLogin.PlayerId, "tribulation-key", CancellationToken.None);
 Require(tribulation.Succeeded && tribulation.RealmId == "realm_qi_coalescence" && tribulation.SpiritualRootId.StartsWith("root_"), "major realm breakthrough did not grant a spiritual root");
 Require(tribulationReplay.Replayed && await db.PlayerSpiritualRoots.Where(value => value.PlayerId == firstLogin.PlayerId).SumAsync(value => value.Level) == 1, "tribulation spiritual root was duplicated on replay");
+Require(rankedPlayer.Exp == 13 && GetCultivationExperience(rankedPlayer) == 900,
+    "major realm replay changed residual level experience or consumed cultivation experience twice");
 Require((await tasks.ListAsync(firstLogin.PlayerId, CancellationToken.None)).Tasks.Single(value => value.Id == "daily_tribulation_1").CanClaim, "successful major tribulation did not complete the daily task");
 var rootedProfile = await new PlayerQueryService(db, catalog).GetProfileAsync(firstLogin.PlayerId, CancellationToken.None);
 Require(rootedProfile.SpiritualRoots.Count == 9 && rootedProfile.SpiritualRoots.Sum(value => value.Level) == 1 && rootedProfile.SpiritualRoots.All(value => value.Level <= value.MaxLevel), "persisted spiritual roots were not returned in the authoritative profile");
@@ -537,7 +579,7 @@ static async Task VerifyDatabaseSchemaUpgrade(IServerClock clock)
         await upgradeDb.Database.ExecuteSqlRawAsync(
             $"DROP INDEX IF EXISTS \"{GameDatabaseInitializer.ActiveBattleIndexName}\";");
         var account = new Account { ExternalAccountId = "schema-upgrade", Provider = "test" };
-        var player = new Player { AccountId = account.Id, Nickname = "SchemaUpgrade" };
+        var player = new Player { AccountId = account.Id, Nickname = "SchemaUpgrade", Exp = 37 };
         var older = new BattleSession
         {
             PlayerId = player.Id,
@@ -560,8 +602,20 @@ static async Task VerifyDatabaseSchemaUpgrade(IServerClock clock)
         upgradeDb.PlayerStats.Add(new PlayerStats { PlayerId = player.Id });
         upgradeDb.BattleSessions.AddRange(older, newer);
         await upgradeDb.SaveChangesAsync();
+        await upgradeDb.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE \"Player\" DROP COLUMN \"CultivationExperience\";");
+        upgradeDb.ChangeTracker.Clear();
 
         await GameDatabaseInitializer.InitializeAsync(upgradeDb, clock.UtcNow);
+        var migratedPlayer = await upgradeDb.Players.AsNoTracking().SingleAsync(value => value.Id == player.Id);
+        Require(migratedPlayer.Exp == 37 && GetCultivationExperience(migratedPlayer) == 37,
+            "legacy Player experience was not backfilled into cumulative cultivation experience");
+        await upgradeDb.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE \"Player\" SET \"Exp\" = {91L}, \"CultivationExperience\" = {0L} WHERE \"Id\" = {player.Id};");
+        await GameDatabaseInitializer.InitializeAsync(upgradeDb, clock.UtcNow);
+        var secondInitialization = await upgradeDb.Players.AsNoTracking().SingleAsync(value => value.Id == player.Id);
+        Require(secondInitialization.Exp == 91 && GetCultivationExperience(secondInitialization) == 0,
+            "database reinitialization repeated legacy cultivation backfill and overwrote current progress");
         var upgradedSessions = await upgradeDb.BattleSessions.AsNoTracking()
             .Where(value => value.PlayerId == player.Id)
             .ToListAsync();
@@ -618,6 +672,7 @@ static async Task<BattleMutationSnapshot> CaptureBattleMutationSnapshotAsync(Gam
         taskProgress,
         player.Level,
         player.Exp,
+        GetCultivationExperience(player),
         wallet.SoftCurrency,
         wallet.PremiumCurrency);
 }
@@ -634,6 +689,31 @@ static BattleAuthorityService CreateBattleService(GameDbContext db, IServerClock
 static void Require(bool condition, string message)
 {
     if (!condition) throw new InvalidOperationException(message);
+}
+
+static long GetCultivationExperience(Player player)
+{
+    var property = typeof(Player).GetProperty("CultivationExperience")
+        ?? throw new InvalidOperationException("Player cultivation experience property is missing.");
+    return (long)(property.GetValue(player) ?? 0L);
+}
+
+static void SetCultivationExperience(Player player, long value)
+{
+    var property = typeof(Player).GetProperty("CultivationExperience")
+        ?? throw new InvalidOperationException("Player cultivation experience property is missing.");
+    property.SetValue(player, value);
+}
+
+static (int Level, long Exp) ApplyLevelExperience(int level, long experience, long reward)
+{
+    experience = checked(experience + reward);
+    while (experience >= level * 100L)
+    {
+        experience -= level * 100L;
+        level++;
+    }
+    return (level, experience);
 }
 
 static async Task RequireThrows<T>(Func<Task> action, string message) where T : Exception
@@ -664,6 +744,7 @@ sealed record BattleMutationSnapshot(
     long TaskProgress,
     int Level,
     long Exp,
+    long CultivationExperience,
     long SoftCurrency,
     long PremiumCurrency);
 

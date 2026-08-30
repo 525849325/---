@@ -82,7 +82,9 @@ namespace ImmortalLoot.Tests
             Assert.That(parsed.effectiveSeconds, Is.EqualTo(600));
             Assert.That(parsed.equipmentRolls, Is.EqualTo(2));
             var profile = ImmortalLootApiClient.Parse<PlayerProfileDto>(new ApiResponse(200,
-                "{\"playerId\":\"p1\",\"nickname\":\"修士\",\"currentStageId\":\"stage_1_3\",\"clearedStageIds\":[\"stage_1_1\",\"stage_1_2\"],\"spiritualRoots\":[]}"));
+                "{\"playerId\":\"p1\",\"nickname\":\"修士\",\"exp\":7,\"cultivationExperience\":345,\"currentStageId\":\"stage_1_3\",\"clearedStageIds\":[\"stage_1_1\",\"stage_1_2\"],\"spiritualRoots\":[]}"));
+            Assert.That(profile.exp, Is.EqualTo(7));
+            Assert.That(profile.cultivationExperience, Is.EqualTo(345));
             Assert.That(profile.currentStageId, Is.EqualTo("stage_1_3"));
             Assert.That(profile.clearedStageIds, Is.EqualTo(new[] { "stage_1_1", "stage_1_2" }));
         }

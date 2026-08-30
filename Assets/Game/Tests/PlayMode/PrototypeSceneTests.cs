@@ -497,6 +497,8 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(controller.ProgressForTests.Stage.ClearedStageIds,
                 Is.EquivalentTo(new[] { "stage_1_1", "stage_1_2" }),
                 "The refreshed currentStageId and clearedStageIds must be applied as one authoritative mirror.");
+            Assert.That(controller.ProgressForTests.Realm.CultivationExperience, Is.EqualTo(900),
+                "A refreshed server profile must preserve the authoritative cumulative cultivation pool instead of mirroring residual level experience.");
             DeleteLocalSave();
         }
 
@@ -1336,6 +1338,8 @@ namespace ImmortalLoot.Tests.PlayMode
                 playerId = "p1",
                 nickname = "在线修士",
                 level = 1,
+                exp = 7,
+                cultivationExperience = 900,
                 realmId = "realm_body_tempering",
                 realmStage = 1,
                 power = 180,
@@ -1480,6 +1484,7 @@ namespace ImmortalLoot.Tests.PlayMode
                             nickname = "在线修士",
                             level = 1,
                             exp = _hasRewardedFinish ? 25 : 0,
+                            cultivationExperience = _hasRewardedFinish ? 925 : 900,
                             realmId = "realm_body_tempering",
                             realmStage = 1,
                             power = 180,

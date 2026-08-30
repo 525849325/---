@@ -140,6 +140,8 @@ try {
     $profile = Read-Json $profileResponse
     Assert-Contract ($profile.currentStageId -eq 'stage_1_1') 'Fresh HTTP profile did not expose stage_1_1.'
     Assert-Contract (@($profile.clearedStageIds).Count -eq 0) 'Fresh HTTP profile unexpectedly contained cleared stages.'
+    Assert-Contract (($profile.PSObject.Properties.Name -contains 'cultivationExperience') -and [long]$profile.cultivationExperience -eq 0) `
+        'Fresh HTTP profile did not expose the independent cumulative cultivation experience field.'
 
     $inventory = Invoke-ContractRequest -Method GET -Path '/player/inventory' -Token $token
     Assert-Status $inventory 200 'Initial inventory'

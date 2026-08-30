@@ -35,6 +35,7 @@ public sealed class Player : EntityBase
     [MaxLength(32)] public string Nickname { get; set; } = string.Empty;
     public int Level { get; set; } = 1;
     public long Exp { get; set; }
+    public long CultivationExperience { get; set; }
     [MaxLength(64)] public string RealmId { get; set; } = "realm_body_tempering";
     public int RealmStage { get; set; } = 1;
     public long Power { get; set; }
