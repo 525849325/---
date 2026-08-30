@@ -1,18 +1,18 @@
 # V0.1 RC 静态完成审计
 
-日期：2026-08-30。结论：P0/P1 实现面已覆盖，但 Unity 场景执行、Android 产物和真机证据因 RED-001 尚未形成，因此当前只能判定为 **RC implementation complete / runtime acceptance blocked**，不能宣称 GATE 4 完成。
+日期：2026-08-30。复审结论：领域能力多数存在，但默认离线玩家路径仍有聚合存档、胜利驱动关卡和真实成长接线缺口；当前判定为 **RC implementation incomplete / runtime acceptance blocked**，不能宣称 GATE 1–4 完成。
 
 ## P0
 
 | 能力 | 当前证据 | 判定 |
 |---|---|---|
 | 自动战斗 / 怪物 / Boss | `AutoBattleEngine`、怪物/技能配置、Boss 3 分钟节奏和 Rare+ 保底 | IMPLEMENTED；待 Unity 场景 |
-| 地图 / 关卡推进 | `DemoPacingSession` 1-1→1-10、关卡配置引用校验 | IMPLEMENTED；待 4 分钟试玩 |
+| 地图 / 关卡推进 | 当前由时间推进且 3 分钟后永久停留 Boss | P0 GAP；CORE-STAGE-002 |
 | 装备掉落 / 品质 / 随机词条 | 十槽等权池、品质规则、冲突词条生成；10,000 次门禁 | VERIFIED（领域）；待 UI 场景 |
 | 比较 / 手动与自动换装 / 战力 | 统一属性聚合、严格增益自动换装、可关闭设置、手动按钮 | IMPLEMENTED；待 PlayMode |
-| 境界 / 修炼 / 角色成长 | 配置化境界与三套功法，统一属性服务重算 | IMPLEMENTED；待长时试玩 |
-| 离线收益 / 本地存档 | 8 小时上限、单次领取、v2 快照、v1 迁移、损坏隔离 | IMPLEMENTED；待 Android 生命周期 |
-| 基础引导 | 启动即战斗、掉落/换装/Boss/突破弱引导 | IMPLEMENTED；待陌生玩家测试 |
+| 境界 / 修炼 / 角色成长 | 领域服务存在；默认按钮仍绕过成本和解锁规则 | P0 GAP；待真实接线 |
+| 离线收益 / 本地存档 | 基础字段与背包可保存；Stage/Realm/Cultivation/Root/Guide/Task 未聚合 | P0 GAP；SAVE-AGGREGATE-001 |
+| 基础引导 | 当前只有动态提示语，没有可持久化步骤状态机 | P0 GAP；待最小四步引导 |
 | 商店 / 商品 / 商业接口 | 配置商品、成长后曝光、UI 不直接发币、Development-only Mock | VERIFIED（程序集+后端）；待场景 |
 | 设置 | 独立声音、震动、自动换装、立即保存、隐私与协议入口 | IMPLEMENTED；待触控验收 |
 | Android Build | API 26、ARMv7+ARM64、APK/AAB RC 工具和规格测试 | SCRIPT READY；BLOCKED RED-001 |

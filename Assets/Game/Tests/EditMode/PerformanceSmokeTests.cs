@@ -35,7 +35,12 @@ namespace ImmortalLoot.Tests
             for (var index = 0; index < 2000; index++)
             {
                 if (inventory.State.Equipment.Count == inventory.State.EquipmentCapacity)
-                    inventory.RemoveEquipment(inventory.State.Equipment[0].InstanceId, out _);
+                {
+                    var candidate = InventoryOverflowPolicy.SelectDiscardCandidate(
+                        inventory.State.Equipment, new HashSet<string>());
+                    Assert.That(candidate, Is.Not.Null);
+                    inventory.RemoveEquipment(candidate.InstanceId, out _);
+                }
                 inventory.AddEquipment(generator.Generate(catalog.GetEquipment("weapon_cloudsteel_blade"), 1 + index / 100, EquipmentQuality.Rare, "LongRun"));
             }
             watch.Stop();

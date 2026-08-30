@@ -5,6 +5,7 @@ using ImmortalLoot.Analytics;
 using ImmortalLoot.Config;
 using ImmortalLoot.Core;
 using ImmortalLoot.Equipment;
+using ImmortalLoot.Inventory;
 
 internal static class DomainSmokeTests
 {
@@ -14,6 +15,7 @@ internal static class DomainSmokeTests
         {
             VerifyBattle();
             VerifyValidationTelemetry();
+            VerifyInventoryOverflowProtection();
             VerifyTenThousandEquipmentItems();
             Console.WriteLine("PASS: all domain smoke tests completed.");
             return 0;
@@ -47,6 +49,22 @@ internal static class DomainSmokeTests
         Require(sink.Events.Count == 1, "funnel milestone must be emitted once per session");
         Require(sink.Events[0].sessionId == "verification-session", "funnel event must carry its correlation session");
         Require(sink.Events[0].elapsedSeconds == 42.5 && sink.Events[0].itemQuality == "Rare", "funnel event fields must remain structured");
+    }
+
+    private static void VerifyInventoryOverflowProtection()
+    {
+        var equipped = Equipment("equipped", EquipmentQuality.Common, 1);
+        var locked = Equipment("locked", EquipmentQuality.Fine, 2);
+        locked.IsLocked = true;
+        var legendary = Equipment("legendary", EquipmentQuality.Legendary, 3);
+        var safe = Equipment("safe", EquipmentQuality.Rare, 4);
+        var protectedIds = new HashSet<string> { equipped.InstanceId };
+        var selected = InventoryOverflowPolicy.SelectDiscardCandidate(
+            new[] { equipped, locked, legendary, safe }, protectedIds);
+        Require(ReferenceEquals(selected, safe), "overflow must select only an unprotected sub-Legendary item");
+        Require(InventoryOverflowPolicy.SelectDiscardCandidate(
+            new[] { equipped, locked, legendary }, protectedIds) == null,
+            "overflow must refuse replacement when every item is protected");
     }
 
     private static void VerifyTenThousandEquipmentItems()
@@ -116,6 +134,16 @@ internal static class DomainSmokeTests
             Affix("boss_damage", "boss", 2, 7, 20),
             Affix("skill_damage", "skill", 2, 7, 20)
         }
+    };
+
+    private static EquipmentInstance Equipment(string id, EquipmentQuality quality, int level) => new EquipmentInstance
+    {
+        InstanceId = id,
+        BaseId = "verification_weapon",
+        DisplayName = id,
+        Quality = quality,
+        Level = level,
+        CreateTimeUtc = new DateTime(2026, 8, 30, 0, 0, level, DateTimeKind.Utc)
     };
 
     private static AffixDefinition Affix(string id, string conflict, float min, float max, int weight) =>

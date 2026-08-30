@@ -65,6 +65,24 @@ namespace ImmortalLoot.Tests
             Assert.That(reward.EquipmentEssence, Is.EqualTo(3));
         }
 
+        [Test]
+        public void OverflowPolicy_NeverSelectsEquippedLockedOrLegendaryEquipment()
+        {
+            var equipped = Item("equipped", EquipmentQuality.Common, 1);
+            var locked = Item("locked", EquipmentQuality.Fine, 2);
+            locked.IsLocked = true;
+            var legendary = Item("legendary", EquipmentQuality.Legendary, 3);
+            var safe = Item("safe", EquipmentQuality.Rare, 4);
+            var protectedIds = new System.Collections.Generic.HashSet<string> { equipped.InstanceId };
+
+            var selected = InventoryOverflowPolicy.SelectDiscardCandidate(
+                new[] { equipped, locked, legendary, safe }, protectedIds);
+
+            Assert.That(selected, Is.SameAs(safe));
+            Assert.That(InventoryOverflowPolicy.SelectDiscardCandidate(
+                new[] { equipped, locked, legendary }, protectedIds), Is.Null);
+        }
+
         private static EquipmentInstance Item(string id, EquipmentQuality quality, int level, string baseId = "weapon_cloudsteel_blade") => new EquipmentInstance
         {
             InstanceId = id, BaseId = baseId, Quality = quality, Level = level, CreateTimeUtc = DateTime.UtcNow

@@ -29,12 +29,38 @@ namespace ImmortalLoot.Tests
             Assert.That(store.SaveCount, Is.EqualTo(4));
         }
 
+        [Test]
+        public void AnonymousInstallId_IsGeneratedOnceAndNeverUsesDeviceFingerprint()
+        {
+            var store = new MemoryInstallIdStore();
+            var generated = 0;
+            var provider = new AnonymousInstallIdProvider(store, () =>
+            {
+                generated++;
+                return "0123456789abcdef0123456789abcdef";
+            });
+
+            Assert.That(provider.GetOrCreate(), Is.EqualTo("0123456789abcdef0123456789abcdef"));
+            Assert.That(provider.GetOrCreate(), Is.EqualTo("0123456789abcdef0123456789abcdef"));
+            Assert.That(generated, Is.EqualTo(1));
+            Assert.That(store.SaveCount, Is.EqualTo(1));
+        }
+
         private sealed class MemoryStore : IGameSettingsStore
         {
             private readonly Dictionary<string, int> _values = new Dictionary<string, int>();
             public int SaveCount { get; private set; }
             public int GetInt(string key, int defaultValue) => _values.TryGetValue(key, out var value) ? value : defaultValue;
             public void SetInt(string key, int value) => _values[key] = value;
+            public void Save() => SaveCount++;
+        }
+
+        private sealed class MemoryInstallIdStore : IInstallIdStore
+        {
+            private string _value = string.Empty;
+            public int SaveCount { get; private set; }
+            public string GetString(string key) => _value;
+            public void SetString(string key, string value) => _value = value;
             public void Save() => SaveCount++;
         }
     }

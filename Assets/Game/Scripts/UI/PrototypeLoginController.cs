@@ -1,5 +1,6 @@
 using System;
 using ImmortalLoot.Network;
+using ImmortalLoot.Settings;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -23,7 +24,9 @@ namespace ImmortalLoot.UI
 
         private void Start()
         {
-            if (serverLoginButton != null) serverLoginButton.onClick.AddListener(LoginToServer);
+            if (serverLoginButton == null) return;
+            serverLoginButton.gameObject.SetActive(Debug.isDebugBuild);
+            if (Debug.isDebugBuild) serverLoginButton.onClick.AddListener(LoginToServer);
         }
 
         private async void LoginToServer()
@@ -33,9 +36,8 @@ namespace ImmortalLoot.UI
             try
             {
                 ApiClient = new ImmortalLootApiClient(new UnityWebRequestTransport(serverBaseUrl));
-                var deviceId = SystemInfo.deviceUniqueIdentifier;
-                if (string.IsNullOrWhiteSpace(deviceId)) deviceId = Guid.NewGuid().ToString("N");
-                var result = await ApiClient.LoginAsync(deviceId, "云游客");
+                var installId = new AnonymousInstallIdProvider(new PlayerPrefsInstallIdStore()).GetOrCreate();
+                var result = await ApiClient.LoginAsync(installId, "云游客");
                 if (feedbackText != null) feedbackText.text = result.isNewPlayer ? "服务器建档成功" : "服务器存档已载入";
                 var loginPage = GameObject.Find("LoginPage");
                 if (loginPage != null) loginPage.SetActive(false);

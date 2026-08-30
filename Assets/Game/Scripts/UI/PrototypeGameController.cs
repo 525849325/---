@@ -219,9 +219,17 @@ namespace ImmortalLoot.UI
             var source = isBoss ? DropSourceType.Boss : DropSourceType.Monster;
             var sourceId = isBoss ? "monster_stone_nightmare" : "monster_wasteland_beast";
             var drops = _drops.Roll(dropTableId, new DropContext(source, 1 + _kills / 3, sourceId));
+            var overflowReward = new DecompositionReward();
             _latestLoot = drops[0].Equipment;
-            if (_inventory.State.Equipment.Count >= _inventory.State.EquipmentCapacity)
-                _inventory.RemoveEquipment(_inventory.State.Equipment[0].InstanceId, out _);
+            if (!TryMakeRoomForLoot(out overflowReward))
+            {
+                lootText.text = FormatLoot(_latestLoot) + "\n\n背包已满且没有可安全回收的装备；本次掉落未收入背包。\n请分解未锁定、未穿戴的 Epic 及以下装备。";
+                lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
+                _latestLoot = null;
+                SaveProgress();
+                Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
+                return;
+            }
             _inventory.AddEquipment(_latestLoot);
             _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString());
             _feedback.PlayLoot(_latestLoot.Quality);
@@ -229,9 +237,12 @@ namespace ImmortalLoot.UI
                 ? _upgradeEvaluator.Evaluate(_progressionStats.Calculate(_baseStats), _loadout.Equipped, _latestLoot)
                 : new EquipmentUpgradeDecision(false, 0);
             if (autoUpgrade.ShouldEquip) _loadout.Equip(_latestLoot);
+            var overflowSummary = overflowReward.SoftCurrency > 0
+                ? $"\n安全回收低价值装备：灵砂 +{overflowReward.SoftCurrency:N0} · 强化石 +{overflowReward.EnhancementMaterial}"
+                : string.Empty;
             lootText.text = FormatLoot(_latestLoot) + (autoUpgrade.ShouldEquip
                 ? $"\n\n自动换装成功 · 战力预计 +{autoUpgrade.PowerGain}"
-                : "\n\n点击“穿戴最新装备”进行比较");
+                : "\n\n点击“穿戴最新装备”进行比较") + overflowSummary;
             lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
             if (_stageNumber == 10)
             {
@@ -392,6 +403,23 @@ namespace ImmortalLoot.UI
             });
         }
 
+        private bool TryMakeRoomForLoot(out DecompositionReward reward)
+        {
+            reward = new DecompositionReward();
+            if (_inventory.State.Equipment.Count < _inventory.State.EquipmentCapacity) return true;
+            var protectedIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var equipped in _loadout.Equipped.Values) protectedIds.Add(equipped.InstanceId);
+            var candidate = InventoryOverflowPolicy.SelectDiscardCandidate(_inventory.State.Equipment, protectedIds);
+            if (candidate == null) return false;
+            reward = _decomposition.Decompose(candidate.InstanceId);
+            if (reward.EnhancementMaterial > 0)
+                _inventory.AddStack("item_enhancement_stone", reward.EnhancementMaterial, ItemCategory.Material);
+            if (reward.EquipmentEssence > 0)
+                _inventory.AddStack("item_equipment_essence", reward.EquipmentEssence, ItemCategory.Material);
+            _softCurrency += reward.SoftCurrency;
+            return true;
+        }
+
         private void OnApplicationPause(bool paused) { if (paused) SaveProgress(); }
         private void OnApplicationQuit() => SaveProgress();
 
@@ -497,7 +525,7 @@ namespace ImmortalLoot.UI
         }
 
         public string LegalNotice() =>
-            "隐私政策与用户协议\n\n本候选版仅保存本地游戏进度与不含个人身份的验证事件。\n不读取通讯录、定位、相册或广告标识。\n正式外测前须由发行主体补充主体名称、联系邮箱和最终法律文本。";
+            "隐私政策与用户协议\n\n本候选版保存本地游戏进度与不含个人身份的验证事件。Development 构建中，只有玩家主动选择本地服务器登录时，才会发送应用随机生成的匿名安装 ID；不会读取设备唯一标识。\n不读取通讯录、定位、相册或广告标识。\n正式外测前须由发行主体补充主体名称、联系邮箱和最终法律文本。";
 
         private string BuildName() => _buildIndex == 0 ? "火修燃烧" : _buildIndex == 1 ? "雷修暴击" : "血修吸血";
 
