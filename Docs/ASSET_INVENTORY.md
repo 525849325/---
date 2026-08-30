@@ -18,7 +18,7 @@
 | 动画/Animator | 0 | PLACEHOLDER | 用程序化位移/缩放先完成反馈。 |
 | Material/Shader | 0 自有 | DIRECT_USE | Built-in UI 默认 Shader 足够 V0.1。 |
 | JSON 数值配置 | `Assets/Game/Resources/Config/*.json` 20 份 | DIRECT_USE | 怪物、Boss、装备、品质、词条、关卡、境界、商店等可调。 |
-| Editor 工具 | `Assets/Game/Editor` | DIRECT_USE | 场景生成、RC APK/AAB 构建方法和规格测试已存在；当前需在 `bffd195` 的 111/28 全绿后重建双产物。 |
+| Editor 工具 | `Assets/Game/Editor` | NEEDS_EDIT | 场景生成、RC APK/AAB 构建方法和规格测试已存在；当前静态枚举 116/33，仍需补 Git SHA 溯源、旧产物清理及完整门禁后重建双产物。 |
 
 ## 资产策略
 

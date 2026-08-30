@@ -13,7 +13,7 @@
 
 ## Task List
 
-任务明细与验收记录在 `tasks/todo.md`；日程与并行流见 `Docs/SPRINT_14D.md`。
+当前权威任务状态见 `Docs/TASK_QUEUE.md`，验收真相见 `Docs/MVP_ACCEPTANCE.md`；`tasks/todo.md` 仅保留启动时的历史拆解，日程与并行流见 `Docs/SPRINT_14D.md`。
 
 ## Risks and Mitigations
 

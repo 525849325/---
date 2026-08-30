@@ -1,5 +1,7 @@
 # V0.1 可执行任务
 
+> 历史启动清单：复选框保留最初拆解，不代表当前完成状态。当前权威状态见 `Docs/TASK_QUEUE.md`，当前验收证据见 `Docs/MVP_ACCEPTANCE.md`。
+
 ## Task 1：TASK-000 审计与安全基线
 
 **Acceptance criteria:**
@@ -51,5 +53,5 @@
 - [ ] P0/P1 为 0，核心流程和存档稳定。
 - [ ] 10 分钟与 60 分钟测试证据完整。
 
-**Verification:** 质量门禁、安装/启动、真机或明确记录的外部阻塞。  
+**Verification:** 质量门禁、安装/启动和物理 Android 真机；外部阻塞只标记 `BLOCKED`，不构成验收通过。
 **Dependencies:** Task 2–4。 **Scope:** M。

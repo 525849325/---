@@ -1,6 +1,6 @@
 # Project ImmortalLoot / 《太初：无尽轮回》
 
-原创修仙放置刷宝手游 MVP。Phase 1–20 已完成：核心刷宝循环、随机装备词条、挂机、境界渡劫、九系灵根、火/雷/血三套功法 Build、任务活动邮件，以及含鉴权、商城、Development-only Mock 支付和三维周期排行榜的权威后端均已落地。Android 功能与兼容验收使用夜神 Android 7.1.2；按本次 MVP 的用户批准范围，不包含物理真机发布认证。
+原创修仙放置刷宝手游 V0.1 RC-candidate。核心刷宝、存档/挂机、境界渡劫、Development-only 在线合同与后端已落地；GATE 4 仍为 OPEN，当前正在收口首 Boss 后轮回节奏、产品页和发布证据。夜神 Android 7.1.2 结果只作历史兼容参考；当前 RC 必须通过同源 APK/AAB、1080×1920 页面和物理 Android 真机验收。
 
 ## 运行
 
@@ -40,6 +40,8 @@ $env:ASPNETCORE_ENVIRONMENT='Development'
 & 'C:\Program Files\Unity\Hub\Editor\6000.5.10f1\Editor\Unity.exe' -projectPath . -runTests -testPlatform PlayMode -testResults PlayModeTestResults.xml
 & '.\Tools\Verification\compile-unity-assemblies.ps1'
 & '.\Tools\Verification\run-domain-tests.ps1'
+& '.\Tools\Verification\run-core-loop-smoke.ps1'
+& '.\Tools\Verification\run-real-battle-pacing-smoke.ps1'
 & '.\Tools\Verification\run-balance-simulation.ps1'
 ```
 
@@ -58,7 +60,7 @@ $env:ASPNETCORE_ENVIRONMENT='Development'
 
 ## 无人值守开发
 
-项目已内置“需求 → Codex 开发 → Unity/后端测试 → 自动截图 → UI 审查 → 自动修复 → 构建 → Git 留档”的可复用入口。使用方式和安全边界见 `Tools/Autonomous/README.md`。日常完整质量门禁可直接运行：
+项目已内置“需求 → Codex 开发 → Unity/后端测试 → 自动截图 → UI 审查 → 自动修复 → 构建 → Git 留档”的可复用入口。使用方式和安全边界见 `Tools/Autonomous/README.md`。当前脚本提供基础本地门禁；在 `QUALITY-GATE-002` 完成前，它不代表全部 smoke、安全、大文件、Android 产物及物理设备放行：
 
 ```powershell
 .\Tools\Autonomous\Invoke-QualityGate.ps1

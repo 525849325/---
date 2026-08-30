@@ -1,6 +1,6 @@
 # 《太初：无尽轮回》V0.1 项目审计
 
-> 当前状态补充（2026-08-30）：本文主体是启动审计快照。最新权威状态见 `DAILY_REPORT.md` 与 `TASK_QUEUE.md`。当前源码为 `ca495ef`：离线境界/渡劫及 Development 在线破境石/pending→Boss 权威闭环已接入，程序集、离线 smoke、Backend 与 HTTP 46/46 PASS；当前 Unity EditMode 112 与 PlayMode 32 尚未运行。`2bee3ac` 的 109/109、26/26 和 APK/AAB 仅为历史证据且产物已过期。GATE 4 仍缺当前 Unity 回归、重建双产物、完整竖屏视觉与物理真机验收。
+> 当前状态补充（2026-08-30）：本文主体是启动审计快照，以下旧表格不代表当前完成状态；最新权威状态见 `DAILY_REPORT.md` 与 `TASK_QUEUE.md`。最新已推送代码检查点为 `5a61ddf`：离线/在线境界合同及存档写入韧性已接入，程序集、离线 smoke、Backend 与 HTTP 46/46 PASS；当前 Unity EditMode 116 与 PlayMode 33 尚未运行。RealBattle 暴露首 Boss 后强度不递进与 Boss spam，`CORE-CYCLE-PACING-003` 为 P1 RUNNING。`2bee3ac` 的 109/109、26/26 和 APK/AAB 仅为历史证据且产物已过期。GATE 4 仍缺 Release-scope P1、当前 Unity、同源双产物、完整竖屏视觉与物理真机验收。
 
 审计日期：2026-08-30  
 审计基线：安全检查点 `ced7a07` 之后的当前工作区。状态只依据当前源码与本轮重新运行的测试/构建结果；旧报告中的历史 PASS 不自动继承。
@@ -14,7 +14,7 @@
 - Unity：6000.5.10f1。
 - Render Pipeline：Built-in（`m_CustomRenderPipeline: 0`），Gamma 色彩空间。
 - 目标：Android 优先；当前配置允许竖屏自动旋转，Android ARMv7 + ARM64，最低 API 26；产品名仍为《太初拾遗录》，包名 `com.immortalloot.prototype`。
-- 依赖：UGUI 2.0.0、Unity Test Framework 1.4.6、UnityWebRequest；后端为 ASP.NET Core 8 + EF Core SQLite 8.0.21。
+- 依赖：manifest 声明 UGUI 2.0.0、Unity Test Framework 1.4.6，但 packages-lock/runtime 为 2.5.0、1.7.0；已登记 `PACKAGE-LOCK-CONSISTENCY-001`。后端为 ASP.NET Core 8 + EF Core SQLite 8.0.21。
 - Build Settings：唯一启用场景 `Assets/Game/Scenes/Main.unity`。
 - 规模：约 97 个 C# 文件、8,699 行；302 个受版本管理工程文件；3 个场景（其中 2 个为 `_Recovery`），0 Prefab，0 图片/音频/字体/动画/材质/Shader 自有资源。
 - 架构：`Assets/Game/Scripts` 为客户端领域层与原型 UI；`Resources/Config` 为 20 份 JSON 配置；`Backend` 为可选权威服务；EditMode/PlayMode 与后端验证程序已存在。
@@ -34,7 +34,7 @@
 | 数值/战力 | READY | 统一属性与战力计算存在并测试单调性。 |
 | 关卡 | READY | 1-1～1-10 配置链、Boss 关与服务存在。 |
 | 地图 | MISSING | 独立地图系统不存在；V0.1 用关卡进度条即可，不新增大地图。 |
-| 境界 | TESTING | `ca495ef` 已接入离线真实突破/Boss/渡劫/灵根/统一战力及在线破境石、RequiredLevel、pending→Boss/Profile 镜像；待当前 Unity 112/32 实跑。 |
+| 境界 | TESTING | 当前已接入离线真实突破/Boss/渡劫/灵根/统一战力及在线破境石、RequiredLevel、pending→Boss/Profile 镜像；待当前 Unity 116/33 实跑。 |
 | 技能 | REFACTOR | 主动/被动/CD/AOE/DOT 等战斗支持存在；缺少可理解的玩家反馈。 |
 | 本地存档 | REFACTOR | 原子写入、版本、SHA-256 仓库存在且单测覆盖，但主场景未调用。 |
 | 离线收益 | REFACTOR | 计算/领取与后端接口存在；离线本地闭环及回归测试未接入主场景。 |
@@ -46,8 +46,8 @@
 | 广告 | MISSING | V0.1 可不接真实广告，但应保留无广告假入口或明确不启用。 |
 | Analytics | MISSING | 只有本地 playtest JSONL；缺少事件接口和关键漏斗定义。 |
 | 设置 | MISSING | 未发现音量、震动、隐私或存档操作页面。 |
-| 测试 | TESTING | 当前源码预计 EditMode 112、PlayMode 32；静态程序集、离线 smoke、Backend 与 HTTP 46/46 PASS，Unity Test Runner 因目标项目会话绑定阻塞尚未运行。 |
-| Build Pipeline | TESTING | RC APK/AAB 方法及产物门禁已存在；`2bee3ac` 历史双产物通过，但必须为 `ca495ef` 重建。 |
+| 测试 | TESTING | 当前源码预计 EditMode 116、PlayMode 33；静态程序集、离线 smoke、Backend 与 HTTP 46/46 PASS，Unity Test Runner 因目标项目会话绑定阻塞尚未运行。 |
+| Build Pipeline | TESTING | RC APK/AAB 方法存在；`2bee3ac` 历史双产物通过但已过期。当前还需补 Git SHA 绑定、旧产物清理与完整产物门禁后重建。 |
 
 ## 3. 修旧与重写比较
 
@@ -69,6 +69,6 @@
 
 ## 5. 最短关键路径
 
-`主场景持久状态模型 → 20 秒内自动战斗 → 60 秒内首件装备 → 比较/换装/战力跳字 → 2–4 分钟 Boss 与保底掉落 → 保存退出/重进 → 离线收益 → 商店接口 → Android Release 构建与实机/模拟器 QA`。
+`主场景持久状态模型 → 20 秒内自动战斗 → 60 秒内首件装备 → 比较/换装/战力跳字 → 2–4 分钟 Boss 与保底掉落 → 首 Boss 后轮回成长 → 保存退出/重进 → 离线收益 → 商店接口 → Android Release 构建与物理真机 QA（模拟器仅作历史兼容参考）`。
 
 后端、排行榜、邮件、复杂任务与 V0.2 系统不阻塞 GATE 1；当前第一优先级是把已有领域逻辑变成陌生玩家能理解且能持续玩的竖屏产品。
