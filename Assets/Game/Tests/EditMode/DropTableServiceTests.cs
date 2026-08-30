@@ -35,12 +35,12 @@ namespace ImmortalLoot.Tests
         }
 
         [Test]
-        public void BossTable_UsesConfiguredRollCountAndHigherQualityFloor()
+        public void BossTable_GuaranteesOneHigherQualityEquipmentReward()
         {
             var results = CreateService(42).Roll("drop_boss_1", new DropContext(DropSourceType.Boss, 20, "monster_stone_nightmare"));
-            Assert.That(results.Count, Is.EqualTo(2));
-            foreach (var result in results)
-                if (result.Equipment != null) Assert.That(result.Quality.Value, Is.GreaterThanOrEqualTo(EquipmentQuality.Rare));
+            Assert.That(results.Count, Is.EqualTo(1));
+            Assert.That(results[0].Equipment, Is.Not.Null);
+            Assert.That(results[0].Quality.Value, Is.GreaterThanOrEqualTo(EquipmentQuality.Rare));
         }
 
         [Test]
