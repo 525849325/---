@@ -66,6 +66,26 @@ namespace ImmortalLoot.Tests
         }
 
         [Test]
+        public void UpgradeEvaluator_EquipsOnlyWhenUnifiedPowerStrictlyIncreases()
+        {
+            var catalog = Catalog();
+            var calculator = PowerCalculator.Load(new ResourcesConfigSource());
+            var current = Item("old", "weapon_cloudsteel_blade");
+            current.BaseStats.Add(new EquipmentStatRoll { Stat = StatId.Attack, ModifierType = StatModifierType.Flat, Value = 12 });
+            var weaker = Item("weak", "weapon_cloudsteel_blade");
+            weaker.BaseStats.Add(new EquipmentStatRoll { Stat = StatId.Attack, ModifierType = StatModifierType.Flat, Value = 5 });
+            var newSlot = Item("helmet", "helmet_mistveil");
+            newSlot.BaseStats.Add(new EquipmentStatRoll { Stat = StatId.HP, ModifierType = StatModifierType.Flat, Value = 35 });
+            var equipped = new Dictionary<EquipmentSlot, EquipmentInstance> { { EquipmentSlot.Weapon, current } };
+            var evaluator = new EquipmentUpgradeEvaluator(catalog, calculator);
+
+            Assert.That(evaluator.Evaluate(new CharacterStats { HP = 100, Attack = 10 }, equipped, weaker).ShouldEquip, Is.False);
+            var upgrade = evaluator.Evaluate(new CharacterStats { HP = 100, Attack = 10 }, equipped, newSlot);
+            Assert.That(upgrade.ShouldEquip, Is.True);
+            Assert.That(upgrade.PowerGain, Is.GreaterThan(0));
+        }
+
+        [Test]
         public void Generator_MythicItemRollsConfiguredSpecialEffectAndSnapshotsBaseStats()
         {
             var catalog = Catalog();

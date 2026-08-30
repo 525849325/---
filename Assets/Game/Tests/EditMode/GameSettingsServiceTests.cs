@@ -14,16 +14,19 @@ namespace ImmortalLoot.Tests
             Assert.That(settings.SoundEnabled, Is.True);
             Assert.That(settings.VibrationEnabled, Is.True);
             Assert.That(settings.PrivacyAccepted, Is.False);
+            Assert.That(settings.AutoEquipEnabled, Is.True);
 
             settings.ToggleSound();
             settings.ToggleVibration();
             settings.AcceptPrivacy();
+            settings.ToggleAutoEquip();
 
             var reloaded = new GameSettingsService(store);
             Assert.That(reloaded.SoundEnabled, Is.False);
             Assert.That(reloaded.VibrationEnabled, Is.False);
             Assert.That(reloaded.PrivacyAccepted, Is.True);
-            Assert.That(store.SaveCount, Is.EqualTo(3));
+            Assert.That(reloaded.AutoEquipEnabled, Is.False);
+            Assert.That(store.SaveCount, Is.EqualTo(4));
         }
 
         private sealed class MemoryStore : IGameSettingsStore

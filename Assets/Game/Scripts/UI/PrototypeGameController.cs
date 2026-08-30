@@ -54,6 +54,7 @@ namespace ImmortalLoot.UI
         private EquipmentDecompositionService _decomposition;
         private EquipmentLoadoutService _loadout;
         private CharacterStatService _stats;
+        private CharacterStatService _progressionStats;
         private PowerCalculator _powerCalculator;
         private PrototypeLoginController _login;
         private string _serverLatestInstanceId = string.Empty;
@@ -73,6 +74,7 @@ namespace ImmortalLoot.UI
         private IReadOnlyList<CommercialProductConfig> _commercialProducts;
         private ValidationFunnelTracker _validationTelemetry;
         private PrototypeCombatFeedback _feedback;
+        private EquipmentUpgradeEvaluator _upgradeEvaluator;
         private readonly CharacterStats _baseStats = new CharacterStats
         {
             HP = 180f, Attack = 12f, Defense = 3f, CritRate = 0.1f, CritDamage = 1.5f, AttackSpeed = 1f, FireDamage = 0.1f
@@ -80,13 +82,14 @@ namespace ImmortalLoot.UI
         public EquipmentInstance LatestLoot => _latestLoot;
         public long Power => _power;
         public int StageNumber => _stageNumber;
+        public bool AutoEquipEnabled => _settings?.AutoEquipEnabled ?? true;
         public bool CommercialUnlocked => _latestLoot != null || !string.IsNullOrEmpty(_serverLatestInstanceId) || (_inventory?.State.Equipment.Count ?? 0) > 0;
 
         private void Start()
         {
-            PrototypeVisualTheme.Apply(FindAnyObjectByType<Canvas>());
             _settings = new GameSettingsService(new PlayerPrefsSettingsStore());
             _settings.ApplySound();
+            PrototypeVisualTheme.Apply(FindAnyObjectByType<Canvas>());
             _catalog = new JsonConfigRepository(new ResourcesConfigSource()).LoadAll();
             _commercialProducts = CommercialEntitlementService.LoadProducts(new ResourcesConfigSource());
             _validationTelemetry = new ValidationFunnelTracker(new JsonlValidationEventSink(Path.Combine(Application.persistentDataPath, "validation-funnel.jsonl")));
@@ -105,8 +108,12 @@ namespace ImmortalLoot.UI
             _cultivation = new CultivationMethodService(_catalog, new RealmProgressState { RealmId = "realm_spirit_foundation" }, methodState);
             foreach (var methodId in _catalog.CultivationMethods.Keys) _cultivation.Learn(methodId);
             EquipBuild(0);
-            _stats.AddProvider(new CultivationMethodStatProvider(_cultivation));
+            var cultivationStats = new CultivationMethodStatProvider(_cultivation);
+            _stats.AddProvider(cultivationStats);
+            _progressionStats = new CharacterStatService();
+            _progressionStats.AddProvider(cultivationStats);
             _powerCalculator = PowerCalculator.Load(new ResourcesConfigSource());
+            _upgradeEvaluator = new EquipmentUpgradeEvaluator(_catalog, _powerCalculator);
             _pacingConfig = DemoPacingLoader.Load(new ResourcesConfigSource());
             _pacing = new DemoPacingSession(_pacingConfig);
             RestoreProgress(saved);
@@ -221,7 +228,13 @@ namespace ImmortalLoot.UI
             _inventory.AddEquipment(_latestLoot);
             _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString());
             _feedback.PlayLoot(_latestLoot.Quality);
-            lootText.text = FormatLoot(_latestLoot) + "\n\n点击“穿戴最新装备”提升战力";
+            var autoUpgrade = _settings.AutoEquipEnabled
+                ? _upgradeEvaluator.Evaluate(_progressionStats.Calculate(_baseStats), _loadout.Equipped, _latestLoot)
+                : new EquipmentUpgradeDecision(false, 0);
+            if (autoUpgrade.ShouldEquip) _loadout.Equip(_latestLoot);
+            lootText.text = FormatLoot(_latestLoot) + (autoUpgrade.ShouldEquip
+                ? $"\n\n自动换装成功 · 战力预计 +{autoUpgrade.PowerGain}"
+                : "\n\n点击“穿戴最新装备”进行比较");
             lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
             if (_stageNumber == 10)
             {
@@ -229,6 +242,11 @@ namespace ImmortalLoot.UI
                 if (guideText != null) guideText.text = "Boss 已击败：可领取挂机收益并准备境界突破";
             }
             RefreshProgressDisplay();
+            if (autoUpgrade.ShouldEquip)
+            {
+                _feedback.PlayEquip();
+                _validationTelemetry.TrackOnce("first_equipment_equipped", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString(), autoUpgrade.PowerGain);
+            }
             SaveProgress();
             Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
         }
@@ -395,7 +413,7 @@ namespace ImmortalLoot.UI
                     return $"等级 {_level} · 战力 {_power}\n经验 {_exp}/{_level * 50L}\n当前境界 {_realmStage} 阶";
                 case "EquipmentPage":
                     if (_latestLoot == null) return "尚无装备，先完成一场战斗。";
-                    var comparison = new EquipmentComparisonService(_catalog).Compare(_baseStats, _loadout.Equipped, _latestLoot);
+                    var comparison = new EquipmentComparisonService(_catalog).Compare(_progressionStats.Calculate(_baseStats), _loadout.Equipped, _latestLoot);
                     var comparisonText = $"穿戴比较：攻击 {comparison.AttackDelta:+0.##;-0.##;0} · 生命 {comparison.HpDelta:+0.##;-0.##;0} · 防御 {comparison.DefenseDelta:+0.##;-0.##;0}";
                     EquipLatest();
                     return $"{comparisonText}\n已穿戴 {_latestLoot.DisplayName}\n统一战力更新为 {_power}";
@@ -454,7 +472,7 @@ namespace ImmortalLoot.UI
         }
 
         public string SettingsSummary() =>
-            $"设置\n\n声音：{(_settings.SoundEnabled ? "开启" : "关闭")}\n震动：{(_settings.VibrationEnabled ? "开启" : "关闭")}\n进度会在暂停、退出和关键成长节点自动保存。";
+            $"设置\n\n声音：{(_settings.SoundEnabled ? "开启" : "关闭")}\n震动：{(_settings.VibrationEnabled ? "开启" : "关闭")}\n自动换装：{(_settings.AutoEquipEnabled ? "开启（仅提升战力）" : "关闭")}\n进度会在暂停、退出和关键成长节点自动保存。";
 
         public string ToggleSoundSetting()
         {
@@ -467,6 +485,12 @@ namespace ImmortalLoot.UI
         {
             _settings.ToggleVibration();
             _settings.TryVibrate();
+            return SettingsSummary();
+        }
+
+        public string ToggleAutoEquipSetting()
+        {
+            _settings.ToggleAutoEquip();
             return SettingsSummary();
         }
 

@@ -22,11 +22,13 @@ namespace ImmortalLoot.Settings
         private const string SoundKey = "settings.sound";
         private const string VibrationKey = "settings.vibration";
         private const string PrivacyKey = "settings.privacyAccepted";
+        private const string AutoEquipKey = "settings.autoEquip";
         private readonly IGameSettingsStore _store;
 
         public bool SoundEnabled { get; private set; }
         public bool VibrationEnabled { get; private set; }
         public bool PrivacyAccepted { get; private set; }
+        public bool AutoEquipEnabled { get; private set; }
 
         public GameSettingsService(IGameSettingsStore store)
         {
@@ -34,6 +36,7 @@ namespace ImmortalLoot.Settings
             SoundEnabled = _store.GetInt(SoundKey, 1) != 0;
             VibrationEnabled = _store.GetInt(VibrationKey, 1) != 0;
             PrivacyAccepted = _store.GetInt(PrivacyKey, 0) != 0;
+            AutoEquipEnabled = _store.GetInt(AutoEquipKey, 1) != 0;
         }
 
         public bool ToggleSound()
@@ -54,6 +57,13 @@ namespace ImmortalLoot.Settings
         {
             PrivacyAccepted = true;
             Persist(PrivacyKey, true);
+        }
+
+        public bool ToggleAutoEquip()
+        {
+            AutoEquipEnabled = !AutoEquipEnabled;
+            Persist(AutoEquipKey, AutoEquipEnabled);
+            return AutoEquipEnabled;
         }
 
         public void ApplySound() => AudioListener.pause = !SoundEnabled;

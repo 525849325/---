@@ -16,6 +16,6 @@
 | FEEDBACK-001 | P1 | CORE-001 | TESTING | C | 五类程序化音效已接入且程序集编译通过；待 Unity 场景听感/音量验收 |
 | BALANCE-001 | P1 | CORE-001 | DONE | A/B/E | 10m=22、60m=142；十槽 8%–12%，品质 40/30/20/10 门禁通过 |
 | WARNINGS-001 | P2 | — | DONE | E | 已迁移 Unity 6 查找与 NamedBuildTarget API；netstandard 2.1 全程序集门禁通过 |
-| AUTO-EQUIP-001 | P1 | CORE-001 | TODO | B/C | 增加可关闭的自动换装，只在统一战力严格提升时生效并反馈差值 |
+| AUTO-EQUIP-001 | P1 | CORE-001 | TESTING | B/C | 默认开启且可关闭；仅在含功法加成的统一战力严格提升时换装，程序集与领域门禁通过 |
 
-当前自动执行：`AUTO-EQUIP-001`；若 Unity 授权恢复，立即抢占并执行 `QA-UNITY-001`。
+当前自动执行：`RC-AUDIT-001`（P0/P1 静态完成审计）；若 Unity 授权恢复，立即抢占并执行 `QA-UNITY-001`。

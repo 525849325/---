@@ -31,6 +31,7 @@ namespace ImmortalLoot.Tests.PlayMode
             var scaler = Object.FindAnyObjectByType<Canvas>().GetComponent<CanvasScaler>();
             Assert.That(scaler.referenceResolution, Is.EqualTo(new Vector2(1080f, 1920f)));
             Assert.That(scaler.uiScaleMode, Is.EqualTo(CanvasScaler.ScaleMode.ScaleWithScreenSize));
+            if (controller.AutoEquipEnabled) controller.ToggleAutoEquipSetting();
             controller.SetPacingSpeedForTests(240f);
             GameObject.Find("EnterGameButton").GetComponent<Button>().onClick.Invoke();
             var lootObject = GameObject.Find("Loot");
@@ -125,6 +126,7 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(GameObject.Find("Setting_Vibration"), Is.Not.Null);
             Assert.That(GameObject.Find("Setting_Save"), Is.Not.Null);
             Assert.That(GameObject.Find("Setting_Legal"), Is.Not.Null);
+            Assert.That(GameObject.Find("Setting_AutoEquip"), Is.Not.Null);
             GameObject.Find("Setting_Save").GetComponent<Button>().onClick.Invoke();
             Assert.That(GameObject.Find("DebugPageContent").GetComponent<Text>().text, Does.Contain("进度已安全保存"));
             GameObject.Find("Setting_Legal").GetComponent<Button>().onClick.Invoke();

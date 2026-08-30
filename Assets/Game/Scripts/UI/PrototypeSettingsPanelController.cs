@@ -17,10 +17,13 @@ namespace ImmortalLoot.UI
             if (source == null || _content == null) return;
             _initialized = true;
             _game = game;
-            Configure(source, "Setting_Sound", "声音", new Vector2(-190f, -350f), ToggleSound);
-            Configure(Clone(source), "Setting_Vibration", "震动", new Vector2(190f, -350f), ToggleVibration);
-            Configure(Clone(source), "Setting_Save", "立即保存", new Vector2(-190f, -470f), SaveNow);
-            Configure(Clone(source), "Setting_Legal", "隐私与协议", new Vector2(190f, -470f), ShowLegal);
+            _content.rectTransform.sizeDelta = new Vector2(700f, 610f);
+            _content.rectTransform.anchoredPosition = new Vector2(0f, 105f);
+            Configure(source, "Setting_Sound", "声音", new Vector2(-190f, -300f), ToggleSound);
+            Configure(Clone(source), "Setting_Vibration", "震动", new Vector2(190f, -300f), ToggleVibration);
+            Configure(Clone(source), "Setting_Save", "立即保存", new Vector2(-190f, -410f), SaveNow);
+            Configure(Clone(source), "Setting_Legal", "隐私与协议", new Vector2(190f, -410f), ShowLegal);
+            Configure(Clone(source), "Setting_AutoEquip", "自动换装", new Vector2(0f, -520f), ToggleAutoEquip);
             _content.text = _game.SettingsSummary();
         }
 
@@ -42,6 +45,7 @@ namespace ImmortalLoot.UI
         private void ToggleVibration() => _content.text = _game.ToggleVibrationSetting();
         private void SaveNow() => _content.text = _game.SaveNowFromSettings();
         private void ShowLegal() => _content.text = _game.LegalNotice();
+        private void ToggleAutoEquip() => _content.text = _game.ToggleAutoEquipSetting();
 
         private static GameObject FindIncludingInactive(string name)
         {
