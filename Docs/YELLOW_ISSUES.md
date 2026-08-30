@@ -9,5 +9,5 @@
 | Y-007 | Development 在线模式 | 未确认的 Finish 会在当前进程内复用同一 session/key 退避重试，但强杀进程会丢失该意图；确定性 4xx 目前也走同一退避 | V0.1 默认本地核心循环，服务器登录入口仅 Development 可见；服务端幂等与当前进程响应丢失已覆盖，问题不阻塞离线商业验证包 | 对外启用权威服务器登录前，持久化 pending intent，并区分 definitive 4xx、transient 与 unknown outcome |
 | Y-008 | UI 验收 | batch UI 结构审计 0 issue，但未捕获真实屏幕截图，`visualAuditComplete=false` | 不把 26/26 PlayMode 或结构审计描述成完整视觉通过 | QA-DEVICE-001 真机阶段完成 9:16、字体、触控和遮挡清单 |
 | Y-009 | Android 签名 | RC APK/AAB 使用 Unity 默认 Android 测试签名 | 当前产物可安装并用于商业验证，但不直接上架 | 商店上传前配置独立 upload/release keystore，并重新构建验证 |
-| Y-010 | Development 在线会话 | async 结算在场景销毁后缺少 generation guard/网络超时；后端 battle start 只校验直接前置，不强制等于 profile 当前关 | 正式 RC 隐藏服务器入口；正常单场景流程、幂等与 profile 原子镜像回归全绿 | 对外开放在线入口前补延迟响应/场景重载测试、请求超时与服务端 exact-current-stage 校验 |
-| Y-011 | 测试覆盖 | 真实 HTTP + UnityWebRequest 端到端契约、非法刷新 profile 保持旧镜像的负向测试尚未覆盖 | Fake DTO 与后端契约一致；EditMode 109/109、PlayMode 26/26、Backend Verification PASS | RC-QUALITY-001 后续按风险补最小契约测试，不阻塞离线商业验证 |
+| Y-010 | Development 在线会话 | async 结算在场景销毁后仍缺少 generation guard/网络超时 | 后端 exact-current-stage、单活动会话、并发幂等、失联恢复和旧库升级已回归；正式 RC 仍隐藏服务器入口 | 对外开放在线入口前补延迟响应/场景重载测试、请求超时，并持久化客户端 pending intent |
+| Y-011 | 测试覆盖 | 真实 HTTP + UnityWebRequest 端到端契约尚未覆盖 | 非法 profile 负向恢复、DTO 契约、后端并发/升级及零副作用回归均已覆盖；EditMode 109/109、PlayMode 26/26、Backend Verification PASS | RC-QUALITY-001 后续按风险补最小 HTTP 契约测试，不阻塞离线商业验证 |
