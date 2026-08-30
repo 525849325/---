@@ -7,18 +7,19 @@ namespace ImmortalLoot.Tests
     public sealed class DemoPacingTests
     {
         [Test]
-        public void TwoHourTimeline_MatchesRequiredExperienceWindows()
+        public void OpeningTimeline_MatchesCommercialValidationWindows()
         {
             var pacing = DemoPacingLoader.Load(new ResourcesConfigSource());
-            Assert.That(pacing.firstEquipmentMinute, Is.InRange(0, 5));
-            Assert.That(pacing.firstLevelMinute, Is.InRange(0, 5));
-            Assert.That(pacing.firstBossMinute, Is.InRange(5, 15));
-            Assert.That(pacing.firstBuildDirectionMinute, Is.InRange(5, 15));
-            Assert.That(pacing.firstRealmBreakthroughMinute, Is.InRange(15, 30));
-            Assert.That(pacing.firstSpiritualRootMinute, Is.InRange(15, 30));
-            Assert.That(pacing.cultivationUnlockMinute, Is.InRange(30, 60));
-            Assert.That(pacing.rankingUnlockMinute, Is.InRange(60, 120));
-            Assert.That(pacing.realmPackEntryMinute, Is.InRange(60, 120));
+            Assert.That(pacing.firstEquipmentMinute, Is.InRange(0, 1));
+            Assert.That(pacing.firstLevelMinute, Is.InRange(1, 3));
+            Assert.That(pacing.firstBossMinute, Is.InRange(2, 4));
+            Assert.That(pacing.firstBuildDirectionMinute, Is.InRange(3, 6));
+            Assert.That(pacing.firstRealmBreakthroughMinute, Is.InRange(3, 6));
+            Assert.That(pacing.firstSpiritualRootMinute, Is.InRange(3, 6));
+            Assert.That(pacing.cultivationUnlockMinute, Is.InRange(5, 8));
+            Assert.That(pacing.higherQualityMinute, Is.InRange(5, 10));
+            Assert.That(pacing.rankingUnlockMinute, Is.InRange(10, 120));
+            Assert.That(pacing.realmPackEntryMinute, Is.InRange(10, 120));
             Assert.That(pacing.clearChapterMinute, Is.LessThanOrEqualTo(120));
             Assert.That(120 / pacing.growthPulseMinutes, Is.GreaterThanOrEqualTo(24));
             Assert.That(120 * 60 / pacing.equipmentDropSeconds, Is.GreaterThanOrEqualTo(200));
