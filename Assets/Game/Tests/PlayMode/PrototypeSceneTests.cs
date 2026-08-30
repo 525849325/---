@@ -1569,6 +1569,48 @@ namespace ImmortalLoot.Tests.PlayMode
             DeleteLocalSave();
         }
 
+        [UnityTest]
+        public IEnumerator SaveFailure_DoesNotStopTheBattleLoopAndARecoveryRetryReportsTruthfully()
+        {
+            DeleteLocalSave();
+            var repository = new RecoverableFailingSaveRepository();
+            var repositoryOverride = PrototypeGameController.OverrideSaveRepositoryForTests(repository);
+            try
+            {
+                PrototypeGameController.PauseNextBattleForTests();
+                SceneManager.LoadScene("Main");
+                yield return null;
+                var controller = EnterOfflineGameplay();
+                controller.SetPacingSpeedForTests(240f);
+                controller.AdvancePacingForTests(60d);
+
+                LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("^SAVE_WRITE_FAILED:"));
+                controller.ResolveCurrentBattleForTests();
+                var timeout = 1f;
+                while (timeout > 0f && controller.ActiveBattleStageIdForTests == "stage_1_1")
+                {
+                    timeout -= Time.unscaledDeltaTime;
+                    yield return null;
+                }
+
+                Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_2"),
+                    "A failed checkpoint must not prevent the next encounter from being scheduled.");
+                Assert.That(controller.HasActiveBattleForTests, Is.True);
+                Assert.That(controller.SettingsSummary(), Does.Contain("尚未保存"));
+
+                Assert.That(controller.SaveNowFromSettings(), Does.Not.Contain("进度已安全保存"));
+                repository.FailSaves = false;
+                Assert.That(controller.SaveNowFromSettings(), Does.Contain("进度已安全保存"));
+                Assert.That(repository.SuccessfulSaveCount, Is.EqualTo(1));
+                Assert.That(controller.SettingsSummary(), Does.Not.Contain("尚未保存"));
+                Assert.That(GameObject.Find("GuideText").GetComponent<Text>().text, Is.EqualTo("进度保存已恢复。"));
+            }
+            finally
+            {
+                repositoryOverride.Dispose();
+            }
+        }
+
         private static void DeleteLocalSave()
         {
             if (File.Exists(JsonPlayerSaveRepository.DefaultPath)) File.Delete(JsonPlayerSaveRepository.DefaultPath);
@@ -1648,6 +1690,23 @@ namespace ImmortalLoot.Tests.PlayMode
         {
             public readonly List<ValidationEvent> Events = new List<ValidationEvent>();
             public void Write(ValidationEvent value) => Events.Add(value);
+        }
+
+        private sealed class RecoverableFailingSaveRepository : IPlayerSaveRepository
+        {
+            public bool FailSaves { get; set; } = true;
+            public int SuccessfulSaveCount { get; private set; }
+            public PlayerSaveSnapshot LastSnapshot { get; private set; }
+            public bool Exists => LastSnapshot != null;
+
+            public void Save(PlayerSaveSnapshot snapshot)
+            {
+                if (FailSaves) throw new IOException("simulated disk failure");
+                LastSnapshot = snapshot;
+                SuccessfulSaveCount++;
+            }
+
+            public PlayerSaveSnapshot Load() => LastSnapshot;
         }
 
         private sealed class ServerLoopTransport : IApiTransport

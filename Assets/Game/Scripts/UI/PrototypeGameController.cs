@@ -76,6 +76,8 @@ namespace ImmortalLoot.UI
         private bool _serverGameplay;
         private bool _serverInventoryHasEquipment;
         private string _saveLoadWarning;
+        private string _saveWriteWarning = string.Empty;
+        private bool _saveWriteFailureReported;
         private AfkState _afkState;
         private string _offlineRewardSummary;
         private GameSettingsService _settings;
@@ -90,6 +92,7 @@ namespace ImmortalLoot.UI
         private static readonly float[] ServerSettlementRetryDelays = { 1f, 2f, 4f, 8f, 15f, 30f };
 #if UNITY_INCLUDE_TESTS
         private static IValidationEventSink _validationSinkOverride;
+        private static IPlayerSaveRepository _saveRepositoryOverride;
         private int _saveOperationCount;
         private long _configuredStageExperienceGranted;
         private bool _battlePausedForTests;
@@ -134,7 +137,11 @@ namespace ImmortalLoot.UI
             _validationTelemetry = new ValidationFunnelTracker(validationSink);
             _feedback = gameObject.GetComponent<PrototypeCombatFeedback>() ?? gameObject.AddComponent<PrototypeCombatFeedback>();
             _feedback.Initialize();
-            _saveRepository = JsonPlayerSaveRepository.CreateDefault();
+            _saveRepository =
+#if UNITY_INCLUDE_TESTS
+                _saveRepositoryOverride ??
+#endif
+                JsonPlayerSaveRepository.CreateDefault();
             _generator = new EquipmentGenerator(new SystemRandomSource(), _catalog);
             _drops = new DropTableService(_catalog, _generator, new SystemRandomSource());
             _powerCalculator = PowerCalculator.Load(new ResourcesConfigSource());
@@ -384,6 +391,7 @@ namespace ImmortalLoot.UI
         {
             if (guideText == null) return;
             if (!string.IsNullOrEmpty(_saveLoadWarning)) guideText.text = _saveLoadWarning;
+            else if (!string.IsNullOrEmpty(_saveWriteWarning)) guideText.text = _saveWriteWarning;
             else if (!string.IsNullOrEmpty(_offlineRewardSummary)) guideText.text = _offlineRewardSummary;
             else if (_guideStep > 0) guideText.text = $"引导进度已恢复：{_guideStep}/4。继续推进当前成长目标。";
         }
@@ -981,13 +989,13 @@ namespace ImmortalLoot.UI
             }
         }
 
-        private void SaveProgress()
+        private bool SaveProgress()
         {
-            if (!_gameplayActive || _serverGameplay || _saveRepository == null || _inventory == null || _pacing == null) return;
+            if (!_gameplayActive || _serverGameplay || _saveRepository == null || _inventory == null || _pacing == null) return false;
             var equipped = new EquippedIds();
             foreach (var item in _loadout.Equipped.Values) equipped.ids.Add(item.InstanceId);
             var progress = CaptureProgressState();
-            _saveRepository.Save(new PlayerSaveSnapshot
+            var snapshot = new PlayerSaveSnapshot
             {
                 PlayerId = "local-player", Nickname = "云游剑客", Level = _level, Exp = _exp,
                 RealmId = progress.Realm.RealmId, RealmStage = _realmStage,
@@ -997,10 +1005,28 @@ namespace ImmortalLoot.UI
                 InventoryJson = InventoryStateCodec.Serialize(_inventory.State),
                 EquippedInstanceIdsJson = JsonUtility.ToJson(equipped),
                 ProgressJson = PlayerProgressStateCodec.Serialize(progress)
+            };
+            var saved = PlayerSaveAttempt.Execute(() => _saveRepository.Save(snapshot), exception =>
+            {
+                _saveWriteWarning = "进度尚未保存：游戏会继续运行，并在下一个检查点自动重试。";
+                if (!_saveWriteFailureReported)
+                {
+                    _saveWriteFailureReported = true;
+                    Debug.LogError("SAVE_WRITE_FAILED: " + exception);
+                }
+                if (guideText != null) guideText.text = _saveWriteWarning;
             });
+            if (!saved) return false;
+
+            var previousWarning = _saveWriteWarning;
+            _saveWriteWarning = string.Empty;
+            _saveWriteFailureReported = false;
+            if (!string.IsNullOrEmpty(previousWarning) && guideText != null && guideText.text == previousWarning)
+                guideText.text = "进度保存已恢复。";
 #if UNITY_INCLUDE_TESTS
             _saveOperationCount++;
 #endif
+            return true;
         }
 
         private PlayerProgressState CaptureProgressState()
@@ -1273,8 +1299,11 @@ namespace ImmortalLoot.UI
                 _validationTelemetry?.TrackOnce("shop_exposed", _pacing?.ElapsedSeconds ?? 0f, _stageNumber, _power);
         }
 
-        public string SettingsSummary() =>
-            $"设置\n\n声音：{(_settings.SoundEnabled ? "开启" : "关闭")}\n震动：{(_settings.VibrationEnabled ? "开启" : "关闭")}\n自动换装：{(_settings.AutoEquipEnabled ? "开启（仅提升战力）" : "关闭")}\n进度会在暂停、退出和关键成长节点自动保存。";
+        public string SettingsSummary()
+        {
+            var warning = string.IsNullOrEmpty(_saveWriteWarning) ? string.Empty : "\n\n⚠ " + _saveWriteWarning;
+            return $"设置\n\n声音：{(_settings.SoundEnabled ? "开启" : "关闭")}\n震动：{(_settings.VibrationEnabled ? "开启" : "关闭")}\n自动换装：{(_settings.AutoEquipEnabled ? "开启（仅提升战力）" : "关闭")}\n进度会在暂停、退出和关键成长节点自动保存。{warning}";
+        }
 
         public string ToggleSoundSetting()
         {
@@ -1298,8 +1327,9 @@ namespace ImmortalLoot.UI
 
         public string SaveNowFromSettings()
         {
-            SaveProgress();
-            return SettingsSummary() + "\n\n进度已安全保存。";
+            return SaveProgress()
+                ? SettingsSummary() + "\n\n进度已安全保存。"
+                : SettingsSummary();
         }
 
         public string LegalNotice() =>
@@ -1488,6 +1518,14 @@ namespace ImmortalLoot.UI
             return new ValidationSinkOverrideScope(previous);
         }
 
+        public static IDisposable OverrideSaveRepositoryForTests(IPlayerSaveRepository repository)
+        {
+            if (repository == null) throw new ArgumentNullException(nameof(repository));
+            var previous = _saveRepositoryOverride;
+            _saveRepositoryOverride = repository;
+            return new SaveRepositoryOverrideScope(previous);
+        }
+
         public static void PauseNextBattleForTests() => _pauseNextBattleForTests = true;
         public void ResumeBattleForTests() => _battlePausedForTests = false;
         public void SetPacingSpeedForTests(float speed) => _pacingSpeed = Mathf.Max(1f, speed);
@@ -1537,6 +1575,21 @@ namespace ImmortalLoot.UI
                 if (_disposed) return;
                 _disposed = true;
                 _validationSinkOverride = _previous;
+            }
+        }
+
+        private sealed class SaveRepositoryOverrideScope : IDisposable
+        {
+            private readonly IPlayerSaveRepository _previous;
+            private bool _disposed;
+
+            public SaveRepositoryOverrideScope(IPlayerSaveRepository previous) => _previous = previous;
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+                _saveRepositoryOverride = _previous;
             }
         }
 #endif

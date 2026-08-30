@@ -24,6 +24,7 @@ $sources = @(
     (Join-Path $projectRoot 'Assets\Game\Scripts\Battle\DamageCalculator.cs'),
     (Join-Path $projectRoot 'Assets\Game\Scripts\Battle\AutoBattleEngine.cs'),
     (Join-Path $projectRoot 'Assets\Game\Scripts\Analytics\ValidationFunnelTelemetry.cs'),
+    (Join-Path $projectRoot 'Assets\Game\Scripts\Player\PlayerSaveAttempt.cs'),
     (Join-Path $PSScriptRoot 'DomainSmokeTests.cs')
 )
 

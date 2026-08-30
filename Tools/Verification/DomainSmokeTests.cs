@@ -6,6 +6,7 @@ using ImmortalLoot.Config;
 using ImmortalLoot.Core;
 using ImmortalLoot.Equipment;
 using ImmortalLoot.Inventory;
+using ImmortalLoot.Player;
 using ImmortalLoot.Realm;
 
 internal static class DomainSmokeTests
@@ -16,6 +17,7 @@ internal static class DomainSmokeTests
         {
             VerifyBattle();
             VerifyValidationTelemetry();
+            VerifySaveFailurePolicy();
             VerifyInventoryOverflowProtection();
             VerifyRealmProgressionAndStats();
             VerifyTenThousandEquipmentItems();
@@ -51,6 +53,30 @@ internal static class DomainSmokeTests
         Require(sink.Events.Count == 1, "funnel milestone must be emitted once per session");
         Require(sink.Events[0].sessionId == "verification-session", "funnel event must carry its correlation session");
         Require(sink.Events[0].elapsedSeconds == 42.5 && sink.Events[0].itemQuality == "Rare", "funnel event fields must remain structured");
+    }
+
+    private static void VerifySaveFailurePolicy()
+    {
+        Exception observed = null;
+        var succeeded = PlayerSaveAttempt.Execute(
+            () => throw new System.IO.IOException("simulated disk failure"),
+            exception => observed = exception);
+        Require(!succeeded, "save failure must degrade to a failed attempt instead of escaping");
+        Require(observed is System.IO.IOException, "save failure callback must receive the original exception");
+
+        var writes = 0;
+        succeeded = PlayerSaveAttempt.Execute(() => writes++, _ => throw new InvalidOperationException("unexpected failure callback"));
+        Require(succeeded && writes == 1, "successful save attempt must execute exactly once");
+
+        var unexpectedEscaped = false;
+        try { PlayerSaveAttempt.Execute(() => throw new InvalidOperationException("unsupported save schema")); }
+        catch (InvalidOperationException) { unexpectedEscaped = true; }
+        Require(unexpectedEscaped, "save guard must not hide programming or schema failures as recoverable storage faults");
+
+        succeeded = PlayerSaveAttempt.Execute(
+            () => throw new System.IO.IOException("simulated disk failure"),
+            _ => throw new InvalidOperationException("simulated UI reporting failure"));
+        Require(!succeeded, "best-effort failure reporting must not rethrow after a recoverable storage fault");
     }
 
     private static void VerifyInventoryOverflowProtection()
