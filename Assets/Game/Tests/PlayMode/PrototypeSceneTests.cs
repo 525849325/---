@@ -11,6 +11,7 @@ using ImmortalLoot.Network;
 using ImmortalLoot.Player;
 using ImmortalLoot.Inventory;
 using ImmortalLoot.Equipment;
+using ImmortalLoot.Battle;
 using ImmortalLoot.Cultivation;
 using ImmortalLoot.SpiritualRoot;
 using System.IO;
@@ -73,6 +74,8 @@ namespace ImmortalLoot.Tests.PlayMode
             timeout = 2f;
             while (timeout > 0f && controller.StageNumber < 2) { timeout -= Time.deltaTime; yield return null; }
             Assert.That(controller.StageNumber, Is.GreaterThanOrEqualTo(2), "A victory must advance the stage chain.");
+            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_1"),
+                "Actual victories, rather than elapsed time alone, must write stage-clear progress.");
 
             GameObject.Find("Nav_CharacterPage").GetComponent<Button>().onClick.Invoke();
             GameObject.Find("Action_CharacterPage").GetComponent<Button>().onClick.Invoke();
@@ -128,32 +131,165 @@ namespace ImmortalLoot.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator ServerMode_AutoBattleSynchronizesLootAndEquipRequest()
+        public IEnumerator ServerMode_WindowlessVictoryAdvancesBeforeRewardWindowSynchronizesLoot()
         {
             DeleteLocalSave();
             SceneManager.LoadScene("Main");
             yield return null;
             var transport = new ServerLoopTransport();
-            Object.FindAnyObjectByType<PrototypeGameController>().SetPacingSpeedForTests(240f);
             var client = new ImmortalLootApiClient(transport);
             var loginTask = client.LoginAsync("playmode-server", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
             Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(client);
-            GameObject.Find("EnterGameButton").GetComponent<Button>().onClick.Invoke();
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
             var loot = GameObject.Find("Loot").GetComponent<Text>();
-            var timeout = 6f;
-            while (timeout > 0f && !loot.text.Contains("服务器掉落")) { timeout -= Time.deltaTime; yield return null; }
+
+            controller.AdvancePacingForTests(20d);
+            Assert.That(controller.PendingRewardWindowsForTests, Is.Zero);
+            controller.ResolveCurrentBattleForTests();
+            var timeout = 2f;
+            while (timeout > 0f && transport.FinishRewardWindowEligibility.Count < 1) { timeout -= Time.deltaTime; yield return null; }
+
+            Assert.That(transport.FinishRequestBodies[0], Does.Contain("\"RewardWindowEligible\""), "New clients must send the additive reward-window flag explicitly.");
+            Assert.That(transport.FinishRewardWindowEligibility[0], Is.False);
+            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_1"), "A windowless authenticated victory must still be recorded locally after server settlement.");
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_2"), "A windowless victory may advance when the time gate is open.");
+            Assert.That(controller.ServerLatestInstanceIdForTests, Is.Empty);
+            Assert.That(transport.Paths, Does.Not.Contain("/player/inventory"), "A zero-equipment response must not trigger a fake inventory lookup.");
+            Assert.That(loot.text, Does.Not.Contain("服务器掉落"));
+            Assert.That(GameObject.Find("Currencies").GetComponent<Text>().text, Does.Contain("灵砂 0"), "Refreshing the profile after a windowless clear must retain zero soft-currency reward.");
+
+            controller.RespawnCurrentBattleForTests();
+            controller.AdvancePacingForTests(40d);
+            Assert.That(controller.PendingRewardWindowsForTests, Is.EqualTo(1));
+            controller.ResolveCurrentBattleForTests();
+            timeout = 2f;
+            while (timeout > 0f && (transport.FinishRewardWindowEligibility.Count < 2 || !loot.text.Contains("服务器掉落"))) { timeout -= Time.deltaTime; yield return null; }
+
+            Assert.That(transport.FinishRewardWindowEligibility[1], Is.True);
+            Assert.That(controller.PendingRewardWindowsForTests, Is.Zero, "A reward window is consumed only after the rewarded finish succeeds.");
             Assert.That(loot.text, Does.Contain("[Rare] gloves_starseal"));
             Assert.That(loot.text, Does.Contain("affix_attack"));
             Assert.That(transport.Paths, Does.Contain("/battle/start"));
             Assert.That(transport.Paths, Does.Contain("/battle/finish"));
             Assert.That(transport.Paths, Does.Contain("/player/inventory"));
+            Assert.That(controller.ServerLatestInstanceIdForTests, Is.EqualTo("equip-online"));
+
+            var rewardedLootText = loot.text;
+            controller.RespawnCurrentBattleForTests();
+            controller.ResolveCurrentBattleForTests();
+            timeout = 2f;
+            while (timeout > 0f && transport.FinishRewardWindowEligibility.Count < 3) { timeout -= Time.deltaTime; yield return null; }
+            Assert.That(transport.FinishRewardWindowEligibility[2], Is.False);
+            Assert.That(controller.ServerLatestInstanceIdForTests, Is.EqualTo("equip-online"), "A later windowless finish must not clear the last real server equipment.");
+            Assert.That(loot.text, Is.EqualTo(rewardedLootText), "A windowless finish must not fabricate or replace equipment copy.");
+
             GameObject.Find("EquipLatestButton").GetComponent<Button>().onClick.Invoke();
             timeout = 2f;
             while (timeout > 0f && !transport.Paths.Contains("/equipment/equip")) { timeout -= Time.deltaTime; yield return null; }
             Assert.That(transport.Paths, Does.Contain("/equipment/equip"));
             Assert.That(GameObject.Find("Profile").GetComponent<Text>().text, Does.Contain("战力 180"));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator ServerBossWithoutPendingWindowStillRequestsAuthoritativeReward()
+        {
+            DeleteLocalSave();
+            SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_10" });
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var transport = new ServerLoopTransport();
+            var client = new ImmortalLootApiClient(transport);
+            var loginTask = client.LoginAsync("playmode-server-boss", "在线修士");
+            while (!loginTask.IsCompleted) yield return null;
+            Assert.That(loginTask.Exception, Is.Null);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(client);
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(controller.PendingRewardWindowsForTests, Is.Zero);
+
+            controller.ResolveCurrentBattleForTests();
+            var timeout = 2f;
+            while (timeout > 0f && transport.FinishRewardWindowEligibility.Count < 1) { timeout -= Time.deltaTime; yield return null; }
+
+            Assert.That(transport.FinishRewardWindowEligibility[0], Is.True, "An authenticated Boss must always use the rewarded finish path.");
+            Assert.That(controller.PendingRewardWindowsForTests, Is.Zero);
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"));
+            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_10"));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator ServerFinishUnknownFreezesOriginalStageAndWindowForConfirmation()
+        {
+            DeleteLocalSave();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var transport = new ServerLoopTransport(failBattleFinish: true);
+            var client = new ImmortalLootApiClient(transport);
+            var loginTask = client.LoginAsync("playmode-server-failure", "在线修士");
+            while (!loginTask.IsCompleted) yield return null;
+            Assert.That(loginTask.Exception, Is.Null);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(client);
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+
+            controller.AdvancePacingForTests(60d);
+            Assert.That(controller.PendingRewardWindowsForTests, Is.EqualTo(1));
+            controller.ResolveCurrentBattleForTests();
+            var timeout = 2f;
+            while (timeout > 0f && transport.FinishRewardWindowEligibility.Count < 1) { timeout -= Time.deltaTime; yield return null; }
+
+            Assert.That(transport.Paths, Does.Contain("/battle/finish"));
+            Assert.That(transport.FinishRewardWindowEligibility[0], Is.True, "The failed request must exercise the rewarded finish path.");
+            Assert.That(controller.PendingRewardWindowsForTests, Is.EqualTo(1), "A failed finish must retain its pending reward window for retry.");
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"));
+            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Not.Contain("stage_1_1"));
+            Assert.That(controller.DefeatsOnCurrentStageForTests, Is.Zero, "An unknown finish result is not a battle defeat.");
+            Assert.That(controller.HasPendingServerSettlementForTests, Is.True);
+            Assert.That(GameObject.Find("GuideText").GetComponent<Text>().text, Does.Contain("结算确认中"));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator LostFinishResponseRetriesSameSettlementWithoutDuplicatingRewardWindow()
+        {
+            DeleteLocalSave();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var transport = new ServerLoopTransport(loseFirstFinishResponseAfterCommit: true);
+            var client = new ImmortalLootApiClient(transport);
+            var loginTask = client.LoginAsync("playmode-server-response-loss", "在线修士");
+            while (!loginTask.IsCompleted) yield return null;
+            Assert.That(loginTask.Exception, Is.Null);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(client);
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            controller.AdvancePacingForTests(60d);
+
+            controller.ResolveCurrentBattleForTests();
+            var timeout = 2f;
+            while (timeout > 0f && transport.FinishRequestBodies.Count < 1) { timeout -= Time.deltaTime; yield return null; }
+            Assert.That(controller.PendingRewardWindowsForTests, Is.EqualTo(1));
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"));
+            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Not.Contain("stage_1_1"));
+            Assert.That(transport.BattleStartCount, Is.EqualTo(1));
+            Assert.That(transport.AuthoritativeFinishGrantCount, Is.EqualTo(1), "The simulated server committed the first finish before its response was lost.");
+            Assert.That(controller.HasPendingServerSettlementForTests, Is.True);
+
+            controller.RetryPendingServerSettlementForTests();
+            timeout = 2f;
+            while (timeout > 0f && transport.FinishRequestBodies.Count < 2) { timeout -= Time.deltaTime; yield return null; }
+
+            Assert.That(transport.BattleStartCount, Is.EqualTo(1), "A response-loss retry must not create a second battle session.");
+            Assert.That(transport.FinishRequestBodies[1], Is.EqualTo(transport.FinishRequestBodies[0]), "The retry must use the byte-equivalent finish intent.");
+            Assert.That(transport.FinishSessionIds[1], Is.EqualTo(transport.FinishSessionIds[0]));
+            Assert.That(transport.FinishIdempotencyKeys[1], Is.EqualTo(transport.FinishIdempotencyKeys[0]));
+            Assert.That(transport.AuthoritativeFinishGrantCount, Is.EqualTo(1), "Replaying the same finish key must not create another authoritative grant.");
+            Assert.That(controller.HasPendingServerSettlementForTests, Is.False);
+            Assert.That(controller.PendingRewardWindowsForTests, Is.Zero);
+            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_1"));
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_2"));
+            DeleteLocalSave();
         }
 
         [UnityTest]
@@ -236,7 +372,7 @@ namespace ImmortalLoot.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator SeededAggregateStageOverridesConflictingElapsedAndRemainsCanonicalAfterSave()
+        public IEnumerator SeededAggregateStageRemainsAuthoritativeWithoutRewritingElapsedTime()
         {
             DeleteLocalSave();
             var repository = JsonPlayerSaveRepository.CreateDefault();
@@ -246,18 +382,177 @@ namespace ImmortalLoot.Tests.PlayMode
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
             Assert.That(controller.StageNumber, Is.EqualTo(7));
+            Assert.That(controller.PacingElapsedSecondsForTests, Is.LessThan(1d),
+                "Restoring stage 7 must not move pacing time into a synthetic stage band.");
             controller.SaveForTests();
 
             var saved = repository.Load();
             var savedProgress = PlayerProgressStateCodec.Deserialize(saved.ProgressJson);
             Assert.That(savedProgress.CurrentStageId, Is.EqualTo("stage_1_7"));
-            Assert.That(savedProgress.Stage.ClearedStageIds, Is.Empty,
-                "Restoring an authoritative current stage must not fabricate stage-clear runtime progress.");
-            Assert.That(saved.StageElapsedSeconds, Is.GreaterThan(0d), "Pacing elapsed time must be moved into the authoritative stage band.");
+            Assert.That(savedProgress.Stage.ClearedStageIds,
+                Is.EquivalentTo(new[] { "stage_1_1", "stage_1_2", "stage_1_3", "stage_1_4", "stage_1_5", "stage_1_6" }),
+                "Migrating an authoritative stage 7 save must reconcile only its prerequisite stages.");
+            Assert.That(saved.StageElapsedSeconds, Is.LessThan(1d));
 
             SceneManager.LoadScene("Main");
             yield return null;
             Assert.That(Object.FindAnyObjectByType<PrototypeGameController>().StageNumber, Is.EqualTo(7));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator LocalVictoryWithoutRewardWindowWritesStageAndFirstClearOnly()
+        {
+            DeleteLocalSave();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var experienceBefore = controller.ExperienceForTests;
+            var softCurrencyBefore = controller.SoftCurrencyForTests;
+            var premiumCurrencyBefore = controller.PremiumCurrencyForTests;
+
+            controller.ResolveCurrentBattleForTests();
+
+            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_1"));
+            Assert.That(controller.ExperienceForTests, Is.EqualTo(experienceBefore),
+                "A normal victory before the timed reward window must not grant configured experience.");
+            Assert.That(controller.SoftCurrencyForTests, Is.EqualTo(softCurrencyBefore),
+                "A normal victory before the timed reward window must not grant configured soft currency.");
+            Assert.That(controller.PremiumCurrencyForTests, Is.EqualTo(premiumCurrencyBefore + 10));
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"),
+                "Elapsed-time gate is still closed, so a victory clears stage 1 without advancing early.");
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator RepeatedSameStageVictoryWithoutRewardWindowDoesNotSaveEveryBattle()
+        {
+            DeleteLocalSave();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var savesBeforeVictory = controller.SaveOperationCountForTests;
+            var experienceBefore = controller.ExperienceForTests;
+            var softCurrencyBefore = controller.SoftCurrencyForTests;
+
+            controller.ResolveCurrentBattleForTests();
+            var savesAfterFirstClear = controller.SaveOperationCountForTests;
+            Assert.That(savesAfterFirstClear, Is.EqualTo(savesBeforeVictory + 1),
+                "The first clear is a durable checkpoint.");
+
+            controller.RespawnCurrentBattleForTests();
+            controller.ResolveCurrentBattleForTests();
+
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"));
+            Assert.That(controller.PendingRewardWindowsForTests, Is.Zero);
+            Assert.That(controller.ExperienceForTests, Is.EqualTo(experienceBefore));
+            Assert.That(controller.SoftCurrencyForTests, Is.EqualTo(softCurrencyBefore));
+            Assert.That(controller.SaveOperationCountForTests, Is.EqualTo(savesAfterFirstClear),
+                "A repeated same-stage victory without a reward window must remain in memory until pause or quit.");
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator NormalTimedRewardWindowAlwaysProducesEquipment()
+        {
+            DeleteLocalSave();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_1"));
+            var experienceBefore = controller.ExperienceForTests;
+            var softCurrencyBefore = controller.SoftCurrencyForTests;
+            controller.AdvancePacingForTests(60d);
+            Assert.That(controller.PendingRewardWindowsForTests, Is.EqualTo(1));
+
+            controller.ResolveCurrentBattleForTests();
+
+            Assert.That(controller.LatestLoot, Is.Not.Null,
+                "A normal pacing reward window must use the guaranteed-equipment prototype table.");
+            Assert.That(controller.ExperienceForTests, Is.EqualTo(experienceBefore + 25));
+            Assert.That(controller.SoftCurrencyForTests, Is.EqualTo(softCurrencyBefore + 10));
+            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_1"));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator PendingBackpressureSkipsNormalWindowWithoutConfiguredRewards()
+        {
+            DeleteLocalSave();
+            var inventory = new InventoryState
+            {
+                EquipmentCapacity = 120,
+                PendingEquipment = new EquipmentInstance
+                {
+                    InstanceId = "pending-before-window",
+                    BaseId = "weapon_cloudsteel_blade",
+                    DisplayName = "待领取旧装备",
+                    Level = 1,
+                    Quality = EquipmentQuality.Fine,
+                    CreateTimeUtc = System.DateTime.UtcNow
+                }
+            };
+            JsonPlayerSaveRepository.CreateDefault().Save(new PlayerSaveSnapshot
+            {
+                LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                InventoryJson = JsonUtility.ToJson(inventory),
+                ProgressJson = PlayerProgressStateCodec.Serialize(new PlayerProgressState())
+            });
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var experienceBefore = controller.ExperienceForTests;
+            var softCurrencyBefore = controller.SoftCurrencyForTests;
+            controller.AdvancePacingForTests(60d);
+
+            controller.ResolveCurrentBattleForTests();
+
+            Assert.That(controller.SkippedPendingRewardWindowsForTests, Is.EqualTo(1));
+            Assert.That(controller.ExperienceForTests, Is.EqualTo(experienceBefore));
+            Assert.That(controller.SoftCurrencyForTests, Is.EqualTo(softCurrencyBefore));
+            Assert.That(controller.LatestLoot?.InstanceId, Is.EqualTo("pending-before-window"));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator DefeatKeepsCurrentStageAndRecordsRetry()
+        {
+            DeleteLocalSave();
+            SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_3" });
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+
+            controller.RecordDefeatForTests();
+
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_3"));
+            Assert.That(controller.DefeatsOnCurrentStageForTests, Is.EqualTo(1));
+            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Not.Contain("stage_1_3"));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator BossVictoryDropsRareWithoutWindowAndLoopsToFirstStage()
+        {
+            DeleteLocalSave();
+            SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_10" });
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(controller.PendingRewardWindowsForTests, Is.Zero);
+            Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_10"));
+            var configuredExperienceBefore = controller.ConfiguredStageExperienceGrantedForTests;
+            var softCurrencyBefore = controller.SoftCurrencyForTests;
+
+            controller.ResolveCurrentBattleForTests();
+
+            Assert.That(controller.LatestLoot, Is.Not.Null);
+            Assert.That(controller.LatestLoot.Quality, Is.GreaterThanOrEqualTo(EquipmentQuality.Rare));
+            Assert.That(controller.ConfiguredStageExperienceGrantedForTests, Is.EqualTo(configuredExperienceBefore + 250));
+            Assert.That(controller.SoftCurrencyForTests, Is.EqualTo(softCurrencyBefore + 25));
+            Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_10"));
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"),
+                "A completed chapter Boss must loop back instead of leaving the runtime permanently on stage 10.");
             DeleteLocalSave();
         }
 
@@ -371,17 +666,19 @@ namespace ImmortalLoot.Tests.PlayMode
             repository.Save(new PlayerSaveSnapshot
             {
                 Kills = 0,
-                StageElapsedSeconds = 179,
+                StageElapsedSeconds = 0,
                 LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 InventoryJson = JsonUtility.ToJson(inventory),
-                ProgressJson = PlayerProgressStateCodec.Serialize(new PlayerProgressState { CurrentStageId = "stage_1_9" })
+                ProgressJson = PlayerProgressStateCodec.Serialize(new PlayerProgressState { CurrentStageId = "stage_1_10" })
             });
 
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
-            controller.SetPacingSpeedForTests(240f);
             GameObject.Find("EnterGameButton").GetComponent<Button>().onClick.Invoke();
+            Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_10"));
+            controller.ResolveCurrentBattleForTests();
+            controller.SetPacingSpeedForTests(240f);
             var timeout = 5f;
             InventoryState afterDrop = null;
             while (timeout > 0f && afterDrop?.PendingEquipment == null)
@@ -393,10 +690,10 @@ namespace ImmortalLoot.Tests.PlayMode
             }
 
             Assert.That(afterDrop?.PendingEquipment, Is.Not.Null,
-                "A real local reward must enter the durable pending slot when the protected inventory is full.");
+                "A real Boss reward must enter the durable pending slot when the protected inventory is full.");
             var pendingId = afterDrop.PendingEquipment.InstanceId;
             Assert.That(afterDrop.PendingEquipment.Quality, Is.GreaterThanOrEqualTo(EquipmentQuality.Rare),
-                "Starting immediately before the stage-10 reward window must exercise the guaranteed Rare+ boss table.");
+                "A real stage-10 victory must exercise the guaranteed Rare+ Boss table even without a pacing window.");
             Assert.That(InventoryOverflowPolicy.IsHigherValue(afterDrop.PendingEquipment, afterDrop.Equipment[119]), Is.True,
                 "The end-to-end replacement scenario requires the real pending drop to outrank the sacrificial old item.");
             Assert.That(controller.LatestLoot?.InstanceId, Is.EqualTo(pendingId),
@@ -499,22 +796,95 @@ namespace ImmortalLoot.Tests.PlayMode
         private sealed class ServerLoopTransport : IApiTransport
         {
             public readonly List<string> Paths = new List<string>();
-            private static readonly string SessionId = "11111111-1111-1111-1111-111111111111";
+            public readonly List<string> FinishRequestBodies = new List<string>();
+            public readonly List<bool> FinishRewardWindowEligibility = new List<bool>();
+            public readonly List<string> FinishSessionIds = new List<string>();
+            public readonly List<string> FinishIdempotencyKeys = new List<string>();
+            public int BattleStartCount { get; private set; }
+            public int AuthoritativeFinishGrantCount { get; private set; }
+            private readonly bool _failBattleFinish;
+            private readonly bool _loseFirstFinishResponseAfterCommit;
+            private bool _hasSuccessfulFinish;
+            private bool _hasRewardedFinish;
+            private bool _lostFirstFinishResponse;
+            private string _currentSessionId = string.Empty;
+            private readonly Dictionary<string, bool> _committedFinishEligibility = new Dictionary<string, bool>();
+
+            public ServerLoopTransport(bool failBattleFinish = false, bool loseFirstFinishResponseAfterCommit = false)
+            {
+                _failBattleFinish = failBattleFinish;
+                _loseFirstFinishResponseAfterCommit = loseFirstFinishResponseAfterCommit;
+            }
+
             public Task<ApiResponse> SendAsync(ApiRequest request)
             {
                 Paths.Add(request.Path);
+                var finishRewardWindowEligible = false;
+                if (request.Path == "/battle/finish")
+                {
+                    FinishRequestBodies.Add(request.JsonBody);
+                    var finish = JsonUtility.FromJson<BattleFinishCapture>(request.JsonBody);
+                    finishRewardWindowEligible = finish != null && finish.RewardWindowEligible;
+                    FinishRewardWindowEligibility.Add(finishRewardWindowEligible);
+                    FinishSessionIds.Add(finish?.SessionId ?? string.Empty);
+                    FinishIdempotencyKeys.Add(finish?.IdempotencyKey ?? string.Empty);
+                    if (_failBattleFinish)
+                        return Task.FromResult(new ApiResponse(503, "{\"error\":\"settlement unavailable\"}"));
+                    var finishKey = finish?.IdempotencyKey ?? string.Empty;
+                    if (!_committedFinishEligibility.TryGetValue(finishKey, out var committedRewardWindowEligible))
+                    {
+                        committedRewardWindowEligible = finishRewardWindowEligible;
+                        _committedFinishEligibility.Add(finishKey, committedRewardWindowEligible);
+                        AuthoritativeFinishGrantCount++;
+                        _hasSuccessfulFinish = true;
+                        _hasRewardedFinish |= committedRewardWindowEligible;
+                    }
+                    finishRewardWindowEligible = committedRewardWindowEligible;
+                    if (_loseFirstFinishResponseAfterCommit && !_lostFirstFinishResponse)
+                    {
+                        _lostFirstFinishResponse = true;
+                        return Task.FromResult(new ApiResponse(503, "{\"error\":\"response lost after commit\"}"));
+                    }
+                }
                 string json;
                 switch (request.Path)
                 {
                     case "/auth/login": json = "{\"playerId\":\"p1\",\"accessToken\":\"token\",\"expiresAtUtc\":\"2030-01-01T00:00:00Z\",\"isNewPlayer\":true}"; break;
-                    case "/battle/start": json = "{\"sessionId\":\"" + SessionId + "\",\"stageId\":\"stage_1_1\",\"status\":\"Started\"}"; break;
-                    case "/battle/finish": json = "{\"sessionId\":\"" + SessionId + "\",\"status\":\"Finished\",\"rewardSoftCurrency\":10,\"rewardExp\":25,\"equipmentInstanceId\":\"equip-online\",\"replayed\":false}"; break;
+                    case "/battle/start":
+                        BattleStartCount++;
+                        _currentSessionId = System.Guid.NewGuid().ToString();
+                        var start = JsonUtility.FromJson<BattleStartCapture>(request.JsonBody);
+                        json = "{\"sessionId\":\"" + _currentSessionId + "\",\"stageId\":\"" + (start?.StageId ?? string.Empty) + "\",\"status\":\"Started\"}";
+                        break;
+                    case "/battle/finish":
+                        json = finishRewardWindowEligible
+                            ? "{\"sessionId\":\"" + _currentSessionId + "\",\"status\":\"Finished\",\"rewardSoftCurrency\":10,\"rewardExp\":25,\"equipmentInstanceId\":\"equip-online\",\"replayed\":false}"
+                            : "{\"sessionId\":\"" + _currentSessionId + "\",\"status\":\"Finished\",\"rewardSoftCurrency\":0,\"rewardExp\":0,\"equipmentInstanceId\":\"\",\"replayed\":false}";
+                        break;
                     case "/player/inventory": json = "{\"items\":[],\"equipment\":[{\"instanceId\":\"equip-online\",\"baseId\":\"gloves_starseal\",\"slot\":\"Gloves\",\"level\":1,\"quality\":\"Rare\",\"isLocked\":false,\"isEquipped\":false,\"instanceJson\":\"{\\\"instanceId\\\":\\\"equip-online\\\",\\\"baseId\\\":\\\"gloves_starseal\\\",\\\"slot\\\":\\\"Gloves\\\",\\\"level\\\":1,\\\"quality\\\":\\\"Rare\\\",\\\"affixes\\\":[{\\\"id\\\":\\\"affix_attack\\\",\\\"value\\\":8.5}]}\"}]}"; break;
                     case "/equipment/equip": json = "{\"instanceId\":\"equip-online\",\"slot\":\"Gloves\",\"replaced\":false}"; break;
-                    case "/player/profile": json = "{\"playerId\":\"p1\",\"nickname\":\"在线修士\",\"level\":1,\"exp\":25,\"realmId\":\"realm_body_tempering\",\"realmStage\":1,\"power\":180,\"softCurrency\":10,\"premiumCurrency\":0}"; break;
+                    case "/player/profile":
+                        json = "{\"playerId\":\"p1\",\"nickname\":\"在线修士\",\"level\":1,\"exp\":" + (_hasRewardedFinish ? 25 : 0) +
+                               ",\"realmId\":\"realm_body_tempering\",\"realmStage\":1,\"power\":180,\"softCurrency\":" + (_hasRewardedFinish ? 10 : 0) +
+                               ",\"premiumCurrency\":" + (_hasSuccessfulFinish ? 10 : 0) + "}";
+                        break;
                     default: json = "{}"; break;
                 }
                 return Task.FromResult(new ApiResponse(200, json));
+            }
+
+            [System.Serializable]
+            private sealed class BattleStartCapture
+            {
+                public string StageId;
+            }
+
+            [System.Serializable]
+            private sealed class BattleFinishCapture
+            {
+                public string SessionId;
+                public string IdempotencyKey;
+                public bool RewardWindowEligible;
             }
         }
     }

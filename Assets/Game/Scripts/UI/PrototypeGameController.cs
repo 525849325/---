@@ -60,9 +60,13 @@ namespace ImmortalLoot.UI
         private PrototypeLoginController _login;
         private string _serverLatestInstanceId = string.Empty;
         private bool _settlingServerBattle;
+        private PendingServerBattleSettlement _pendingServerBattleSettlement;
         private CultivationMethodService _cultivation;
         private DemoPacingSession _pacing;
         private DemoPacingConfig _pacingConfig;
+        private VictoryDrivenStageLoop _stageLoop;
+        private StageBattleFactory _stageBattleFactory;
+        private string _activeBattleStageId = "stage_1_1";
         private float _pacingSpeed = 1f;
         private bool _playtestQuitRequested;
         private IPlayerSaveRepository _saveRepository;
@@ -78,6 +82,11 @@ namespace ImmortalLoot.UI
         private int _skippedPendingRewardWindows;
         private PlayerProgressState _progressState;
         private int _guideStep;
+        private static readonly float[] ServerSettlementRetryDelays = { 1f, 2f, 4f, 8f, 15f, 30f };
+#if UNITY_INCLUDE_TESTS
+        private int _saveOperationCount;
+        private long _configuredStageExperienceGranted;
+#endif
         private readonly CharacterStats _baseStats = new CharacterStats
         {
             HP = 180f, Attack = 12f, Defense = 3f, CritRate = 0.1f, CritDamage = 1.5f, AttackSpeed = 1f, FireDamage = 0.1f
@@ -87,6 +96,16 @@ namespace ImmortalLoot.UI
         public int StageNumber => _stageNumber;
         public bool AutoEquipEnabled => _settings?.AutoEquipEnabled ?? true;
         public bool CommercialUnlocked => _latestLoot != null || !string.IsNullOrEmpty(_serverLatestInstanceId) || (_inventory?.State.Equipment.Count ?? 0) > 0;
+
+        private sealed class PendingServerBattleSettlement
+        {
+            public string StageId;
+            public string FinishKey;
+            public string SessionId;
+            public bool RewardWindowEligible;
+            public bool ConsumeRewardWindow;
+            public int RetryAttempt;
+        }
 
         private void Start()
         {
@@ -101,6 +120,7 @@ namespace ImmortalLoot.UI
             _saveRepository = JsonPlayerSaveRepository.CreateDefault();
             var saved = LoadSnapshotSafely();
             _progressState = PlayerProgressStateCodec.Deserialize(saved?.ProgressJson);
+            _stageLoop = new VictoryDrivenStageLoop(_catalog, _progressState.Stage, _progressState.CurrentStageId);
             _generator = new EquipmentGenerator(new SystemRandomSource(), _catalog);
             _drops = new DropTableService(_catalog, _generator, new SystemRandomSource());
             _inventory = new InventoryService(RestoreInventory(saved), _catalog);
@@ -122,6 +142,10 @@ namespace ImmortalLoot.UI
             _upgradeEvaluator = new EquipmentUpgradeEvaluator(_catalog, _powerCalculator);
             _pacingConfig = DemoPacingLoader.Load(new ResourcesConfigSource());
             _pacing = new DemoPacingSession(_pacingConfig);
+            _stageBattleFactory = new StageBattleFactory(
+                _catalog,
+                new MonsterFactory(_catalog),
+                new DamageCalculator(DamageFormulaConfigLoader.Load(new ResourcesConfigSource()), new SystemRandomSource()));
             RestoreProgress(saved);
             ClaimOfflineProgress(saved);
             _pacingSpeed = DevelopmentPlaytestOptions.Speed;
@@ -147,14 +171,14 @@ namespace ImmortalLoot.UI
         private void Update()
         {
             _pacing.Advance(Time.unscaledDeltaTime * _pacingSpeed);
-            _stageNumber = _pacing.CurrentStageNumber;
             _battle.Tick(Time.deltaTime * _pacingSpeed);
             enemyHealth.value = _battle.Enemy.Hp / _battle.Enemy.MaxHp;
-            var stage = _catalog.Stages[$"stage_1_{_stageNumber}"];
+            var stage = _catalog.Stages[_activeBattleStageId];
             var bossLabel = stage.IsBossStage ? "BOSS · " : string.Empty;
-            statusText.text = $"{bossLabel}{stage.Name}  1-{_stageNumber}\n{_battle.Enemy.Id}  {_battle.Enemy.Hp:0}/{_battle.Enemy.MaxHp:0}\n已击败：{_kills}";
+            statusText.text = $"{bossLabel}{stage.Name}  1-{stage.StageNumber}\n{_battle.Enemy.Id}  {_battle.Enemy.Hp:0}/{_battle.Enemy.MaxHp:0}\n已击败：{_kills}";
             statusText.color = stage.IsBossStage ? PrototypeVisualTheme.Gold : PrototypeVisualTheme.TextPrimary;
-            if (!_playtestQuitRequested && _pacing.IsComplete && _pacing.PendingRewards == 0 && !_settlingServerBattle && DevelopmentPlaytestOptions.AutoQuit)
+            if (!_playtestQuitRequested && _pacing.IsComplete && _pacing.PendingRewards == 0 &&
+                !_settlingServerBattle && _pendingServerBattleSettlement == null && DevelopmentPlaytestOptions.AutoQuit)
             {
                 _playtestQuitRequested = true;
                 Debug.Log($"PLAYTEST_COMPLETE elapsed={_pacing.ElapsedSeconds:0} kills={_kills} rewardWindows={_pacing.GeneratedRewardWindows} consumed={_pacing.ConsumedRewardWindows} pending={_pacing.PendingRewards} inventory={_inventory.State.Equipment.Count} power={_power}");
@@ -164,91 +188,275 @@ namespace ImmortalLoot.UI
 
         private void SpawnEnemy()
         {
-            var monsterId = _stageNumber == 10 ? "monster_stone_nightmare" : "monster_wasteland_beast";
-            var monster = _catalog.Monsters[monsterId];
-            var hp = monster.MaxHp + _kills * 6f;
+            if (_pendingServerBattleSettlement != null) return;
+            _activeBattleStageId = _stageLoop.CurrentStageId;
+            var stage = _stageLoop.CurrentStage;
             var playerStats = _stats.Calculate(_baseStats);
             playerStats.HP = Mathf.Max(playerStats.HP, 9999f);
             var player = new BattleActor("player", playerStats, 0.7f, new[] { _catalog.Skills["skill_ember_brand"] });
-            var enemy = new BattleActor(monster.Id, new CharacterStats
-            {
-                HP = hp, Attack = monster.Attack, Defense = monster.Defense, CritDamage = 1.5f
-            }, monster.AttackInterval, rank: monster.Rank, enrageSeconds: monster.EnrageSeconds);
-            _battle = new AutoBattleEngine(player, enemy,
-                new DamageCalculator(DamageFormulaConfigLoader.Load(new ResourcesConfigSource()), new SystemRandomSource()));
+            _battle = _stageBattleFactory.Create(_activeBattleStageId, player);
             _battle.Finished += HandleBattleFinished;
             _battle.EventRaised += value =>
             {
                 if (value.Type == BattleEventType.BasicAttack || value.Type == BattleEventType.SkillCast || value.Type == BattleEventType.DamageOverTime)
                     _feedback.PlayHit(value.IsCritical);
             };
-            if (monster.Rank == MonsterRank.Boss) _feedback.PlayBossAppearance();
+            if (stage.IsBossStage) _feedback.PlayBossAppearance();
         }
 
         private async void HandleBattleFinished(BattleState state)
         {
+            if (state == BattleState.Defeat)
+            {
+                RecordBattleDefeat(scheduleRetry: true);
+                return;
+            }
             if (state != BattleState.Victory) return;
+
+            var completedStageId = _activeBattleStageId;
+            if (!_catalog.Stages.TryGetValue(completedStageId, out var completedStage))
+                throw new ConfigException($"Completed stage '{completedStageId}' was not found.");
             var serverAuthenticated = _login != null && _login.IsServerAuthenticated;
-            if (!serverAuthenticated && _inventory.State.PendingEquipment != null)
+            if (serverAuthenticated)
+            {
+                if (_settlingServerBattle || _pendingServerBattleSettlement != null) return;
+                _settlingServerBattle = true;
+                var nonce = Guid.NewGuid().ToString("N");
+                var hadPendingRewardWindow = _pacing.PendingRewards > 0;
+                BattleStartDto started;
+                try
+                {
+                    started = ImmortalLootApiClient.Parse<BattleStartDto>(await _login.ApiClient.StartBattleAsync(
+                        completedStageId, "ui-start-" + nonce));
+                    if (!Guid.TryParse(started.sessionId, out _) ||
+                        !string.Equals(started.stageId, completedStageId, StringComparison.Ordinal) ||
+                        !string.Equals(started.status, "Started", StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("Server battle start response was incomplete or mismatched.");
+                }
+                catch (Exception exception)
+                {
+                    _settlingServerBattle = false;
+                    RecordBattleDefeat(scheduleRetry: true);
+                    if (guideText != null) guideText.text = "服务器战斗启动失败，保留原关重试：" + exception.Message;
+                    return;
+                }
+                _pendingServerBattleSettlement = new PendingServerBattleSettlement
+                {
+                    StageId = completedStageId,
+                    FinishKey = "ui-finish-" + nonce,
+                    SessionId = started.sessionId,
+                    RewardWindowEligible = completedStage.IsBossStage || hadPendingRewardWindow,
+                    ConsumeRewardWindow = hadPendingRewardWindow
+                };
+                await ConfirmPendingServerSettlementAsync();
+                return;
+            }
+
+            SettleLocalVictory(completedStage);
+        }
+
+        private async System.Threading.Tasks.Task ConfirmPendingServerSettlementAsync()
+        {
+            var pendingSettlement = _pendingServerBattleSettlement;
+            if (pendingSettlement == null)
+            {
+                _settlingServerBattle = false;
+                return;
+            }
+            BattleFinishDto finished;
+            try
+            {
+                finished = ImmortalLootApiClient.Parse<BattleFinishDto>(await _login.ApiClient.FinishBattleAsync(
+                    Guid.Parse(pendingSettlement.SessionId), pendingSettlement.FinishKey, pendingSettlement.RewardWindowEligible));
+                if (!Guid.TryParse(finished.sessionId, out var confirmedSessionId) ||
+                    confirmedSessionId != Guid.Parse(pendingSettlement.SessionId) ||
+                    !string.Equals(finished.status, "Finished", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Server battle finish response was incomplete or mismatched.");
+            }
+            catch (Exception exception)
+            {
+                _settlingServerBattle = false;
+                ScheduleServerSettlementRetry(pendingSettlement, exception);
+                return;
+            }
+
+            _pendingServerBattleSettlement = null;
+            CancelInvoke(nameof(RetryPendingServerSettlement));
+            if (!_catalog.Stages.TryGetValue(pendingSettlement.StageId, out var completedStage))
+            {
+                _settlingServerBattle = false;
+                if (guideText != null) guideText.text = $"服务器已确认结算，但本地缺少关卡配置：{pendingSettlement.StageId}";
+                return;
+            }
+            try
+            {
+                ApplyConfirmedServerVictory(pendingSettlement, completedStage, finished);
+            }
+            catch (Exception exception)
+            {
+                _settlingServerBattle = false;
+                if (guideText != null) guideText.text = "服务器已确认结算，但本地进度应用失败：" + exception.Message;
+                return;
+            }
+
+            string postConfirmationWarning = null;
+            try { SaveProgress(); }
+            catch (Exception exception) { postConfirmationWarning = "本地进度暂未落盘：" + exception.Message; }
+            try
+            {
+                await SynchronizeConfirmedServerVictoryAsync(pendingSettlement, completedStage, finished);
+            }
+            catch (Exception exception)
+            {
+                postConfirmationWarning = string.IsNullOrEmpty(postConfirmationWarning)
+                    ? "资料同步失败：" + exception.Message
+                    : postConfirmationWarning + "；资料同步失败：" + exception.Message;
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(postConfirmationWarning) && guideText != null)
+                    guideText.text = "服务器结算与本地进度已确认，但" + postConfirmationWarning;
+                _settlingServerBattle = false;
+                CancelInvoke(nameof(SpawnEnemy));
+                Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
+            }
+        }
+
+        private void ApplyConfirmedServerVictory(PendingServerBattleSettlement pendingSettlement, StageConfig completedStage, BattleFinishDto finished)
+        {
+            RecordCompletedStageVictory(completedStage);
+            _kills++;
+            if (pendingSettlement.ConsumeRewardWindow) _pacing.TryConsumeBattleReward();
+            if (!string.IsNullOrWhiteSpace(finished.equipmentInstanceId))
+                _serverLatestInstanceId = finished.equipmentInstanceId;
+        }
+
+        private async System.Threading.Tasks.Task SynchronizeConfirmedServerVictoryAsync(
+            PendingServerBattleSettlement pendingSettlement,
+            StageConfig completedStage,
+            BattleFinishDto finished)
+        {
+            EquipmentItemDto row = null;
+            if (!string.IsNullOrWhiteSpace(finished.equipmentInstanceId))
+            {
+                var inventory = ImmortalLootApiClient.Parse<InventoryDto>(await _login.ApiClient.GetInventoryAsync());
+                if (inventory.equipment != null)
+                    foreach (var candidate in inventory.equipment)
+                        if (candidate.instanceId == finished.equipmentInstanceId) { row = candidate; break; }
+                var item = row == null || string.IsNullOrEmpty(row.instanceJson) ? null : JsonUtility.FromJson<ServerEquipmentDto>(row.instanceJson);
+                lootText.text = FormatServerLoot(item, row) + $"\n\n服务器奖励：经验 +{finished.rewardExp:N0} · 灵砂 +{finished.rewardSoftCurrency:N0}";
+                _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, completedStage.StageNumber, _power, row?.quality ?? string.Empty);
+                if (Enum.TryParse(row?.quality, true, out EquipmentQuality serverQuality)) _feedback.PlayLoot(serverQuality);
+            }
+            else if (guideText != null && !completedStage.IsBossStage)
+            {
+                guideText.text = pendingSettlement.RewardWindowEligible
+                    ? $"服务器已记录通过 {completedStage.Name}；本场未生成新装备。"
+                    : $"服务器已记录通过 {completedStage.Name}；本场尚未到装备结算窗口。";
+            }
+            if (completedStage.IsBossStage)
+            {
+                _guideStep = Math.Max(_guideStep, 4);
+                _validationTelemetry.TrackOnce("first_boss_defeated", _pacing.ElapsedSeconds, completedStage.StageNumber, _power, row?.quality ?? string.Empty);
+                if (guideText != null) guideText.text = "服务器 Boss 已击败：可领取挂机收益并准备境界突破";
+            }
+            await RefreshServerProfile();
+        }
+
+        private void ScheduleServerSettlementRetry(PendingServerBattleSettlement pendingSettlement, Exception exception)
+        {
+            CancelInvoke(nameof(SpawnEnemy));
+            CancelInvoke(nameof(RetryPendingServerSettlement));
+            var delayIndex = Math.Min(pendingSettlement.RetryAttempt, ServerSettlementRetryDelays.Length - 1);
+            var delaySeconds = ServerSettlementRetryDelays[delayIndex];
+            pendingSettlement.RetryAttempt++;
+            if (guideText != null)
+                guideText.text = $"服务器结算确认中：关卡与奖励窗口已冻结，将在 {delaySeconds:0} 秒后用同一凭据重试。\n{exception.Message}";
+            Invoke(nameof(RetryPendingServerSettlement), delaySeconds);
+        }
+
+        private async void RetryPendingServerSettlement()
+        {
+            if (_pendingServerBattleSettlement == null || _settlingServerBattle) return;
+            _settlingServerBattle = true;
+            await ConfirmPendingServerSettlementAsync();
+        }
+
+        private void RecordBattleDefeat(bool scheduleRetry)
+        {
+            _stageLoop.RecordDefeat();
+            if (guideText != null)
+                guideText.text = $"挑战失败：保留 1-{_stageLoop.CurrentStageNumber}，稍后自动重试（本关失败 {_stageLoop.DefeatsOnCurrentStage} 次）。";
+            if (scheduleRetry) Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
+        }
+
+        private void SettleLocalVictory(StageConfig completedStage)
+        {
+            var transition = RecordCompletedStageVictory(completedStage);
+            var shouldCheckpoint = transition.Advanced ||
+                                   transition.ClearResult.IsFirstClear ||
+                                   completedStage.IsBossStage;
+            _kills++;
+            if (transition.ClearResult.IsFirstClear)
+                _premiumCurrency += completedStage.FirstClearPremiumCurrency;
+            if (completedStage.IsBossStage)
+                GrantConfiguredStageRewards(completedStage);
+
+            if (_inventory.State.PendingEquipment != null)
             {
                 var skippedRewardWindows = 0;
                 while (_pacing.TryConsumeBattleReward()) skippedRewardWindows++;
                 _skippedPendingRewardWindows += skippedRewardWindows;
-                _kills++;
+                shouldCheckpoint |= skippedRewardWindows > 0;
                 if (guideText != null) guideText.text = skippedRewardWindows > 0
-                    ? $"待领取区仍有装备：已明确跳过 {skippedRewardWindows} 个新装备窗口，不会在重启后补发。请到背包处理待领取装备。"
-                    : "待领取区仍有装备：新的装备结算已暂停。请到背包处理待领取装备。";
-                if (skippedRewardWindows > 0) SaveProgress();
-                Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
-                return;
-            }
-            if (!_pacing.TryConsumeBattleReward())
-            {
-                _kills++;
-                if (guideText != null) guideText.text = $"修炼积累中 · {_pacing.ElapsedMinutes}/{_pacingConfig.durationMinutes} 分钟\n下一次装备结算按 {_pacingConfig.equipmentDropSeconds} 秒节奏触发";
-                Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
-                return;
-            }
-            if (serverAuthenticated)
-            {
-                if (_settlingServerBattle) return;
-                _settlingServerBattle = true;
-                try
+                    ? $"待领取区仍有装备：已明确跳过 {skippedRewardWindows} 个新装备窗口，不会在重启后补发。已结算 {completedStage.Name}，请到背包处理待领取装备。"
+                    : $"待领取区仍有装备：已结算 {completedStage.Name}，新的装备结算暂停至待领取区清空。";
+                if (completedStage.IsBossStage)
                 {
-                    var stageId = $"stage_1_{_stageNumber}";
-                    var nonce = Guid.NewGuid().ToString("N");
-                    var started = ImmortalLootApiClient.Parse<BattleStartDto>(await _login.ApiClient.StartBattleAsync(stageId, "ui-start-" + nonce));
-                    var finished = ImmortalLootApiClient.Parse<BattleFinishDto>(await _login.ApiClient.FinishBattleAsync(Guid.Parse(started.sessionId), "ui-finish-" + nonce));
-                    _serverLatestInstanceId = finished.equipmentInstanceId;
-                    var inventory = ImmortalLootApiClient.Parse<InventoryDto>(await _login.ApiClient.GetInventoryAsync());
-                    EquipmentItemDto row = null;
-                    if (inventory.equipment != null) foreach (var candidate in inventory.equipment) if (candidate.instanceId == _serverLatestInstanceId) { row = candidate; break; }
-                    var item = row == null || string.IsNullOrEmpty(row.instanceJson) ? null : JsonUtility.FromJson<ServerEquipmentDto>(row.instanceJson);
-                    lootText.text = FormatServerLoot(item, row) + $"\n\n服务器奖励：经验 +{finished.rewardExp:N0} · 灵砂 +{finished.rewardSoftCurrency:N0}";
-                    _kills++;
-                    _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, _stageNumber, _power, row?.quality ?? string.Empty);
-                    if (Enum.TryParse(row?.quality, true, out EquipmentQuality serverQuality)) _feedback.PlayLoot(serverQuality);
-                    if (_stageNumber == 10)
-                    {
-                        _validationTelemetry.TrackOnce("first_boss_defeated", _pacing.ElapsedSeconds, _stageNumber, _power, row?.quality ?? string.Empty);
-                        if (guideText != null) guideText.text = "服务器 Boss 已击败：可领取挂机收益并准备境界突破";
-                    }
-                    await RefreshServerProfile();
+                    _guideStep = Math.Max(_guideStep, 4);
+                    _validationTelemetry.TrackOnce("first_boss_defeated", _pacing.ElapsedSeconds, completedStage.StageNumber, _power);
                 }
-                catch (Exception exception) { if (guideText != null) guideText.text = "服务器战斗结算失败：" + exception.Message; }
-                finally { _settlingServerBattle = false; Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed); }
+                RefreshProgressDisplay();
+                if (shouldCheckpoint) SaveProgress();
+                Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
                 return;
             }
-            _kills++;
-            GrantExperience(25);
-            _softCurrency += _stageNumber == 10 ? 50 : 10;
-            var isBoss = _stageNumber == 10;
-            var dropTableId = isBoss ? _catalog.Stages["stage_1_10"].DropTableId : "drop_prototype_equipment";
-            var source = isBoss ? DropSourceType.Boss : DropSourceType.Monster;
-            var sourceId = isBoss ? "monster_stone_nightmare" : "monster_wasteland_beast";
-            var drops = _drops.Roll(dropTableId, new DropContext(source, 1 + _kills / 3, sourceId));
+
+            var consumedEquipmentWindow = _pacing.TryConsumeBattleReward();
+            if (!completedStage.IsBossStage && consumedEquipmentWindow)
+                GrantConfiguredStageRewards(completedStage);
+            if (!completedStage.IsBossStage && !consumedEquipmentWindow)
+            {
+                if (guideText != null)
+                    guideText.text = $"已通过 {completedStage.Name} · 修炼积累 {_pacing.ElapsedMinutes}/{_pacingConfig.durationMinutes} 分钟\n下一次装备结算按 {_pacingConfig.equipmentDropSeconds} 秒节奏触发";
+                RefreshProgressDisplay();
+                if (shouldCheckpoint) SaveProgress();
+                Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
+                return;
+            }
+
+            var source = completedStage.IsBossStage ? DropSourceType.Boss : DropSourceType.Stage;
+            var sourceId = completedStage.MonsterGroup != null && completedStage.MonsterGroup.Length > 0
+                ? completedStage.MonsterGroup[0]
+                : completedStage.Id;
+            var dropTableId = completedStage.IsBossStage
+                ? completedStage.DropTableId
+                : "drop_prototype_equipment";
+            var drop = _drops.Roll(
+                dropTableId,
+                new DropContext(source, _level, sourceId, transition.ClearResult.IsFirstClear))[0];
+            if (drop.Equipment == null)
+            {
+                if (drop.ItemId == "soft_currency") _softCurrency += Math.Max(0, drop.Count);
+                if (lootText != null) lootText.text = $"{completedStage.Name} 阶段掉落：{drop.ItemId} +{drop.Count}";
+                RefreshProgressDisplay();
+                SaveProgress();
+                Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
+                return;
+            }
+
             var overflowReward = new DecompositionReward();
-            _latestLoot = drops[0].Equipment;
+            _latestLoot = drop.Equipment;
             _guideStep = Math.Max(_guideStep, 1);
             if (!TryMakeRoomForLoot(out overflowReward))
             {
@@ -256,14 +464,14 @@ namespace ImmortalLoot.UI
                 _pendingSacrificeConfirmationKey = string.Empty;
                 lootText.text = FormatLoot(_latestLoot) + "\n\n背包已满且没有可安全回收的装备；掉落已保存到待领取区。\n新的装备结算会暂停，直到你清理背包并领取。";
                 lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
-                _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString());
+                _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, completedStage.StageNumber, _power, _latestLoot.Quality.ToString());
                 _feedback.PlayLoot(_latestLoot.Quality);
                 SaveProgress();
                 Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
                 return;
             }
             _inventory.AddEquipment(_latestLoot);
-            _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString());
+            _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, completedStage.StageNumber, _power, _latestLoot.Quality.ToString());
             _feedback.PlayLoot(_latestLoot.Quality);
             var autoUpgrade = _settings.AutoEquipEnabled
                 ? _upgradeEvaluator.Evaluate(_progressionStats.Calculate(_baseStats), _loadout.Equipped, _latestLoot)
@@ -280,20 +488,38 @@ namespace ImmortalLoot.UI
                 ? $"\n\n自动换装成功 · 战力预计 +{autoUpgrade.PowerGain}"
                 : "\n\n点击“穿戴最新装备”进行比较") + overflowSummary;
             lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
-            if (_stageNumber == 10)
+            if (completedStage.IsBossStage)
             {
                 _guideStep = Math.Max(_guideStep, 4);
-                _validationTelemetry.TrackOnce("first_boss_defeated", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString());
+                _validationTelemetry.TrackOnce("first_boss_defeated", _pacing.ElapsedSeconds, completedStage.StageNumber, _power, _latestLoot.Quality.ToString());
                 if (guideText != null) guideText.text = "Boss 已击败：可领取挂机收益并准备境界突破";
             }
             RefreshProgressDisplay();
             if (autoUpgrade.ShouldEquip)
             {
                 _feedback.PlayEquip();
-                _validationTelemetry.TrackOnce("first_equipment_equipped", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString(), autoUpgrade.PowerGain);
+                _validationTelemetry.TrackOnce("first_equipment_equipped", _pacing.ElapsedSeconds, completedStage.StageNumber, _power, _latestLoot.Quality.ToString(), autoUpgrade.PowerGain);
             }
             SaveProgress();
             Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
+        }
+
+        private void GrantConfiguredStageRewards(StageConfig completedStage)
+        {
+#if UNITY_INCLUDE_TESTS
+            _configuredStageExperienceGranted += Math.Max(0, completedStage.RewardExp);
+#endif
+            GrantExperience(completedStage.RewardExp);
+            _softCurrency += completedStage.RewardSoftCurrency;
+        }
+
+        private VictoryDrivenStageTransition RecordCompletedStageVictory(StageConfig completedStage)
+        {
+            if (!string.Equals(_stageLoop.CurrentStageId, completedStage.Id, StringComparison.Ordinal))
+                throw new InvalidOperationException($"Cannot settle '{completedStage.Id}' while current stage is '{_stageLoop.CurrentStageId}'.");
+            var transition = _stageLoop.RecordVictory(_pacing.CurrentStageNumber);
+            _stageNumber = _stageLoop.CurrentStageNumber;
+            return transition;
         }
 
         public async void EquipLatest()
@@ -398,8 +624,8 @@ namespace ImmortalLoot.UI
             _baseStats.Attack += (_level - 1) * 2f;
             _baseStats.HP += (_level - 1) * 15f;
             _baseStats.FireDamage += _spiritualRootPoints * 0.01f;
-            _pacing.Restore(AlignElapsedToAggregateStage(saved?.StageElapsedSeconds ?? 0d));
-            _stageNumber = _pacing.CurrentStageNumber;
+            _pacing.Restore(saved?.StageElapsedSeconds ?? 0d);
+            _stageNumber = _stageLoop.CurrentStageNumber;
             if (saved == null) return;
             var equipped = JsonUtility.FromJson<EquippedIds>(saved.EquippedInstanceIdsJson);
             if (equipped?.ids == null) return;
@@ -418,7 +644,7 @@ namespace ImmortalLoot.UI
             _afkState = new AfkState { LastOfflineUnixSeconds = lastActive };
             if (saved == null) return;
             var service = new AfkRewardService(AfkConfigLoader.Load(new ResourcesConfigSource()), _afkState, new UtcClock());
-            var stageRate = _catalog.Stages[$"stage_1_{_pacing.CurrentStageNumber}"].AfkRewardRate;
+            var stageRate = _stageLoop.CurrentStage.AfkRewardRate;
             var reward = service.Claim(stageRate, _cultivation.GetAfkMultiplier());
             if (reward.EffectiveSeconds <= 0) return;
             GrantExperience(reward.Experience);
@@ -463,11 +689,14 @@ namespace ImmortalLoot.UI
                 EquippedInstanceIdsJson = JsonUtility.ToJson(equipped),
                 ProgressJson = PlayerProgressStateCodec.Serialize(progress)
             });
+#if UNITY_INCLUDE_TESTS
+            _saveOperationCount++;
+#endif
         }
 
         private PlayerProgressState CaptureProgressState()
         {
-            _progressState.CurrentStageId = $"stage_1_{Math.Clamp(_stageNumber, 1, 10)}";
+            _progressState.CurrentStageId = _stageLoop.CurrentStageId;
             _progressState.GuideStep = Math.Max(0, _guideStep);
             _progressState.TaskClaimed = _taskClaimed;
             _progressState.Realm.PlayerLevel = Math.Max(1, _level);
@@ -475,31 +704,6 @@ namespace ImmortalLoot.UI
             _progressState.Realm.RealmStage = Math.Max(1, _realmStage);
             GetFireRootProgress().Level = Math.Clamp(_spiritualRootPoints, 0, GetFireRootMaxLevel());
             return _progressState;
-        }
-
-        private double AlignElapsedToAggregateStage(double elapsedSeconds)
-        {
-            if (!TryParseStageNumber(_progressState.CurrentStageId, out var stageNumber)) return elapsedSeconds;
-            if (double.IsNaN(elapsedSeconds) || double.IsInfinity(elapsedSeconds)) elapsedSeconds = 0d;
-
-            var bossSecond = Math.Max(1d, _pacingConfig.firstBossMinute * 60d);
-            if (stageNumber >= 10) return elapsedSeconds >= bossSecond ? elapsedSeconds : bossSecond + 0.001d;
-
-            var stageBandSeconds = bossSecond / 9d;
-            var lowerBound = (stageNumber - 1) * stageBandSeconds;
-            var upperBound = stageNumber * stageBandSeconds;
-            if (elapsedSeconds >= lowerBound && elapsedSeconds < upperBound) return elapsedSeconds;
-            return lowerBound + stageBandSeconds * 0.5d;
-        }
-
-        private static bool TryParseStageNumber(string stageId, out int stageNumber)
-        {
-            const string prefix = "stage_1_";
-            stageNumber = 0;
-            return !string.IsNullOrWhiteSpace(stageId) &&
-                   stageId.StartsWith(prefix, StringComparison.Ordinal) &&
-                   int.TryParse(stageId.Substring(prefix.Length), out stageNumber) &&
-                   stageNumber >= 1 && stageNumber <= 10;
         }
 
         private SpiritualRootProgress GetFireRootProgress()
@@ -861,10 +1065,34 @@ namespace ImmortalLoot.UI
 
 #if UNITY_INCLUDE_TESTS
         public void SetPacingSpeedForTests(float speed) => _pacingSpeed = Mathf.Max(1f, speed);
+        public void AdvancePacingForTests(double seconds) => _pacing.Advance(Math.Max(0d, seconds));
         public void SaveForTests() => SaveProgress();
         public int SkippedPendingRewardWindowsForTests => _skippedPendingRewardWindows;
         public int PendingRewardWindowsForTests => _pacing.PendingRewards;
+        public int SaveOperationCountForTests => _saveOperationCount;
+        public double PacingElapsedSecondsForTests => _pacing.ElapsedSeconds;
+        public long ExperienceForTests => _exp;
+        public long ConfiguredStageExperienceGrantedForTests => _configuredStageExperienceGranted;
         public long SoftCurrencyForTests => _softCurrency;
+        public long PremiumCurrencyForTests => _premiumCurrency;
+        public string CurrentStageIdForTests => _stageLoop.CurrentStageId;
+        public string ActiveBattleStageIdForTests => _activeBattleStageId;
+        public int DefeatsOnCurrentStageForTests => _stageLoop.DefeatsOnCurrentStage;
+        public string ServerLatestInstanceIdForTests => _serverLatestInstanceId;
+        public bool HasPendingServerSettlementForTests => _pendingServerBattleSettlement != null;
+        public void ResolveCurrentBattleForTests() => _battle.SkipToResult();
+        public void RespawnCurrentBattleForTests()
+        {
+            if (_pendingServerBattleSettlement != null) return;
+            CancelInvoke(nameof(SpawnEnemy));
+            SpawnEnemy();
+        }
+        public void RetryPendingServerSettlementForTests()
+        {
+            CancelInvoke(nameof(RetryPendingServerSettlement));
+            RetryPendingServerSettlement();
+        }
+        public void RecordDefeatForTests() => RecordBattleDefeat(scheduleRetry: false);
         public PlayerProgressState ProgressForTests =>
             PlayerProgressStateCodec.Deserialize(PlayerProgressStateCodec.Serialize(CaptureProgressState()));
 #endif

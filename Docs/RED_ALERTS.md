@@ -30,3 +30,5 @@
 - 该问题记录为 `QA-REGRESSION-002` 技术阻塞，不重新升级 RED、不要求用户重复登录或激活；其他 P0 继续执行。
 - 后续只读复核确认：当前可见交互 Editor 已连接 `LicenseClient-Admin`，但 `Editor.log` 绑定的是另一 Unity 工作区；本项目 `Temp/UnityLockfile` 未被进程持有，不能据此宣称本项目存在可复用的已授权 Editor 会话。
 - 这仍是自动化会话/项目绑定差异，不是许可证缺失；未发现需要老板执行的具体账号或权限动作，因此保持无 OPEN RED，并继续处理不依赖 Unity Test Runner 的 P0。
+- 最新只读诊断进一步确认 Hub 项目索引当前仅跟踪另一 Unity 工作区，Hub 曾明确拒绝直接打开未登记的本项目路径；同时系统仍存在且可访问已成功跑过基线门禁的版本化管道 `Unity-LicenseClient-Admin-6000.5.10`。
+- 自动化脚本已停止把退出码 198 解释为“用户没有许可证”，并改为只在 lock 文件确实被进程持有时阻止运行；下一策略是显式复用该已授权版本化 IPC，不终止现有 Editor/Hub、不删除当前 stale lock、不要求重新激活。

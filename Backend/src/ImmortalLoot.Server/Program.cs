@@ -323,7 +323,7 @@ app.MapPost("/battle/finish", async (BattleFinishRequest request, HttpRequest ht
     {
         var playerId = await auth.ResolvePlayerAsync(httpRequest.Headers.Authorization, cancellationToken);
         if (!playerId.HasValue) return Results.Unauthorized();
-        return Results.Ok(await service.FinishAsync(playerId.Value, request.SessionId, request.IdempotencyKey, cancellationToken));
+        return Results.Ok(await service.FinishAsync(playerId.Value, request.SessionId, request.IdempotencyKey, request.RewardWindowEligible ?? true, cancellationToken));
     }
     catch (KeyNotFoundException exception) { return Results.NotFound(new { error = exception.Message }); }
     catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
@@ -333,7 +333,7 @@ app.Run();
 
 public sealed record LoginRequest(string Provider, string ExternalAccountId, string Nickname);
 public sealed record BattleStartRequest(string StageId, string IdempotencyKey);
-public sealed record BattleFinishRequest(Guid SessionId, string IdempotencyKey);
+public sealed record BattleFinishRequest(Guid SessionId, string IdempotencyKey, bool? RewardWindowEligible = null);
 public sealed record ShopPurchaseRequest(string ProductId, int Quantity, string IdempotencyKey);
 public sealed record PaymentOrderRequest(string ProductId);
 public sealed record PaymentVerifyRequest(string OrderNo, string Provider, string Receipt);

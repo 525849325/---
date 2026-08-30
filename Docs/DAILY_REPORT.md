@@ -5,16 +5,16 @@
 | 状态 | 当前值 |
 |---|---|
 | 版本 | V0.1 RC 开发中 |
-| 总体完成度 | 基线 Android 构建与自动化 QA 已通过；背包与聚合存档 P0 已形成可编译检查点，待 Unity 回归与重构建 |
+| 总体完成度 | 背包、聚合存档、胜利驱动关卡及真实战斗节奏已形成离线 PASS 检查点；正在恢复最新 Unity 回归与 Android 重构建 |
 | 当前 Gate | GATE 4｜P0 收口 / Device Acceptance |
-| 当前 Task | CORE-STAGE-002｜胜利驱动关卡与 Boss 重试 |
+| 当前 Task | QA-REGRESSION-002｜显式复用已授权版本化 IPC 运行最新 Test Runner |
 | Build | BASELINE PASS｜APK/AAB 已验证；最新背包修复后产物待重构建 |
-| Tests | 基线 EditMode 81/81、PlayMode 5/5；背包与聚合存档最新改动全程序集编译 PASS、Unity 回归 BLOCKED |
-| P0 / P1 | P0：背包 incoming 与聚合存档已进 TESTING，胜利驱动关卡 RUNNING；P1：真实 10/60 分钟平衡与完整视觉体验 |
-| Blocked | QA-REGRESSION-002｜Hub/Editor IPC 会话错配；BUILD-ANDROID-002｜最新 HEAD 无对应包；QA-DEVICE-001｜最新包未生成且 0 台已授权物理设备 |
+| Tests | 基线 EditMode 81/81、PlayMode 5/5；最新四程序集、核心循环、真实战斗节奏、领域与后端 verification PASS；实际 Unity 回归 RUNNING |
+| P0 / P1 | P0：背包、聚合存档、胜利驱动关卡均进 TESTING；P1：真实战斗模型 PASS，真机 10/60 分钟与完整视觉体验待验收 |
+| Blocked | BUILD-ANDROID-002｜最新 Test Runner 尚未完成；QA-DEVICE-001｜最新包未生成且 0 台已授权物理设备 |
 | RED | 无 OPEN RED；RED-001 已解决 |
-| 最大风险 | 最新代码尚未生成对应 APK/AAB；3 分钟后关卡永久停留 Boss |
-| Next | 聚合进度存档 → 胜利驱动关卡/Boss 重试 → Unity 回归与 Android 重构建 |
+| 最大风险 | 最新代码尚未生成对应 APK/AAB；生产 Controller 的 9999 HP 保胜设定使失败率/难度仍缺少真机证据 |
+| Next | 最新 EditMode/PlayMode → Android RC APK/AAB 重构建与校验 → 真机 10/60 分钟验收 |
 | 是否需要老板决策 | 否 |
 
 当前分支：`main`；远端：`origin/main`（GitHub `525849325/---`）
@@ -38,6 +38,11 @@
 - 聚合状态成为 v3 权威来源，旧顶层等级/经验/境界字段只保留兼容镜像；空聚合旧档可安全启动，冲突数据不会静默覆盖新状态。
 - 修复部分学习功法存档的启动/切换异常、任务奖励重载防重、火灵根上限与 null 数据、聚合阶段号被 elapsed 覆盖等 P0/P1 风险。
 - 新增聚合完整往返、迁移边界、阶段冲突、功法部分学习/双辅修、任务货币防重与灵根上限测试；四类程序集编译与 10,000 件领域烟测 PASS，真实 Unity Test Runner 未冒充已执行。
+- 完成胜利驱动关卡：时间只开放上限，只有胜利推进；失败保留原关重试；1-10 Boss 胜利后回到 1-1 并可再次完成循环。
+- 修复奖励节奏漏洞：普通关仅在计时奖励窗口发一次配置 EXP/灵砂与装备，Boss 始终发一次；背包 pending 跳过普通窗口不发成长奖励。
+- 在线结算增加向后兼容 `RewardWindowEligible`：无窗口胜利仍由服务器权威通关、解锁、首通和记任务，但不发重复 EXP/灵砂/装备；Boss 强制有奖。
+- 增加真实战斗节奏门禁，直接使用生产 Battle/Factory/Stage/Pacing：首 Boss 182.23 秒到达、193.43 秒击败；10/60 分钟 Boss 胜利 21/233，奖励窗口 22/142 全消费，无卡死。
+- 修正自动化错误文案，不再把退出码 198 笼统写成“用户没有许可证”；质量门会探测未持有的 stale lock，并优先复用当前用户的版本化 LicensingClient IPC。
 
 ## BUILD
 
@@ -53,11 +58,13 @@
 - 基线 `060f4df` UI batch 结构审计：0 issue；截图、9:16 边界与视觉完整性未在 batchmode 完成，等待真机/交互验收。
 - 最新背包 P0：全程序集编译 PASS，10,000 件领域压力烟测 PASS；新增 Unity 测试已编译，实际 Test Runner 因 QA-REGRESSION-002 未执行，不计入通过数。
 - 最新聚合存档 P0：Runtime、Editor、EditMode、PlayMode 全程序集编译 PASS，迁移/恢复新增测试已编译；实际 Unity Test Runner 仍由 QA-REGRESSION-002 阻塞，不计入通过数。
+- 最新胜利驱动关卡/在线奖励契约：四程序集编译 PASS；CORE-STAGE 离线烟测、后端完整 verification 与领域回归 PASS；新增 Unity 测试只计“已编译”，实际 Test Runner 结果待本轮执行。
+- BALANCE-001 生产战斗模型：Windows PowerShell 5.1 与 pwsh 双运行 PASS；0 次失败来自 Controller 强制 9999 HP，不冒充难度平衡或真机稳定性结论。
 
 ## PROGRESS
 
-- GATE 4 的基线 Test Runner 与 Android 构建证据已建立；最新代码门禁被会话级 IPC 问题暂时阻塞。
-- GATE 4 仍不能关闭：聚合存档待实际回归，胜利驱动关卡尚在实现，物理设备证据未完成。
+- GATE 4 的基线 Test Runner 与 Android 构建证据已建立；最新代码已通过全部离线门禁，并发现可显式复用的已授权版本化 LicensingClient IPC。
+- GATE 4 仍不能关闭：最新实际 Unity 回归、对应 APK/AAB 与物理设备证据尚未完成。
 
 ## RED
 
@@ -65,11 +72,10 @@
 
 ## BLOCKED
 
-- BUILD-ANDROID-002：最新背包检查点尚未完成 Unity 回归，无法生成可信的对应 APK/AAB；旧包只保留为基线证据。
+- BUILD-ANDROID-002：最新检查点尚未完成实际 Unity 回归，无法生成可信的对应 APK/AAB；旧包只保留为基线证据。
 - QA-DEVICE-001：最新 HEAD 对应 APK 尚未生成，且当前 ADB 发现 0 台已授权物理 Android 设备；禁止拿基线旧包冒充本次验收。
-- QA-REGRESSION-002：Hub Personal seat 刷新成功，但本项目不在 Hub 当前跟踪列表，独立 batch 无法取得已授权版本化 LicensingClient 会话；不要求用户重复激活。
 
 ## NEXT
 
-- 重构胜利驱动关卡、Boss 循环、失败重试并重做 10/60 分钟模拟。
-- 会话可用后重跑完整 Unity 回归，并重建、复验最新 APK/AAB。
+- 使用已发现的版本化 LicensingClient IPC 重跑完整 Unity EditMode/PlayMode。
+- 回归通过后立即重建、复验最新 APK/AAB，并在物理设备可用时执行 10/60 分钟验收。

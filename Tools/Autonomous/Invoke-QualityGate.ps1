@@ -8,8 +8,22 @@ $unity = $config.unityExe
 if (-not (Test-Path -LiteralPath $unity)) { throw "Unity not found: $unity" }
 $lockFile = Join-Path $root 'Temp\UnityLockfile'
 if (Test-Path -LiteralPath $lockFile) {
-    throw 'This Unity project is already open or a previous Unity process did not exit cleanly. Close Unity normally, then rerun the quality gate.'
+    try {
+        $lockProbe = [System.IO.File]::Open($lockFile, 'Open', 'ReadWrite', 'None')
+        $lockProbe.Dispose()
+    }
+    catch {
+        throw 'This Unity project is currently held by another Editor process. Let that Editor finish or close it normally, then rerun the quality gate.'
+    }
 }
+
+$editorVersionChannel = $config.unityVersion -replace 'f\d+$', ''
+$licensingChannel = "LicenseClient-$([Environment]::UserName)-$editorVersionChannel"
+$licensingPipe = "\\.\pipe\Unity-$licensingChannel"
+$licensingArguments = if (Test-Path -LiteralPath $licensingPipe) {
+    Write-Host "Reusing authorized Unity licensing channel: $licensingChannel"
+    @('-licensingIpc', $licensingChannel)
+} else { @() }
 
 $runId = Get-Date -Format 'yyyyMMdd-HHmmss'
 $runDir = Join-Path $root "TestResults\Autonomous\$runId"
@@ -19,9 +33,9 @@ Get-ChildItem -LiteralPath $uiDir -Filter '*.png' -ErrorAction SilentlyContinue 
 
 $steps = [System.Collections.Generic.List[object]]::new()
 function Invoke-Unity([string[]]$UnityArguments) {
-    $process = Start-Process -FilePath $unity -ArgumentList $UnityArguments -Wait -PassThru -NoNewWindow
+    $process = Start-Process -FilePath $unity -ArgumentList @($licensingArguments + $UnityArguments) -Wait -PassThru -NoNewWindow
     if ($process.ExitCode -eq 198) {
-        throw 'Unity has no valid Editor license. Sign in to Unity Hub and activate or refresh the license before rerunning.'
+        throw 'Unity automation exited with 198 because this process did not acquire an Editor entitlement. The Unity Personal seat is already verified; inspect the step log plus Hub/Editor LicensingClient session and project binding instead of requesting another activation.'
     }
     if ($process.ExitCode -ne 0) { throw "Unity exited with $($process.ExitCode)." }
 }

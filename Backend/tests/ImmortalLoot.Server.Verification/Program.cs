@@ -12,6 +12,9 @@ await db.Database.EnsureCreatedAsync();
 
 var clock = new FixedClock();
 var catalog = ServerGameConfigCatalog.LoadDefault();
+var legacyBattleFinishRequest = System.Text.Json.JsonSerializer.Deserialize<BattleFinishRequest>(
+    "{\"SessionId\":\"00000000-0000-0000-0000-000000000000\",\"IdempotencyKey\":\"legacy-request\"}");
+Require(legacyBattleFinishRequest?.RewardWindowEligible is null, "legacy battle finish JSON no longer defaults the additive reward-window field");
 Require(catalog.Realms.Count == 10 && catalog.Stages.Count == 10 && catalog.SpiritualRoots.Count == 9 && catalog.CommercialProducts.Count == 6 && catalog.DropTables.Count == 4, "shared Unity JSON catalog did not load expected authoritative rows");
 Require(catalog.Tasks.Count == 6 && catalog.ActivityChests.Count == 5 && catalog.Afk.MaximumOfflineHours == 8, "shared task or AFK config did not load expected authoritative rows");
 var mockVerifier = new DevelopmentPaymentReceiptVerifier(catalog);
@@ -57,6 +60,31 @@ Require(await db.RewardGrants.CountAsync() == 1, "reward grant must be unique");
 Require(await db.CurrencyLogs.CountAsync(value => value.PlayerId == player.Id && value.Reason == "Battle") == 1 && await db.CurrencyLogs.CountAsync(value => value.PlayerId == player.Id && value.Reason == "StageFirstClear") == 1, "battle and first-clear currency logs must each be written once");
 Require(await db.RewardLogs.CountAsync() == 1, "reward log must be written once");
 Require(await db.BattleLogs.CountAsync() == 1, "battle log must be written once");
+
+var windowlessWalletBefore = await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == player.Id);
+var windowlessSoftBefore = windowlessWalletBefore.SoftCurrency;
+var windowlessPremiumBefore = windowlessWalletBefore.PremiumCurrency;
+var windowlessExpBefore = player.Exp;
+var windowlessLevelBefore = player.Level;
+var windowlessEquipmentBefore = await db.PlayerEquipment.CountAsync(value => value.PlayerId == player.Id);
+var windowlessStart = await service.StartAsync(player.Id, "stage_1_2", "windowless-start", CancellationToken.None);
+var windowlessFinish = await service.FinishAsync(player.Id, windowlessStart.SessionId, "windowless-finish", false, CancellationToken.None);
+var windowlessReplay = await service.FinishAsync(player.Id, windowlessStart.SessionId, "windowless-finish", true, CancellationToken.None);
+Require(!windowlessFinish.Replayed && windowlessReplay.Replayed, "windowless battle finish replay state is incorrect");
+Require(windowlessFinish.RewardSoftCurrency == 0 && windowlessFinish.RewardExp == 0 && string.IsNullOrEmpty(windowlessFinish.EquipmentInstanceId), "windowless normal clear granted timed battle rewards");
+Require(windowlessReplay.RewardSoftCurrency == 0 && windowlessReplay.RewardExp == 0 && string.IsNullOrEmpty(windowlessReplay.EquipmentInstanceId), "windowless normal clear replay changed its original reward result");
+var windowlessWalletAfter = await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == player.Id);
+var stageTwoFirstClearPremium = catalog.Stages.Single(value => value.Id == "stage_1_2").FirstClearPremiumCurrency;
+Require(windowlessWalletAfter.SoftCurrency == windowlessSoftBefore && windowlessWalletAfter.PremiumCurrency == windowlessPremiumBefore + stageTwoFirstClearPremium, "windowless clear changed soft currency or missed first-clear premium currency");
+Require(player.Exp == windowlessExpBefore && player.Level == windowlessLevelBefore, "windowless normal clear changed player experience or level");
+Require(await db.PlayerEquipment.CountAsync(value => value.PlayerId == player.Id) == windowlessEquipmentBefore, "windowless normal clear generated equipment");
+Require(await db.PlayerStages.AnyAsync(value => value.PlayerId == player.Id && value.StageId == "stage_1_2" && value.Cleared), "windowless normal clear was not authoritatively persisted");
+Require(await db.RewardGrants.CountAsync(value => value.PlayerId == player.Id) == 2 && await db.RewardLogs.CountAsync(value => value.PlayerId == player.Id) == 2 && await db.BattleLogs.CountAsync(value => value.PlayerId == player.Id) == 2, "windowless clear did not write exactly one grant, reward log, and battle log");
+Require((await tasks.ListAsync(player.Id, CancellationToken.None)).Tasks.Single(value => value.Id == "daily_stage_3").Progress == 2, "windowless clear did not advance the stage-clear task");
+var unlockedAfterWindowlessClear = await service.StartAsync(player.Id, "stage_1_3", "windowless-unlocked-stage", CancellationToken.None);
+Require(unlockedAfterWindowlessClear.StageId == "stage_1_3", "windowless clear did not unlock the next stage");
+db.BattleSessions.Remove(await db.BattleSessions.SingleAsync(value => value.Id == unlockedAfterWindowlessClear.SessionId));
+await db.SaveChangesAsync();
 
 var weakAccount = new Account { ExternalAccountId = "weak", Provider = "test" };
 var weakPlayer = new Player { AccountId = weakAccount.Id, Nickname = "Underpowered", Level = 1, Power = 0 };
@@ -131,8 +159,7 @@ player.Power = 2500;
 player.RealmId = "realm_qi_coalescence";
 player.RealmStage = 9;
 db.PlayerStages.AddRange(
-    new PlayerStage { PlayerId = firstLogin.PlayerId, StageId = "stage_1_10", Cleared = true },
-    new PlayerStage { PlayerId = player.Id, StageId = "stage_1_2", Cleared = true });
+    new PlayerStage { PlayerId = firstLogin.PlayerId, StageId = "stage_1_10", Cleared = true });
 await db.SaveChangesAsync();
 var rankings = new RankingService(db, new MemoryRankingCache(), clock, catalog);
 await rankings.RefreshAsync(RankingType.Power, null, CancellationToken.None);
@@ -237,7 +264,9 @@ BattleFinishResult? bossFinish = null;
 for (var stageNumber = 2; stageNumber <= 10; stageNumber++)
 {
     var session = await service.StartAsync(firstLogin.PlayerId, "stage_1_" + stageNumber, "chapter-start-" + stageNumber, CancellationToken.None);
-    bossFinish = await service.FinishAsync(firstLogin.PlayerId, session.SessionId, "chapter-finish-" + stageNumber, CancellationToken.None);
+    bossFinish = stageNumber == 10
+        ? await service.FinishAsync(firstLogin.PlayerId, session.SessionId, "chapter-finish-" + stageNumber, false, CancellationToken.None)
+        : await service.FinishAsync(firstLogin.PlayerId, session.SessionId, "chapter-finish-" + stageNumber, CancellationToken.None);
 }
 var finalBoss = bossFinish ?? throw new InvalidOperationException("boss battle was not executed");
 var bossEquipment = await db.PlayerEquipment.SingleAsync(value => value.InstanceId == finalBoss.EquipmentInstanceId);

@@ -32,7 +32,10 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
         return MapStart(session);
     }
 
-    public async Task<BattleFinishResult> FinishAsync(Guid playerId, Guid sessionId, string finishIdempotencyKey, CancellationToken cancellationToken)
+    public Task<BattleFinishResult> FinishAsync(Guid playerId, Guid sessionId, string finishIdempotencyKey, CancellationToken cancellationToken) =>
+        FinishAsync(playerId, sessionId, finishIdempotencyKey, true, cancellationToken);
+
+    public async Task<BattleFinishResult> FinishAsync(Guid playerId, Guid sessionId, string finishIdempotencyKey, bool rewardWindowEligible, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(finishIdempotencyKey)) throw new ArgumentException("Finish idempotency key is required.");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -57,21 +60,26 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
         var effectivePower = Math.Max(player.Power, player.Level * 100L);
         if (effectivePower < stageConfig.RecommendedPower)
             throw new InvalidOperationException($"Player power {effectivePower} is below stage requirement {stageConfig.RecommendedPower}.");
-        var reward = stageConfig.RewardSoftCurrency;
-        var expReward = stageConfig.RewardExp;
-        await currencies.ChangeAsync(playerId, GameCurrency.SoftCurrency, reward, "Battle", session.Id.ToString("N"), cancellationToken);
-        player.Exp = checked(player.Exp + expReward);
-        while (player.Exp >= player.Level * 100L)
+        var grantsBattleRewards = rewardWindowEligible || stageConfig.IsBossStage;
+        var reward = grantsBattleRewards ? stageConfig.RewardSoftCurrency : 0;
+        var expReward = grantsBattleRewards ? stageConfig.RewardExp : 0;
+        if (reward > 0)
+            await currencies.ChangeAsync(playerId, GameCurrency.SoftCurrency, reward, "Battle", session.Id.ToString("N"), cancellationToken);
+        if (expReward > 0)
         {
-            player.Exp -= player.Level * 100L;
-            player.Level++;
+            player.Exp = checked(player.Exp + expReward);
+            while (player.Exp >= player.Level * 100L)
+            {
+                player.Exp -= player.Level * 100L;
+                player.Level++;
+            }
         }
         session.Status = "Finished";
         session.FinishedAtUtc = clock.UtcNow;
         session.RewardSoftCurrency = reward;
         session.RewardExp = expReward;
-        var equipment = equipmentDrops.GenerateTracked(playerId, session.StageId);
-        session.RewardEquipmentInstanceId = equipment.InstanceId;
+        ServerEquipmentDrop? equipment = grantsBattleRewards ? equipmentDrops.GenerateTracked(playerId, session.StageId) : null;
+        session.RewardEquipmentInstanceId = equipment?.InstanceId ?? string.Empty;
         var stage = await db.PlayerStages.SingleOrDefaultAsync(value => value.PlayerId == playerId && value.StageId == session.StageId, cancellationToken);
         var firstClear = stage is null || !stage.Cleared;
         if (stage is null) { stage = new PlayerStage { PlayerId = playerId, StageId = session.StageId }; db.PlayerStages.Add(stage); }
@@ -86,7 +94,7 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
         if (session.StageId.EndsWith("_10", StringComparison.Ordinal)) await tasks.RecordAsync(playerId, "BossVictory", 1, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new BattleFinishResult(session.Id, session.Status, reward, expReward, equipment.InstanceId, false);
+        return new BattleFinishResult(session.Id, session.Status, reward, expReward, session.RewardEquipmentInstanceId, false);
     }
 
     private static BattleStartResult MapStart(BattleSession value) => new(value.Id, value.StageId, value.Status, value.StartedAtUtc);

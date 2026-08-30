@@ -29,7 +29,7 @@
 
 ### 当前问题
 
-- 当前机器的 `com.unity.editor.headless` 授权不可用，测试需要不带 `-batchmode` 启动普通 Editor。
+- Unity Personal、Editor/headless 与 Android entitlement 已确认有效；最新自动化回归仍需解决当前项目与 Hub/Editor LicensingClient 会话的绑定差异，不能再归因为用户未激活许可证。
 - 原型表现仍是几何色块和 UGUI 文本，符合第一阶段占位要求。
 - 战斗目前仅有普攻；技能、伤害公式和对象池属于后续 Phase 3–4。
 

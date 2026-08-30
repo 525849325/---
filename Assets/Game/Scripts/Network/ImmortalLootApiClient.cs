@@ -54,6 +54,7 @@ namespace ImmortalLoot.Network
     [Serializable] public sealed class LoginDto { public string playerId; public string accessToken; public string expiresAtUtc; public bool isNewPlayer; }
     [Serializable] public sealed class BattleStartBody { public string StageId; public string IdempotencyKey; }
     [Serializable] public sealed class BattleFinishBody { public string SessionId; public string IdempotencyKey; }
+    [Serializable] public sealed class BattleFinishRewardWindowBody { public string SessionId; public string IdempotencyKey; public bool RewardWindowEligible; }
     [Serializable] public sealed class InstanceBody { public string InstanceId; }
     [Serializable] public sealed class DecomposeBody { public string InstanceId; public string IdempotencyKey; }
     [Serializable] public sealed class IdempotencyBody { public string IdempotencyKey; }
@@ -108,6 +109,7 @@ namespace ImmortalLoot.Network
         public Task<ApiResponse> GetInventoryAsync() => Send("GET", "/player/inventory", null);
         public Task<ApiResponse> StartBattleAsync(string stageId, string key) => Send("POST", "/battle/start", new BattleStartBody { StageId = stageId, IdempotencyKey = key });
         public Task<ApiResponse> FinishBattleAsync(Guid sessionId, string key) => Send("POST", "/battle/finish", new BattleFinishBody { SessionId = sessionId.ToString(), IdempotencyKey = key });
+        public Task<ApiResponse> FinishBattleAsync(Guid sessionId, string key, bool rewardWindowEligible) => Send("POST", "/battle/finish", new BattleFinishRewardWindowBody { SessionId = sessionId.ToString(), IdempotencyKey = key, RewardWindowEligible = rewardWindowEligible });
         public Task<ApiResponse> EquipAsync(string instanceId) => Send("POST", "/equipment/equip", new InstanceBody { InstanceId = instanceId });
         public Task<ApiResponse> DecomposeAsync(string instanceId, string key) => Send("POST", "/equipment/decompose", new DecomposeBody { InstanceId = instanceId, IdempotencyKey = key });
         public Task<ApiResponse> EnhanceAsync(string instanceId, string key) => Send("POST", "/equipment/enhance", new DecomposeBody { InstanceId = instanceId, IdempotencyKey = key });

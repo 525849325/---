@@ -36,6 +36,23 @@ namespace ImmortalLoot.Tests
         }
 
         [Test]
+        public async Task BattleFinish_AdditiveRewardWindowFieldIsExplicitOnlyOnNewOverload()
+        {
+            var transport = new FakeTransport();
+            var client = new ImmortalLootApiClient(transport);
+            await client.LoginAsync("finish-contract", "修士");
+            var sessionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+
+            await client.FinishBattleAsync(sessionId, "legacy-finish");
+            await client.FinishBattleAsync(sessionId, "windowless-finish", false);
+
+            Assert.That(transport.Requests[1].JsonBody, Does.Not.Contain("RewardWindowEligible"),
+                "Legacy clients must omit the additive field so null retains rewarded semantics.");
+            Assert.That(transport.Requests[2].JsonBody, Does.Contain("\"RewardWindowEligible\":false"),
+                "New clients must explicitly send a false reward-window decision.");
+        }
+
+        [Test]
         public async Task LiveOpsRequests_UseAuthenticatedAuthorityRoutes_AndDtosParse()
         {
             var transport = new FakeTransport();
