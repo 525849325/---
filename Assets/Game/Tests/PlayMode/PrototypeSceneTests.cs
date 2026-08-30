@@ -9,6 +9,7 @@ using UnityEngine.UI;
 using ImmortalLoot.UI;
 using ImmortalLoot.Network;
 using ImmortalLoot.Player;
+using ImmortalLoot.Inventory;
 using System.IO;
 
 namespace ImmortalLoot.Tests.PlayMode
@@ -164,6 +165,29 @@ namespace ImmortalLoot.Tests.PlayMode
             var restored = Object.FindAnyObjectByType<PrototypeGameController>();
             Assert.That(restored.Power, Is.EqualTo(savedPower));
             Assert.That(restored.StageNumber, Is.EqualTo(savedStage));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator OfflineProgress_IsCappedAndCannotBeClaimedTwice()
+        {
+            DeleteLocalSave();
+            var repository = JsonPlayerSaveRepository.CreateDefault();
+            repository.Save(new PlayerSaveSnapshot
+            {
+                SoftCurrency = 100,
+                LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.AddHours(-2).ToUnixTimeSeconds(),
+                InventoryJson = JsonUtility.ToJson(new InventoryState { EquipmentCapacity = 120 })
+            });
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var firstClaimCurrency = GameObject.Find("Currency").GetComponent<Text>().text;
+            Assert.That(firstClaimCurrency, Does.Not.Contain("灵砂 100 "));
+            Object.FindAnyObjectByType<PrototypeGameController>().SaveForTests();
+
+            SceneManager.LoadScene("Main");
+            yield return null;
+            Assert.That(GameObject.Find("Currency").GetComponent<Text>().text, Is.EqualTo(firstClaimCurrency));
             DeleteLocalSave();
         }
 

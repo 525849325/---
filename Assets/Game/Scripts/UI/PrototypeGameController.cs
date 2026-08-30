@@ -1,5 +1,6 @@
 using System;
 using ImmortalLoot.Battle;
+using ImmortalLoot.AFK;
 using ImmortalLoot.Character;
 using ImmortalLoot.Core;
 using ImmortalLoot.Config;
@@ -62,6 +63,8 @@ namespace ImmortalLoot.UI
         private bool _playtestQuitRequested;
         private IPlayerSaveRepository _saveRepository;
         private string _saveLoadWarning;
+        private AfkState _afkState;
+        private string _offlineRewardSummary;
         private readonly CharacterStats _baseStats = new CharacterStats
         {
             HP = 180f, Attack = 12f, Defense = 3f, CritRate = 0.1f, CritDamage = 1.5f, AttackSpeed = 1f, FireDamage = 0.1f
@@ -91,12 +94,17 @@ namespace ImmortalLoot.UI
             _pacingConfig = DemoPacingLoader.Load(new ResourcesConfigSource());
             _pacing = new DemoPacingSession(_pacingConfig);
             RestoreProgress(saved);
+            ClaimOfflineProgress(saved);
             _pacingSpeed = DevelopmentPlaytestOptions.Speed;
             _debugService = new GameDebugService(new DebugGameState(), _catalog, new SystemRandomSource());
             _login = FindAnyObjectByType<PrototypeLoginController>();
             if (equipLatestButton != null) equipLatestButton.onClick.AddListener(EquipLatest);
             RefreshProgressDisplay();
-            if (!string.IsNullOrEmpty(_saveLoadWarning) && guideText != null) guideText.text = _saveLoadWarning;
+            if (guideText != null)
+            {
+                if (!string.IsNullOrEmpty(_saveLoadWarning)) guideText.text = _saveLoadWarning;
+                else if (!string.IsNullOrEmpty(_offlineRewardSummary)) guideText.text = _offlineRewardSummary;
+            }
             SpawnEnemy();
         }
 
@@ -168,9 +176,8 @@ namespace ImmortalLoot.UI
                 return;
             }
             _kills++;
-            _exp += 25;
+            GrantExperience(25);
             _softCurrency += _stageNumber == 10 ? 50 : 10;
-            while (_exp >= _level * 50L) { _exp -= _level * 50L; _level++; _baseStats.Attack += 2f; _baseStats.HP += 15f; }
             var isBoss = _stageNumber == 10;
             var dropTableId = isBoss ? _catalog.Stages["stage_1_10"].DropTableId : "drop_prototype_equipment";
             var source = isBoss ? DropSourceType.Boss : DropSourceType.Monster;
@@ -263,6 +270,42 @@ namespace ImmortalLoot.UI
             }
         }
 
+        private void ClaimOfflineProgress(PlayerSaveSnapshot saved)
+        {
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var lastActive = saved?.LastActiveUnixSeconds ?? now;
+            if (lastActive <= 0 || lastActive > now) lastActive = now;
+            _afkState = new AfkState { LastOfflineUnixSeconds = lastActive };
+            if (saved == null) return;
+            var service = new AfkRewardService(AfkConfigLoader.Load(new ResourcesConfigSource()), _afkState, new UtcClock());
+            var stageRate = _catalog.Stages[$"stage_1_{_pacing.CurrentStageNumber}"].AfkRewardRate;
+            var reward = service.Claim(stageRate, _cultivation.GetAfkMultiplier());
+            if (reward.EffectiveSeconds <= 0) return;
+            GrantExperience(reward.Experience);
+            _softCurrency += reward.SoftCurrency;
+            if (reward.MaterialCount > 0) _inventory.AddStack("item_enhancement_stone", reward.MaterialCount, ItemCategory.Material);
+            var equipmentCount = Math.Min(reward.EquipmentRolls, _inventory.State.EquipmentCapacity - _inventory.State.Equipment.Count);
+            for (var i = 0; i < equipmentCount; i++)
+            {
+                var item = _drops.Roll("drop_prototype_equipment", new DropContext(DropSourceType.Afk, _level, "offline"))[0].Equipment;
+                if (item != null) _inventory.AddEquipment(item);
+            }
+            _offlineRewardSummary = $"离线修炼 {TimeSpan.FromSeconds(reward.EffectiveSeconds).TotalHours:0.#} 小时\n经验 +{reward.Experience:N0} · 灵砂 +{reward.SoftCurrency:N0} · 装备 {equipmentCount} 件";
+            SaveProgress();
+        }
+
+        private void GrantExperience(long amount)
+        {
+            _exp += Math.Max(0, amount);
+            while (_exp >= _level * 50L)
+            {
+                _exp -= _level * 50L;
+                _level++;
+                _baseStats.Attack += 2f;
+                _baseStats.HP += 15f;
+            }
+        }
+
         private void SaveProgress()
         {
             if (_saveRepository == null || _inventory == null || _pacing == null) return;
@@ -284,6 +327,8 @@ namespace ImmortalLoot.UI
 
         [Serializable]
         private sealed class EquippedIds { public List<string> ids = new List<string>(); }
+
+        private sealed class UtcClock : IServerClock { public DateTime UtcNow => DateTime.UtcNow; }
 
         public string ExecutePageAction(string pageName)
         {
