@@ -42,6 +42,9 @@ Backend/.packages/
 sysinfo.txt
 crashlytics-build.properties
 
+# Local codebase analysis output
+/graphify-out/
+
 # Local credentials, signing material, and environment overrides
 .env
 .env.*

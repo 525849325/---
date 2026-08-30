@@ -3,6 +3,7 @@ using ImmortalLoot.Server.Services;
 using ImmortalLoot.Server.Config;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 await using var connection = new SqliteConnection("Data Source=:memory:");
 await connection.OpenAsync();
@@ -44,7 +45,13 @@ db.PlayerStats.Add(new PlayerStats { PlayerId = player.Id });
 await db.SaveChangesAsync();
 
 var equipmentDrops = new ServerEquipmentDropService(db, clock, catalog);
-var service = new BattleAuthorityService(db, clock, currencies, tasks, equipmentDrops);
+var service = new BattleAuthorityService(db, clock, currencies, tasks, equipmentDrops, catalog);
+var noncanonicalState = await CaptureBattleMutationSnapshotAsync(db, player.Id);
+await RequireThrows<ArgumentException>(
+    () => service.StartAsync(player.Id, "stage_1_01", "noncanonical-stage", CancellationToken.None),
+    "a noncanonical stage id was accepted");
+Require(await CaptureBattleMutationSnapshotAsync(db, player.Id) == noncanonicalState,
+    "a rejected noncanonical stage mutated authoritative battle state");
 var firstStart = await service.StartAsync(player.Id, "stage_1_1", "start-key", CancellationToken.None);
 var repeatedStart = await service.StartAsync(player.Id, "stage_1_1", "start-key", CancellationToken.None);
 Require(firstStart.SessionId == repeatedStart.SessionId, "battle start must be idempotent");
@@ -63,6 +70,30 @@ Require(await db.RewardLogs.CountAsync() == 1, "reward log must be written once"
 Require(await db.BattleLogs.CountAsync() == 1, "battle log must be written once");
 var profileAfterFirstClear = await new PlayerQueryService(db, catalog).GetProfileAsync(player.Id, CancellationToken.None);
 Require(profileAfterFirstClear.CurrentStageId == "stage_1_2" && profileAfterFirstClear.ClearedStageIds.SequenceEqual(new[] { "stage_1_1" }), "profile did not advance its authoritative current stage after stage 1");
+var stateBeforeConflictingReplay = new
+{
+    Battles = await db.BattleSessions.CountAsync(value => value.PlayerId == player.Id),
+    Stages = await db.PlayerStages.CountAsync(value => value.PlayerId == player.Id),
+    Grants = await db.RewardGrants.CountAsync(value => value.PlayerId == player.Id),
+    RewardLogs = await db.RewardLogs.CountAsync(value => value.PlayerId == player.Id),
+    CurrencyLogs = await db.CurrencyLogs.CountAsync(value => value.PlayerId == player.Id),
+    Wallet = await db.PlayerCurrencies.AsNoTracking().SingleAsync(value => value.PlayerId == player.Id)
+};
+await RequireThrows<InvalidOperationException>(
+    () => service.StartAsync(player.Id, "stage_1_2", "start-key", CancellationToken.None),
+    "battle start idempotency key was reused for a different stage");
+Require(await db.BattleSessions.CountAsync(value => value.PlayerId == player.Id) == stateBeforeConflictingReplay.Battles &&
+        await db.PlayerStages.CountAsync(value => value.PlayerId == player.Id) == stateBeforeConflictingReplay.Stages &&
+        await db.RewardGrants.CountAsync(value => value.PlayerId == player.Id) == stateBeforeConflictingReplay.Grants &&
+        await db.RewardLogs.CountAsync(value => value.PlayerId == player.Id) == stateBeforeConflictingReplay.RewardLogs &&
+        await db.CurrencyLogs.CountAsync(value => value.PlayerId == player.Id) == stateBeforeConflictingReplay.CurrencyLogs,
+    "a rejected conflicting battle-start replay mutated authoritative state");
+var walletAfterConflictingReplay = await db.PlayerCurrencies.AsNoTracking().SingleAsync(value => value.PlayerId == player.Id);
+Require(walletAfterConflictingReplay.SoftCurrency == stateBeforeConflictingReplay.Wallet.SoftCurrency &&
+        walletAfterConflictingReplay.PremiumCurrency == stateBeforeConflictingReplay.Wallet.PremiumCurrency,
+    "a rejected conflicting battle-start replay mutated currency");
+var replayedStartAfterProgression = await service.StartAsync(player.Id, "stage_1_1", "start-key", CancellationToken.None);
+Require(replayedStartAfterProgression.SessionId == firstStart.SessionId, "battle start replay stopped being idempotent after authoritative progression advanced");
 
 var windowlessWalletBefore = await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == player.Id);
 var windowlessSoftBefore = windowlessWalletBefore.SoftCurrency;
@@ -100,13 +131,26 @@ db.PlayerStages.Add(new PlayerStage { PlayerId = weakPlayer.Id, StageId = "stage
 await db.SaveChangesAsync();
 var gappedProfile = await new PlayerQueryService(db, catalog).GetProfileAsync(weakPlayer.Id, CancellationToken.None);
 Require(gappedProfile.CurrentStageId == "stage_1_1" && gappedProfile.ClearedStageIds.SequenceEqual(new[] { "stage_1_9" }), "a non-contiguous clear incorrectly unlocked a later authoritative stage");
+var gappedState = await CaptureBattleMutationSnapshotAsync(db, weakPlayer.Id);
+await RequireThrows<InvalidOperationException>(
+    () => service.StartAsync(weakPlayer.Id, "stage_1_10", "gapped-boss-start", CancellationToken.None),
+    "a non-current stage was accepted from a gapped clear history");
+Require(await CaptureBattleMutationSnapshotAsync(db, weakPlayer.Id) == gappedState,
+    "a rejected gapped-stage request mutated authoritative battle state");
+for (var stageNumber = 1; stageNumber <= 8; stageNumber++)
+    db.PlayerStages.Add(new PlayerStage { PlayerId = weakPlayer.Id, StageId = "stage_1_" + stageNumber, Cleared = true });
+await db.SaveChangesAsync();
 var weakBossStart = await service.StartAsync(weakPlayer.Id, "stage_1_10", "weak-boss-start", CancellationToken.None);
 await RequireThrows<InvalidOperationException>(() => service.FinishAsync(weakPlayer.Id, weakBossStart.SessionId, "weak-boss-finish", CancellationToken.None), "underpowered player received a boss reward");
 Require(!await db.RewardGrants.AnyAsync(value => value.PlayerId == weakPlayer.Id) && !await db.PlayerEquipment.AnyAsync(value => value.PlayerId == weakPlayer.Id), "rejected underpowered battle mutated rewards or inventory");
 db.BattleSessions.Remove(await db.BattleSessions.SingleAsync(value => value.PlayerId == weakPlayer.Id));
-db.PlayerStages.Remove(await db.PlayerStages.SingleAsync(value => value.PlayerId == weakPlayer.Id));
+db.PlayerStages.RemoveRange(await db.PlayerStages.Where(value => value.PlayerId == weakPlayer.Id).ToArrayAsync());
 db.Players.Remove(weakPlayer); db.Accounts.Remove(weakAccount);
 await db.SaveChangesAsync();
+await VerifyConcurrentBattleStartIdempotency(catalog, clock);
+await VerifyConcurrentDistinctBattleStartInvariant(catalog, clock);
+await VerifySingleActiveBattleInvariant(catalog, clock);
+await VerifyDatabaseSchemaUpgrade(clock);
 
 var wallet = await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == firstLogin.PlayerId);
 wallet.SoftCurrency = 2500;
@@ -167,8 +211,8 @@ rankedPlayer.RealmStage = 4;
 player.Power = 2500;
 player.RealmId = "realm_qi_coalescence";
 player.RealmStage = 9;
-db.PlayerStages.AddRange(
-    new PlayerStage { PlayerId = firstLogin.PlayerId, StageId = "stage_1_10", Cleared = true });
+var rankingStageMarker = new PlayerStage { PlayerId = firstLogin.PlayerId, StageId = "stage_1_10", Cleared = true };
+db.PlayerStages.Add(rankingStageMarker);
 await db.SaveChangesAsync();
 var rankings = new RankingService(db, new MemoryRankingCache(), clock, catalog);
 await rankings.RefreshAsync(RankingType.Power, null, CancellationToken.None);
@@ -184,10 +228,13 @@ Require(await db.RankingSnapshots.CountAsync() == 6, "ranking snapshots must con
 await rankings.RefreshAsync(RankingType.Power, "weekly", CancellationToken.None);
 var weeklyPage = await rankings.GetPageAsync(RankingType.Power, "weekly", 1, 100, null, CancellationToken.None);
 Require(weeklyPage.PeriodKey.StartsWith("week:") && weeklyPage.Total == 2, "weekly ranking period is incorrect");
+db.PlayerStages.Remove(rankingStageMarker);
+await db.SaveChangesAsync();
 
 for (var index = 0; index < 3; index++)
 {
-    var taskBattle = await service.StartAsync(firstLogin.PlayerId, "stage_1_1", "task-start-" + index, CancellationToken.None);
+    var taskStageId = "stage_1_" + (index + 1);
+    var taskBattle = await service.StartAsync(firstLogin.PlayerId, taskStageId, "task-start-" + index, CancellationToken.None);
     await service.FinishAsync(firstLogin.PlayerId, taskBattle.SessionId, "task-finish-" + index, CancellationToken.None);
 }
 var dailyTasks = await tasks.ListAsync(firstLogin.PlayerId, CancellationToken.None);
@@ -270,7 +317,7 @@ var realmReplay = await realms.BreakthroughAsync(firstLogin.PlayerId, "realm-key
 Require(realmResult.Succeeded && !realmResult.Replayed && realmReplay.Replayed && realmResult.RealmStage == 2, "server realm breakthrough or replay is incorrect");
 
 BattleFinishResult? bossFinish = null;
-for (var stageNumber = 2; stageNumber <= 10; stageNumber++)
+for (var stageNumber = 4; stageNumber <= 10; stageNumber++)
 {
     var session = await service.StartAsync(firstLogin.PlayerId, "stage_1_" + stageNumber, "chapter-start-" + stageNumber, CancellationToken.None);
     bossFinish = stageNumber == 10
@@ -284,6 +331,14 @@ Require(new[] { "Rare", "Epic", "Legendary" }.Contains(bossEquipment.Quality), "
 Require(await db.PlayerStages.CountAsync(value => value.PlayerId == firstLogin.PlayerId && value.Cleared) == 10, "chapter 1-1 through 1-10 was not authoritatively cleared");
 var completedChapterProfile = await new PlayerQueryService(db, catalog).GetProfileAsync(firstLogin.PlayerId, CancellationToken.None);
 Require(completedChapterProfile.CurrentStageId == "stage_1_1" && completedChapterProfile.ClearedStageIds.Count == 10, "completed chapter profile did not cycle to the authoritative first stage");
+var wrappedStart = await service.StartAsync(firstLogin.PlayerId, "stage_1_1", "chapter-wrap-start", CancellationToken.None);
+Require(wrappedStart.StageId == "stage_1_1", "completed chapter did not authorize the wrapped first stage");
+var postWrapState = await CaptureBattleMutationSnapshotAsync(db, firstLogin.PlayerId);
+await RequireThrows<InvalidOperationException>(
+    () => service.StartAsync(firstLogin.PlayerId, "stage_1_2", "chapter-wrap-invalid", CancellationToken.None),
+    "completed chapter authorized a non-current stage after wrapping");
+Require(await CaptureBattleMutationSnapshotAsync(db, firstLogin.PlayerId) == postWrapState,
+    "a rejected post-wrap stage mutated authoritative battle state");
 
 rankedPlayer.RealmId = "realm_body_tempering"; rankedPlayer.RealmStage = 10; rankedPlayer.Exp = 1000;
 (await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == firstLogin.PlayerId)).SoftCurrency = 2000;
@@ -299,6 +354,282 @@ var finalTaskBoard = await tasks.ListAsync(firstLogin.PlayerId, CancellationToke
 Require(finalTaskBoard.Tasks.Count == 6 && finalTaskBoard.Tasks.All(value => value.CanClaim || value.Claimed), "not every daily task was driven by its real authoritative gameplay event");
 
 Console.WriteLine("PASS: full authoritative API domain, commerce, rankings, live ops, AFK, equipment, and realm idempotency verified.");
+
+static async Task VerifyConcurrentBattleStartIdempotency(ServerGameConfigCatalog catalog, IServerClock clock)
+{
+    var databasePath = Path.Combine(Path.GetTempPath(), "immortal-loot-battle-start-" + Guid.NewGuid().ToString("N") + ".db");
+    var connectionString = "Data Source=" + databasePath + ";Pooling=False";
+    try
+    {
+        var setupOptions = new DbContextOptionsBuilder<GameDbContext>().UseSqlite(connectionString).Options;
+        Guid playerId;
+        await using (var setup = new GameDbContext(setupOptions))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            var account = new Account { ExternalAccountId = "concurrent-start", Provider = "test" };
+            var player = new Player { AccountId = account.Id, Nickname = "Concurrent" };
+            playerId = player.Id;
+            setup.Accounts.Add(account);
+            setup.Players.Add(player);
+            setup.PlayerCurrencies.Add(new PlayerCurrency { PlayerId = playerId });
+            setup.PlayerStats.Add(new PlayerStats { PlayerId = playerId });
+            await setup.SaveChangesAsync();
+        }
+
+        var barrier = new ConcurrentBattleStartSaveBarrier();
+        var concurrentOptions = new DbContextOptionsBuilder<GameDbContext>()
+            .UseSqlite(connectionString)
+            .AddInterceptors(barrier)
+            .Options;
+        await using var firstDb = new GameDbContext(concurrentOptions);
+        await using var secondDb = new GameDbContext(concurrentOptions);
+        var firstService = CreateBattleService(firstDb, clock, catalog);
+        var secondService = CreateBattleService(secondDb, clock, catalog);
+        var starts = await Task.WhenAll(
+            firstService.StartAsync(playerId, "stage_1_1", "concurrent-key", CancellationToken.None),
+            secondService.StartAsync(playerId, "stage_1_1", "concurrent-key", CancellationToken.None));
+        Require(starts[0].SessionId == starts[1].SessionId, "concurrent battle-start replay returned different sessions");
+
+        await using var assertionDb = new GameDbContext(setupOptions);
+        Require(await assertionDb.BattleSessions.CountAsync(value => value.PlayerId == playerId) == 1,
+            "concurrent battle-start replay persisted more than one session");
+    }
+    finally
+    {
+        SqliteConnection.ClearAllPools();
+        foreach (var path in new[] { databasePath, databasePath + "-shm", databasePath + "-wal" })
+            if (File.Exists(path)) File.Delete(path);
+    }
+}
+
+static async Task VerifySingleActiveBattleInvariant(ServerGameConfigCatalog catalog, IServerClock clock)
+{
+    var databasePath = Path.Combine(Path.GetTempPath(), "immortal-loot-single-active-" + Guid.NewGuid().ToString("N") + ".db");
+    var connectionString = "Data Source=" + databasePath + ";Pooling=False";
+    try
+    {
+        var options = new DbContextOptionsBuilder<GameDbContext>().UseSqlite(connectionString).Options;
+        await using var invariantDb = new GameDbContext(options);
+        await invariantDb.Database.EnsureCreatedAsync();
+        var account = new Account { ExternalAccountId = "single-active", Provider = "test" };
+        var player = new Player
+        {
+            AccountId = account.Id,
+            Nickname = "SingleActive",
+            Power = catalog.Stages.Single(value => value.Id == "stage_1_10").RecommendedPower
+        };
+        invariantDb.Accounts.Add(account);
+        invariantDb.Players.Add(player);
+        invariantDb.PlayerCurrencies.Add(new PlayerCurrency { PlayerId = player.Id });
+        invariantDb.PlayerStats.Add(new PlayerStats { PlayerId = player.Id });
+        for (var stageNumber = 1; stageNumber <= 9; stageNumber++)
+            invariantDb.PlayerStages.Add(new PlayerStage
+            {
+                PlayerId = player.Id,
+                StageId = "stage_1_" + stageNumber,
+                Cleared = true,
+                FirstClearTimeUtc = clock.UtcNow.AddMinutes(-stageNumber)
+            });
+        await invariantDb.SaveChangesAsync();
+
+        var service = CreateBattleService(invariantDb, clock, catalog);
+        var active = await service.StartAsync(player.Id, "stage_1_10", "active-key-a", CancellationToken.None);
+        await using var recoveryDb = new GameDbContext(options);
+        var recovered = await CreateBattleService(recoveryDb, clock, catalog)
+            .StartAsync(player.Id, "stage_1_10", "active-key-after-lost-response", CancellationToken.None);
+        Require(recovered.SessionId == active.SessionId,
+            "a lost start response or app restart did not recover the existing active battle");
+        Require(await invariantDb.BattleSessions.CountAsync(
+                value => value.PlayerId == player.Id && value.Status == "Started") == 1,
+            "more than one active battle session was persisted for a player");
+
+        await service.FinishAsync(player.Id, active.SessionId, "active-finish-a", CancellationToken.None);
+        var stale = new BattleSession
+        {
+            PlayerId = player.Id,
+            StageId = "stage_1_10",
+            IdempotencyKey = "legacy-stale-key",
+            Status = "Started",
+            StartedAtUtc = clock.UtcNow
+        };
+        invariantDb.BattleSessions.Add(stale);
+        await invariantDb.SaveChangesAsync();
+        var beforeStaleFinish = await CaptureBattleMutationSnapshotAsync(invariantDb, player.Id);
+        await RequireThrows<InvalidOperationException>(
+            () => service.FinishAsync(player.Id, stale.Id, "legacy-stale-finish", CancellationToken.None),
+            "a stale stockpiled session granted a second stage-clear reward");
+        Require(await CaptureBattleMutationSnapshotAsync(invariantDb, player.Id) == beforeStaleFinish,
+            "a rejected stale session mutated rewards, logs, progression, or currency");
+        Require((await invariantDb.BattleSessions.AsNoTracking().SingleAsync(value => value.Id == stale.Id)).Status == "Invalidated",
+            "a rejected stale session was not invalidated");
+        var nextStage = await service.StartAsync(player.Id, "stage_1_1", "active-key-next", CancellationToken.None);
+        Require(nextStage.StageId == "stage_1_1", "an invalidated stale Boss session blocked the authoritative wrapped stage");
+    }
+    finally
+    {
+        SqliteConnection.ClearAllPools();
+        foreach (var path in new[] { databasePath, databasePath + "-shm", databasePath + "-wal" })
+            if (File.Exists(path)) File.Delete(path);
+    }
+}
+
+static async Task VerifyConcurrentDistinctBattleStartInvariant(ServerGameConfigCatalog catalog, IServerClock clock)
+{
+    var databasePath = Path.Combine(Path.GetTempPath(), "immortal-loot-distinct-start-" + Guid.NewGuid().ToString("N") + ".db");
+    var connectionString = "Data Source=" + databasePath + ";Pooling=False";
+    try
+    {
+        var setupOptions = new DbContextOptionsBuilder<GameDbContext>().UseSqlite(connectionString).Options;
+        Guid playerId;
+        await using (var setup = new GameDbContext(setupOptions))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            var account = new Account { ExternalAccountId = "concurrent-distinct", Provider = "test" };
+            var player = new Player { AccountId = account.Id, Nickname = "DistinctConcurrent" };
+            playerId = player.Id;
+            setup.Accounts.Add(account);
+            setup.Players.Add(player);
+            setup.PlayerCurrencies.Add(new PlayerCurrency { PlayerId = playerId });
+            setup.PlayerStats.Add(new PlayerStats { PlayerId = playerId });
+            await setup.SaveChangesAsync();
+        }
+
+        var barrier = new ConcurrentBattleStartSaveBarrier();
+        var options = new DbContextOptionsBuilder<GameDbContext>()
+            .UseSqlite(connectionString)
+            .AddInterceptors(barrier)
+            .Options;
+        await using var firstDb = new GameDbContext(options);
+        await using var secondDb = new GameDbContext(options);
+        var firstTask = CreateBattleService(firstDb, clock, catalog)
+            .StartAsync(playerId, "stage_1_1", "distinct-key-a", CancellationToken.None);
+        var secondTask = CreateBattleService(secondDb, clock, catalog)
+            .StartAsync(playerId, "stage_1_1", "distinct-key-b", CancellationToken.None);
+        var firstOutcome = await CaptureBattleStartOutcomeAsync(firstTask);
+        var secondOutcome = await CaptureBattleStartOutcomeAsync(secondTask);
+        Require(firstOutcome.Error is null && secondOutcome.Error is null &&
+                firstOutcome.Result is not null && secondOutcome.Result is not null &&
+                firstOutcome.Result.SessionId == secondOutcome.Result.SessionId,
+            "concurrent distinct-key starts did not safely recover the same active battle");
+
+        await using var assertionDb = new GameDbContext(setupOptions);
+        Require(await assertionDb.BattleSessions.CountAsync(
+                value => value.PlayerId == playerId && value.Status == "Started") == 1,
+            "concurrent distinct-key starts persisted more than one active session");
+    }
+    finally
+    {
+        SqliteConnection.ClearAllPools();
+        foreach (var path in new[] { databasePath, databasePath + "-shm", databasePath + "-wal" })
+            if (File.Exists(path)) File.Delete(path);
+    }
+}
+
+static async Task VerifyDatabaseSchemaUpgrade(IServerClock clock)
+{
+    var databasePath = Path.Combine(Path.GetTempPath(), "immortal-loot-schema-upgrade-" + Guid.NewGuid().ToString("N") + ".db");
+    var connectionString = "Data Source=" + databasePath + ";Pooling=False";
+    try
+    {
+        var options = new DbContextOptionsBuilder<GameDbContext>().UseSqlite(connectionString).Options;
+        await using var upgradeDb = new GameDbContext(options);
+        await upgradeDb.Database.EnsureCreatedAsync();
+        await upgradeDb.Database.ExecuteSqlRawAsync(
+            $"DROP INDEX IF EXISTS \"{GameDatabaseInitializer.ActiveBattleIndexName}\";");
+        var account = new Account { ExternalAccountId = "schema-upgrade", Provider = "test" };
+        var player = new Player { AccountId = account.Id, Nickname = "SchemaUpgrade" };
+        var older = new BattleSession
+        {
+            PlayerId = player.Id,
+            StageId = "stage_1_1",
+            IdempotencyKey = "legacy-active-older",
+            Status = "Started",
+            StartedAtUtc = clock.UtcNow.AddMinutes(-1)
+        };
+        var newer = new BattleSession
+        {
+            PlayerId = player.Id,
+            StageId = "stage_1_1",
+            IdempotencyKey = "legacy-active-newer",
+            Status = "Started",
+            StartedAtUtc = clock.UtcNow
+        };
+        upgradeDb.Accounts.Add(account);
+        upgradeDb.Players.Add(player);
+        upgradeDb.PlayerCurrencies.Add(new PlayerCurrency { PlayerId = player.Id });
+        upgradeDb.PlayerStats.Add(new PlayerStats { PlayerId = player.Id });
+        upgradeDb.BattleSessions.AddRange(older, newer);
+        await upgradeDb.SaveChangesAsync();
+
+        await GameDatabaseInitializer.InitializeAsync(upgradeDb, clock.UtcNow);
+        var upgradedSessions = await upgradeDb.BattleSessions.AsNoTracking()
+            .Where(value => value.PlayerId == player.Id)
+            .ToListAsync();
+        Require(upgradedSessions.Single(value => value.Id == newer.Id).Status == "Started" &&
+                upgradedSessions.Single(value => value.Id == older.Id).Status == "Invalidated",
+            "schema upgrade did not reconcile duplicate legacy active sessions deterministically");
+
+        var conflicting = new BattleSession
+        {
+            PlayerId = player.Id,
+            StageId = "stage_1_1",
+            IdempotencyKey = "post-upgrade-conflict",
+            Status = "Started",
+            StartedAtUtc = clock.UtcNow
+        };
+        upgradeDb.BattleSessions.Add(conflicting);
+        await RequireThrows<DbUpdateException>(
+            () => upgradeDb.SaveChangesAsync(),
+            "schema upgrade did not install the unique active-battle index");
+        upgradeDb.Entry(conflicting).State = EntityState.Detached;
+    }
+    finally
+    {
+        SqliteConnection.ClearAllPools();
+        foreach (var path in new[] { databasePath, databasePath + "-shm", databasePath + "-wal" })
+            if (File.Exists(path)) File.Delete(path);
+    }
+}
+
+static async Task<BattleStartOutcome> CaptureBattleStartOutcomeAsync(Task<BattleStartResult> task)
+{
+    try { return new BattleStartOutcome(await task, null); }
+    catch (Exception exception) { return new BattleStartOutcome(null, exception); }
+}
+
+static async Task<BattleMutationSnapshot> CaptureBattleMutationSnapshotAsync(GameDbContext db, Guid playerId)
+{
+    var wallet = await db.PlayerCurrencies.AsNoTracking().SingleAsync(value => value.PlayerId == playerId);
+    var player = await db.Players.AsNoTracking().SingleAsync(value => value.Id == playerId);
+    var taskProgress = await db.PlayerTasks.AsNoTracking()
+        .Where(value => value.PlayerId == playerId)
+        .Select(value => (long?)value.Progress)
+        .SumAsync() ?? 0;
+    return new BattleMutationSnapshot(
+        await db.BattleSessions.CountAsync(value => value.PlayerId == playerId),
+        await db.PlayerStages.CountAsync(value => value.PlayerId == playerId),
+        await db.RewardGrants.CountAsync(value => value.PlayerId == playerId),
+        await db.RewardLogs.CountAsync(value => value.PlayerId == playerId),
+        await db.CurrencyLogs.CountAsync(value => value.PlayerId == playerId),
+        await db.BattleLogs.CountAsync(value => value.PlayerId == playerId),
+        await db.PlayerEquipment.CountAsync(value => value.PlayerId == playerId),
+        await db.EquipmentLogs.CountAsync(value => value.PlayerId == playerId),
+        await db.PlayerTasks.CountAsync(value => value.PlayerId == playerId && value.IsClaimed),
+        taskProgress,
+        player.Level,
+        player.Exp,
+        wallet.SoftCurrency,
+        wallet.PremiumCurrency);
+}
+
+static BattleAuthorityService CreateBattleService(GameDbContext db, IServerClock clock, ServerGameConfigCatalog catalog)
+{
+    var currencies = new CurrencyService(db);
+    var rewards = new RewardService(db, currencies);
+    var tasks = new TaskService(db, rewards, clock, catalog);
+    var drops = new ServerEquipmentDropService(db, clock, catalog);
+    return new BattleAuthorityService(db, clock, currencies, tasks, drops, catalog);
+}
 
 static void Require(bool condition, string message)
 {
@@ -318,6 +649,24 @@ sealed class FixedServerRandomSource : IServerRandomSource
     public int Next(int maxExclusive) => 0;
 }
 
+sealed record BattleStartOutcome(BattleStartResult? Result, Exception? Error);
+
+sealed record BattleMutationSnapshot(
+    int Sessions,
+    int Stages,
+    int Grants,
+    int RewardLogs,
+    int CurrencyLogs,
+    int BattleLogs,
+    int Equipment,
+    int EquipmentLogs,
+    int ClaimedTasks,
+    long TaskProgress,
+    int Level,
+    long Exp,
+    long SoftCurrency,
+    long PremiumCurrency);
+
 sealed class FixedClock : IServerClock
 {
     public DateTime UtcNow => new(2026, 8, 29, 0, 0, 0, DateTimeKind.Utc);
@@ -327,4 +676,23 @@ sealed class FixedPaymentVerifier(ReceiptVerification result) : IPaymentReceiptV
 {
     public ReceiptVerification Result { get; set; } = result;
     public Task<ReceiptVerification> VerifyAsync(string provider, string receipt, CancellationToken cancellationToken) => Task.FromResult(Result);
+}
+
+sealed class ConcurrentBattleStartSaveBarrier : SaveChangesInterceptor
+{
+    private readonly TaskCompletionSource<bool> _allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _arrivals;
+
+    public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
+    {
+        var hasPendingBattle = eventData.Context?.ChangeTracker.Entries<BattleSession>()
+            .Any(entry => entry.State == EntityState.Added) == true;
+        if (!hasPendingBattle) return result;
+        if (Interlocked.Increment(ref _arrivals) == 2) _allArrived.TrySetResult(true);
+        await _allArrived.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+        return result;
+    }
 }

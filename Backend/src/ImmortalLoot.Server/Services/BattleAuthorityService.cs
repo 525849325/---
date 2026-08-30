@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ImmortalLoot.Server.Config;
 using ImmortalLoot.Server.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,7 +8,7 @@ namespace ImmortalLoot.Server.Services;
 public sealed record BattleStartResult(Guid SessionId, string StageId, string Status, DateTime StartedAtUtc);
 public sealed record BattleFinishResult(Guid SessionId, string Status, long RewardSoftCurrency, long RewardExp, string EquipmentInstanceId, bool Replayed);
 
-public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock, CurrencyService currencies, TaskService tasks, ServerEquipmentDropService equipmentDrops)
+public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock, CurrencyService currencies, TaskService tasks, ServerEquipmentDropService equipmentDrops, ServerGameConfigCatalog catalog)
 {
     public async Task<BattleStartResult> StartAsync(Guid playerId, string stageId, string idempotencyKey, CancellationToken cancellationToken)
     {
@@ -15,20 +16,70 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
             throw new ArgumentException("Stage and idempotency key are required.");
         if (!await db.Players.AnyAsync(value => value.Id == playerId, cancellationToken))
             throw new KeyNotFoundException("Player was not found.");
-        var stageNumber = ParseStage(stageId);
-        if (stageNumber < 1 || stageNumber > 10) throw new ArgumentException("Stage must be in chapter 1 from 1-1 through 1-10.");
-        if (stageNumber > 1 && !await db.PlayerStages.AnyAsync(value => value.PlayerId == playerId && value.StageId == $"stage_1_{stageNumber - 1}" && value.Cleared, cancellationToken))
-            throw new InvalidOperationException("Stage is locked.");
+        if (!catalog.Stages.Any(value => string.Equals(value.Id, stageId, StringComparison.Ordinal)))
+            throw new ArgumentException("Stage must be a configured canonical chapter-1 stage.");
         var existing = await db.BattleSessions.SingleOrDefaultAsync(
             value => value.PlayerId == playerId && value.IdempotencyKey == idempotencyKey, cancellationToken);
-        if (existing is not null) return MapStart(existing);
+        if (existing is not null) return MapIdempotentStart(existing, stageId);
+        var clearedStageIds = await db.PlayerStages.AsNoTracking()
+            .Where(value => value.PlayerId == playerId && value.Cleared)
+            .Select(value => value.StageId)
+            .ToListAsync(cancellationToken);
+        var stageSnapshot = AuthoritativeStageProgression.Resolve(catalog.Stages, clearedStageIds);
+        var activeSession = await db.BattleSessions.SingleOrDefaultAsync(
+            value => value.PlayerId == playerId && value.Status == "Started", cancellationToken);
+        if (activeSession is not null)
+        {
+            if (!string.Equals(activeSession.StageId, stageSnapshot.CurrentStageId, StringComparison.Ordinal))
+            {
+                activeSession.Status = "Invalidated";
+                activeSession.FinishedAtUtc = clock.UtcNow;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            else if (string.Equals(activeSession.StageId, stageId, StringComparison.Ordinal))
+            {
+                return MapStart(activeSession);
+            }
+            else
+            {
+                throw new InvalidOperationException("Player already has an active battle session for another stage.");
+            }
+        }
+        if (!string.Equals(stageId, stageSnapshot.CurrentStageId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Stage is not the player's authoritative current stage.");
         var session = new BattleSession
         {
             PlayerId = playerId, StageId = stageId, IdempotencyKey = idempotencyKey,
             Status = "Started", StartedAtUtc = clock.UtcNow
         };
         db.BattleSessions.Add(session);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(session).State = EntityState.Detached;
+            var concurrentReplay = await db.BattleSessions.AsNoTracking().SingleOrDefaultAsync(
+                value => value.PlayerId == playerId && value.IdempotencyKey == idempotencyKey, cancellationToken);
+            if (concurrentReplay is not null) return MapIdempotentStart(concurrentReplay, stageId);
+            var concurrentActive = await db.BattleSessions.AsNoTracking().SingleOrDefaultAsync(
+                value => value.PlayerId == playerId && value.Status == "Started", cancellationToken);
+            if (concurrentActive is not null &&
+                string.Equals(concurrentActive.StageId, stageId, StringComparison.Ordinal) &&
+                await IsAuthoritativeCurrentStageAsync(playerId, stageId, cancellationToken))
+                return MapStart(concurrentActive);
+            if (concurrentActive is not null)
+                throw new InvalidOperationException("Player already has an active battle session for another stage.");
+            throw;
+        }
+        if (!await IsAuthoritativeCurrentStageAsync(playerId, stageId, cancellationToken))
+        {
+            session.Status = "Invalidated";
+            session.FinishedAtUtc = clock.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+            throw new InvalidOperationException("Stage progression changed while the battle was starting.");
+        }
         return MapStart(session);
     }
 
@@ -53,6 +104,16 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
         {
             await transaction.CommitAsync(cancellationToken);
             return new BattleFinishResult(session.Id, session.Status, session.RewardSoftCurrency, session.RewardExp, session.RewardEquipmentInstanceId, true);
+        }
+        if (session.Status != "Started")
+            throw new InvalidOperationException("Battle session is not active.");
+        if (!await IsAuthoritativeCurrentStageAsync(playerId, session.StageId, cancellationToken))
+        {
+            session.Status = "Invalidated";
+            session.FinishedAtUtc = clock.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            throw new InvalidOperationException("Battle session no longer matches the player's authoritative current stage.");
         }
 
         var stageConfig = equipmentDrops.Stage(session.StageId);
@@ -100,10 +161,24 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
         return new BattleFinishResult(session.Id, session.Status, reward, expReward, session.RewardEquipmentInstanceId, false);
     }
 
-    private static BattleStartResult MapStart(BattleSession value) => new(value.Id, value.StageId, value.Status, value.StartedAtUtc);
-    private static int ParseStage(string stageId)
+    private static BattleStartResult MapIdempotentStart(BattleSession existing, string requestedStageId)
     {
-        var parts = stageId?.Split('_') ?? Array.Empty<string>();
-        return parts.Length == 3 && parts[0] == "stage" && parts[1] == "1" && int.TryParse(parts[2], out var value) ? value : -1;
+        if (!string.Equals(existing.StageId, requestedStageId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Battle start idempotency key was already used for a different stage.");
+        if (existing.Status == "Invalidated")
+            throw new InvalidOperationException("Battle start was invalidated by an authoritative progression change.");
+        return MapStart(existing);
     }
+
+    private async Task<bool> IsAuthoritativeCurrentStageAsync(Guid playerId, string stageId, CancellationToken cancellationToken)
+    {
+        var clearedStageIds = await db.PlayerStages.AsNoTracking()
+            .Where(value => value.PlayerId == playerId && value.Cleared)
+            .Select(value => value.StageId)
+            .ToListAsync(cancellationToken);
+        var stageSnapshot = AuthoritativeStageProgression.Resolve(catalog.Stages, clearedStageIds);
+        return string.Equals(stageId, stageSnapshot.CurrentStageId, StringComparison.Ordinal);
+    }
+
+    private static BattleStartResult MapStart(BattleSession value) => new(value.Id, value.StageId, value.Status, value.StartedAtUtc);
 }

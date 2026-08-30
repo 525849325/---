@@ -39,7 +39,10 @@ builder.Services.AddScoped<ServerEquipmentDropService>();
 var app = builder.Build();
 await using (var scope = app.Services.CreateAsyncScope())
 {
-    await scope.ServiceProvider.GetRequiredService<GameDbContext>().Database.EnsureCreatedAsync();
+    var services = scope.ServiceProvider;
+    await GameDatabaseInitializer.InitializeAsync(
+        services.GetRequiredService<GameDbContext>(),
+        services.GetRequiredService<IServerClock>().UtcNow);
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "ImmortalLoot.Server" }));

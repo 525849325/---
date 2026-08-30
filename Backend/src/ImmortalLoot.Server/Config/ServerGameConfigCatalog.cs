@@ -75,7 +75,11 @@ public sealed class ServerGameConfigCatalog
     private void Validate()
     {
         if (Realms.Count != 10 || Realms.Select(value => value.Order).Distinct().Count() != Realms.Count) throw new InvalidDataException("Realm config must contain ten unique orders.");
-        if (Stages.Count != 10 || Stages.Select(value => value.Id).Distinct().Count() != Stages.Count) throw new InvalidDataException("Stage config must contain chapter 1-1 through 1-10.");
+        if (Stages.Count != 10 || Stages.Select(value => value.Id).Distinct().Count() != Stages.Count ||
+            Stages.Any(value => value.Chapter != 1 || value.StageNumber < 1 || value.StageNumber > 10 ||
+                                !string.Equals(value.Id, $"stage_1_{value.StageNumber}", StringComparison.Ordinal)) ||
+            Stages.Select(value => value.StageNumber).Distinct().Count() != 10)
+            throw new InvalidDataException("Stage config must contain canonical chapter 1 stages from stage_1_1 through stage_1_10.");
         if (Stages.Any(value => value.RecommendedPower <= 0 || value.RewardExp <= 0 || value.RewardSoftCurrency <= 0 || value.FirstClearPremiumCurrency < 0)) throw new InvalidDataException("Stage rewards must be configured with positive base values.");
         foreach (var stage in Stages) if (!DropTables.ContainsKey(stage.DropTableId)) throw new InvalidDataException($"Stage '{stage.Id}' references missing drop table.");
         foreach (var table in DropTables.Values)

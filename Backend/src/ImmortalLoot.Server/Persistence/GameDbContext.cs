@@ -48,6 +48,10 @@ public sealed class GameDbContext(DbContextOptions<GameDbContext> options) : DbC
         modelBuilder.Entity<PaymentOrder>().HasIndex(value => value.OrderNo).IsUnique();
         modelBuilder.Entity<PaymentOrder>().HasIndex(value => new { value.Provider, value.ProviderTransactionId }).IsUnique().HasFilter("\"ProviderTransactionId\" <> ''");
         modelBuilder.Entity<BattleSession>().HasIndex(value => new { value.PlayerId, value.IdempotencyKey }).IsUnique();
+        modelBuilder.Entity<BattleSession>().HasIndex(value => value.PlayerId).IsUnique()
+            .HasDatabaseName(GameDatabaseInitializer.ActiveBattleIndexName)
+            .HasFilter("\"Status\" = 'Started'");
+        modelBuilder.Entity<BattleSession>().Property(value => value.Status).IsConcurrencyToken();
         modelBuilder.Entity<RewardGrant>().HasIndex(value => new { value.PlayerId, value.IdempotencyKey }).IsUnique();
         modelBuilder.Entity<RankingSnapshot>().HasIndex(value => new { value.PlayerId, value.RankingType, value.PeriodKey }).IsUnique();
         modelBuilder.Entity<RankingSnapshot>().HasIndex(value => new { value.RankingType, value.PeriodKey, value.Rank });

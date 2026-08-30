@@ -1,3 +1,4 @@
+using ImmortalLoot.Server.Config;
 using ImmortalLoot.Server.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,7 +16,23 @@ public sealed record InventoryResult(
     IReadOnlyList<PlayerInventory> Items,
     IReadOnlyList<PlayerEquipment> Equipment);
 
-public sealed class PlayerQueryService(GameDbContext db, Config.ServerGameConfigCatalog catalog)
+internal sealed record AuthoritativeStageSnapshot(string CurrentStageId, IReadOnlyList<string> ClearedStageIds);
+
+internal static class AuthoritativeStageProgression
+{
+    public static AuthoritativeStageSnapshot Resolve(IReadOnlyList<ServerStageConfig> stages, IEnumerable<string> persistedClears)
+    {
+        if (stages.Count == 0) throw new InvalidOperationException("Stage catalog is empty.");
+        var clearedSet = persistedClears.ToHashSet(StringComparer.Ordinal);
+        var orderedStages = stages.OrderBy(value => value.Chapter).ThenBy(value => value.StageNumber).ToArray();
+        var clearedStageIds = orderedStages.Where(value => clearedSet.Contains(value.Id)).Select(value => value.Id).ToArray();
+        var currentStageId = orderedStages.FirstOrDefault(value => !clearedSet.Contains(value.Id))?.Id
+            ?? orderedStages[0].Id;
+        return new AuthoritativeStageSnapshot(currentStageId, clearedStageIds);
+    }
+}
+
+public sealed class PlayerQueryService(GameDbContext db, ServerGameConfigCatalog catalog)
 {
     public async Task<PlayerProfileResult> GetProfileAsync(Guid playerId, CancellationToken cancellationToken)
     {
@@ -28,14 +45,11 @@ public sealed class PlayerQueryService(GameDbContext db, Config.ServerGameConfig
             .Where(value => value.PlayerId == playerId && value.Cleared)
             .Select(value => value.StageId)
             .ToListAsync(cancellationToken);
-        var clearedSet = persistedClears.ToHashSet(StringComparer.Ordinal);
-        var orderedStages = catalog.Stages.OrderBy(value => value.Chapter).ThenBy(value => value.StageNumber).ToArray();
-        var clearedStageIds = orderedStages.Where(value => clearedSet.Contains(value.Id)).Select(value => value.Id).ToArray();
-        var currentStageId = orderedStages.FirstOrDefault(value => !clearedSet.Contains(value.Id))?.Id
-            ?? orderedStages[0].Id;
+        var stageSnapshot = AuthoritativeStageProgression.Resolve(catalog.Stages, persistedClears);
         return new PlayerProfileResult(player.Id, player.Nickname, player.Level, player.Exp, player.RealmId,
             player.RealmStage, player.Power, currency.SoftCurrency, currency.PremiumCurrency,
-            currentStageId, clearedStageIds, stats.StatsJson, player.LastLoginTimeUtc, player.LastOfflineTimeUtc, roots);
+            stageSnapshot.CurrentStageId, stageSnapshot.ClearedStageIds, stats.StatsJson,
+            player.LastLoginTimeUtc, player.LastOfflineTimeUtc, roots);
     }
 
     public async Task<InventoryResult> GetInventoryAsync(Guid playerId, CancellationToken cancellationToken) => new(
