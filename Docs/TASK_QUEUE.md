@@ -24,8 +24,8 @@
 | SAVE-HARDEN-001 | P0 | SAVE-001 | DONE | D/E | 唯一隔离名、不覆盖既有证据、隔离 I/O 失败安全降级；回归测试已编译 |
 | INVENTORY-OVERFLOW-001 | P0 | CORE-001 | TESTING | B/D/E | 真实满仓掉落进入持久化单槽；窗口明确跳过；安全腾位单次领取，升级才二次确认牺牲替换，非升级二次确认分解 pending；Edit/Play 测试已编译，实际 Unity 回归由 QA-REGRESSION-002 阻塞 |
 | IDENTITY-PRIVACY-001 | P1 | COMM-001 | DONE | D/E | 移除设备唯一标识，改为应用随机匿名 ID；服务器入口仅 Development 可见；清空无关 PS4 模板字段 |
-| SAVE-AGGREGATE-001 | P0 | SAVE-001 | RUNNING | D/E | 建立 Stage/Realm/Cultivation/Root/Guide/Task 聚合存档与迁移，覆盖完整成长重载 |
-| CORE-STAGE-002 | P0 | CORE-001 | TODO | A/B/E | 修复 3 分钟后永久 Boss、时间推进、失败停战；改为胜利驱动关卡和失败重试 |
-| RC-QUALITY-001 | P0 | RC-AUDIT-001 | RUNNING | E | 背包 incoming 保全进入 TESTING；自动切换聚合存档，Unity 会话恢复后抢占执行回归与 Android 重构建 |
+| SAVE-AGGREGATE-001 | P0 | SAVE-001 | TESTING | D/E | v3 聚合存档、v1/v2 迁移、阶段/境界/功法/灵根/引导/任务恢复已实现；四类程序集编译与领域烟测 PASS，待真实 Unity Test Runner |
+| CORE-STAGE-002 | P0 | CORE-001 | RUNNING | A/B/E | 修复 3 分钟后永久 Boss、时间推进、失败停战；改为胜利驱动关卡和失败重试 |
+| RC-QUALITY-001 | P0 | RC-AUDIT-001 | RUNNING | E | 背包 incoming 与聚合存档均进入 TESTING；已自动切换胜利驱动关卡，Unity 会话恢复后抢占执行回归与 Android 重构建 |
 
-当前自动执行：`SAVE-AGGREGATE-001`（P0 聚合成长进度存档）。
+当前自动执行：`CORE-STAGE-002`（P0 胜利驱动关卡与 Boss 重试）。

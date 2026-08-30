@@ -18,8 +18,10 @@ function Invoke-Compilation([string]$name, [string[]]$sources, [string[]]$refere
     foreach ($reference in ($references | Sort-Object -Unique)) { $lines += '/reference:' + (Quote $reference) }
     foreach ($source in $sources) { $lines += Quote $source }
     [IO.File]::WriteAllLines($response, $lines, [Text.UTF8Encoding]::new($false))
-    & $dotnet $compiler ('@' + $response)
-    if ($LASTEXITCODE -ne 0) { throw "$name compilation failed with exit code $LASTEXITCODE" }
+    $compilerOutput = @(& $dotnet $compiler ('@' + $response) 2>&1)
+    $compilerExitCode = $LASTEXITCODE
+    foreach ($line in $compilerOutput) { Write-Host $line }
+    if ($compilerExitCode -ne 0) { throw "$name compilation failed with exit code $compilerExitCode" }
     return $output
 }
 

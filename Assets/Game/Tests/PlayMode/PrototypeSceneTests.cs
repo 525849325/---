@@ -11,6 +11,8 @@ using ImmortalLoot.Network;
 using ImmortalLoot.Player;
 using ImmortalLoot.Inventory;
 using ImmortalLoot.Equipment;
+using ImmortalLoot.Cultivation;
+using ImmortalLoot.SpiritualRoot;
 using System.IO;
 
 namespace ImmortalLoot.Tests.PlayMode
@@ -181,6 +183,173 @@ namespace ImmortalLoot.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator LocalSave_ReloadRestoresAggregateGrowthStateWithoutDuplicateTaskReward()
+        {
+            DeleteLocalSave();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            controller.SetPacingSpeedForTests(240f);
+            GameObject.Find("EnterGameButton").GetComponent<Button>().onClick.Invoke();
+            var timeout = 5f;
+            while (timeout > 0f && controller.LatestLoot == null)
+            {
+                timeout -= Time.deltaTime;
+                yield return null;
+            }
+            Assert.That(controller.LatestLoot, Is.Not.Null);
+            controller.EquipLatest();
+            Assert.That(controller.ExecutePageAction("CultivationPage"), Does.Contain("境界突破"));
+            Assert.That(controller.ExecutePageAction("SpiritualRootPage"), Does.Contain("累计 1 点"));
+            Assert.That(controller.ExecutePageAction("SpiritualRootPage"), Does.Contain("累计 2 点"));
+            Assert.That(controller.ExecutePageAction("TaskPage"), Does.Contain("灵砂 +100"));
+            controller.SaveForTests();
+
+            var before = controller.ProgressForTests;
+            Assert.That(before.CurrentStageId, Is.EqualTo($"stage_1_{controller.StageNumber}"));
+            Assert.That(before.Realm.RealmStage, Is.EqualTo(2));
+            Assert.That(before.Cultivation.PrimaryMethodId, Is.Not.Empty);
+            Assert.That(before.SpiritualRoots.Roots.Find(value => value.RootId == "root_fire")?.Level, Is.EqualTo(2));
+            Assert.That(before.GuideStep, Is.GreaterThanOrEqualTo(3));
+            Assert.That(before.TaskClaimed, Is.True);
+            var savedPower = controller.Power;
+
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var restored = Object.FindAnyObjectByType<PrototypeGameController>();
+            var after = restored.ProgressForTests;
+            Assert.That(after.CurrentStageId, Is.EqualTo(before.CurrentStageId));
+            Assert.That(after.Stage.ClearedStageIds, Is.EquivalentTo(before.Stage.ClearedStageIds));
+            Assert.That(after.Realm.RealmStage, Is.EqualTo(before.Realm.RealmStage));
+            Assert.That(after.Cultivation.PrimaryMethodId, Is.EqualTo(before.Cultivation.PrimaryMethodId));
+            Assert.That(after.Cultivation.AuxiliaryMethodIds, Is.EqualTo(before.Cultivation.AuxiliaryMethodIds));
+            Assert.That(after.SpiritualRoots.Roots.Find(value => value.RootId == "root_fire")?.Level, Is.EqualTo(2));
+            Assert.That(after.GuideStep, Is.EqualTo(before.GuideStep));
+            Assert.That(after.TaskClaimed, Is.True);
+            Assert.That(restored.Power, Is.EqualTo(savedPower), "Restored cultivation, roots and equipment must produce the same power.");
+            var currencyBeforeDuplicateClaim = restored.SoftCurrencyForTests;
+            Assert.That(restored.ExecutePageAction("TaskPage"), Does.Contain("已领取"));
+            Assert.That(restored.SoftCurrencyForTests, Is.EqualTo(currencyBeforeDuplicateClaim),
+                "A repeated task action after reload must not grant soft currency again.");
+            Assert.That(restored.ExecutePageAction("SpiritualRootPage"), Does.Contain("累计 3 点"));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator SeededAggregateStageOverridesConflictingElapsedAndRemainsCanonicalAfterSave()
+        {
+            DeleteLocalSave();
+            var repository = JsonPlayerSaveRepository.CreateDefault();
+            SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_7" }, 0d);
+
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(controller.StageNumber, Is.EqualTo(7));
+            controller.SaveForTests();
+
+            var saved = repository.Load();
+            var savedProgress = PlayerProgressStateCodec.Deserialize(saved.ProgressJson);
+            Assert.That(savedProgress.CurrentStageId, Is.EqualTo("stage_1_7"));
+            Assert.That(savedProgress.Stage.ClearedStageIds, Is.Empty,
+                "Restoring an authoritative current stage must not fabricate stage-clear runtime progress.");
+            Assert.That(saved.StageElapsedSeconds, Is.GreaterThan(0d), "Pacing elapsed time must be moved into the authoritative stage band.");
+
+            SceneManager.LoadScene("Main");
+            yield return null;
+            Assert.That(Object.FindAnyObjectByType<PrototypeGameController>().StageNumber, Is.EqualTo(7));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator PartialAndDoubleAuxiliaryCultivationSavesRemainSafeAndUsable()
+        {
+            DeleteLocalSave();
+            SaveSeededProgress(new PlayerProgressState
+            {
+                Cultivation = new CultivationMethodState
+                {
+                    LearnedMethodIds = new List<string> { "method_cinder_scripture" }
+                }
+            });
+
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var partial = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(partial.ProgressForTests.Cultivation.PrimaryMethodId, Is.Empty);
+            Assert.That(partial.ExecutePageAction("CultivationPage"), Does.Contain("安全未装配"));
+            Assert.That(partial.ProgressForTests.Cultivation.PrimaryMethodId, Is.Empty);
+
+            SaveSeededProgress(new PlayerProgressState
+            {
+                Cultivation = new CultivationMethodState
+                {
+                    LearnedMethodIds = new List<string> { "method_cinder_scripture" },
+                    PrimaryMethodId = "method_cinder_scripture"
+                }
+            });
+
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var primaryOnly = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(primaryOnly.ProgressForTests.Cultivation.PrimaryMethodId, Is.EqualTo("method_cinder_scripture"));
+            Assert.That(primaryOnly.ExecutePageAction("CultivationPage"), Does.Contain("保留当前功法"));
+            Assert.That(primaryOnly.ProgressForTests.Cultivation.PrimaryMethodId, Is.EqualTo("method_cinder_scripture"));
+
+            SaveSeededProgress(new PlayerProgressState
+            {
+                Cultivation = new CultivationMethodState
+                {
+                    LearnedMethodIds = new List<string>
+                    {
+                        "method_cinder_scripture", "method_ember_breath",
+                        "method_thunder_pulse", "method_quick_spark"
+                    },
+                    PrimaryMethodId = "method_cinder_scripture",
+                    AuxiliaryMethodIds = new[] { "method_ember_breath", "method_quick_spark" }
+                }
+            });
+
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var doubleAuxiliary = Object.FindAnyObjectByType<PrototypeGameController>();
+            Assert.That(doubleAuxiliary.ExecutePageAction("CultivationPage"), Does.Contain("雷修暴击"));
+            var restored = doubleAuxiliary.ProgressForTests.Cultivation;
+            Assert.That(restored.PrimaryMethodId, Is.EqualTo("method_thunder_pulse"));
+            Assert.That(restored.AuxiliaryMethodIds[0], Is.EqualTo("method_quick_spark"));
+            Assert.That(restored.AuxiliaryMethodIds[1], Is.Empty,
+                "Cycling a curated build must clear a duplicate target from the second auxiliary slot.");
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator FireRootRestoreIgnoresNullRowsAndStopsAtConfiguredMaximum()
+        {
+            DeleteLocalSave();
+            SaveSeededProgress(new PlayerProgressState
+            {
+                SpiritualRoots = new SpiritualRootState
+                {
+                    Roots = new List<SpiritualRootProgress>
+                    {
+                        null,
+                        new SpiritualRootProgress { RootId = "root_fire", Level = 20 }
+                    }
+                }
+            });
+
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var powerBefore = controller.Power;
+            Assert.That(controller.ExecutePageAction("SpiritualRootPage"), Does.Contain("已达上限"));
+            Assert.That(controller.ProgressForTests.SpiritualRoots.Roots.Find(value => value != null && value.RootId == "root_fire")?.Level,
+                Is.EqualTo(20));
+            Assert.That(controller.Power, Is.EqualTo(powerBefore));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
         public IEnumerator FullProtectedInventory_RealDropSurvivesReloadAndExplicitReplacement()
         {
             DeleteLocalSave();
@@ -204,7 +373,8 @@ namespace ImmortalLoot.Tests.PlayMode
                 Kills = 0,
                 StageElapsedSeconds = 179,
                 LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                InventoryJson = JsonUtility.ToJson(inventory)
+                InventoryJson = JsonUtility.ToJson(inventory),
+                ProgressJson = PlayerProgressStateCodec.Serialize(new PlayerProgressState { CurrentStageId = "stage_1_9" })
             });
 
             SceneManager.LoadScene("Main");
@@ -306,6 +476,17 @@ namespace ImmortalLoot.Tests.PlayMode
         private static void DeleteLocalSave()
         {
             if (File.Exists(JsonPlayerSaveRepository.DefaultPath)) File.Delete(JsonPlayerSaveRepository.DefaultPath);
+        }
+
+        private static void SaveSeededProgress(PlayerProgressState progress, double elapsedSeconds = 0d)
+        {
+            JsonPlayerSaveRepository.CreateDefault().Save(new PlayerSaveSnapshot
+            {
+                StageElapsedSeconds = elapsedSeconds,
+                LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                InventoryJson = JsonUtility.ToJson(new InventoryState { EquipmentCapacity = 120 }),
+                ProgressJson = PlayerProgressStateCodec.Serialize(progress)
+            });
         }
 
         private static GameObject FindIncludingInactive(string name)

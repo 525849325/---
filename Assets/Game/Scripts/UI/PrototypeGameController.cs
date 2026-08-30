@@ -16,6 +16,7 @@ using ImmortalLoot.Player;
 using ImmortalLoot.Payment;
 using ImmortalLoot.Stage;
 using ImmortalLoot.Settings;
+using ImmortalLoot.SpiritualRoot;
 using System.Collections.Generic;
 using System.Collections;
 using System.IO;
@@ -75,6 +76,8 @@ namespace ImmortalLoot.UI
         private EquipmentUpgradeEvaluator _upgradeEvaluator;
         private string _pendingSacrificeConfirmationKey = string.Empty;
         private int _skippedPendingRewardWindows;
+        private PlayerProgressState _progressState;
+        private int _guideStep;
         private readonly CharacterStats _baseStats = new CharacterStats
         {
             HP = 180f, Attack = 12f, Defense = 3f, CritRate = 0.1f, CritDamage = 1.5f, AttackSpeed = 1f, FireDamage = 0.1f
@@ -97,6 +100,7 @@ namespace ImmortalLoot.UI
             _feedback.Initialize();
             _saveRepository = JsonPlayerSaveRepository.CreateDefault();
             var saved = LoadSnapshotSafely();
+            _progressState = PlayerProgressStateCodec.Deserialize(saved?.ProgressJson);
             _generator = new EquipmentGenerator(new SystemRandomSource(), _catalog);
             _drops = new DropTableService(_catalog, _generator, new SystemRandomSource());
             _inventory = new InventoryService(RestoreInventory(saved), _catalog);
@@ -105,10 +109,11 @@ namespace ImmortalLoot.UI
             _loadout = new EquipmentLoadoutService(_catalog);
             _stats = new CharacterStatService();
             _stats.AddProvider(new EquipmentStatProvider(_catalog, _loadout));
-            var methodState = new CultivationMethodState();
-            _cultivation = new CultivationMethodService(_catalog, new RealmProgressState { RealmId = "realm_spirit_foundation" }, methodState);
-            foreach (var methodId in _catalog.CultivationMethods.Keys) _cultivation.Learn(methodId);
-            EquipBuild(0);
+            PrepareCultivationState(_progressState.Cultivation);
+            _cultivation = new CultivationMethodService(_catalog, _progressState.Realm, _progressState.Cultivation);
+            _buildIndex = ResolveBuildIndex(_progressState.Cultivation.PrimaryMethodId);
+            if (!HasValidSavedBuild(_progressState.Cultivation) && !TryEquipFirstLearnedBuild(out _buildIndex))
+                ClearActiveCultivationBuild();
             var cultivationStats = new CultivationMethodStatProvider(_cultivation);
             _stats.AddProvider(cultivationStats);
             _progressionStats = new CharacterStatService();
@@ -134,6 +139,7 @@ namespace ImmortalLoot.UI
             {
                 if (!string.IsNullOrEmpty(_saveLoadWarning)) guideText.text = _saveLoadWarning;
                 else if (!string.IsNullOrEmpty(_offlineRewardSummary)) guideText.text = _offlineRewardSummary;
+                else if (_guideStep > 0) guideText.text = $"引导进度已恢复：{_guideStep}/4。继续推进当前成长目标。";
             }
             SpawnEnemy();
         }
@@ -243,6 +249,7 @@ namespace ImmortalLoot.UI
             var drops = _drops.Roll(dropTableId, new DropContext(source, 1 + _kills / 3, sourceId));
             var overflowReward = new DecompositionReward();
             _latestLoot = drops[0].Equipment;
+            _guideStep = Math.Max(_guideStep, 1);
             if (!TryMakeRoomForLoot(out overflowReward))
             {
                 _inventory.StorePendingEquipment(_latestLoot);
@@ -261,7 +268,11 @@ namespace ImmortalLoot.UI
             var autoUpgrade = _settings.AutoEquipEnabled
                 ? _upgradeEvaluator.Evaluate(_progressionStats.Calculate(_baseStats), _loadout.Equipped, _latestLoot)
                 : new EquipmentUpgradeDecision(false, 0);
-            if (autoUpgrade.ShouldEquip) _loadout.Equip(_latestLoot);
+            if (autoUpgrade.ShouldEquip)
+            {
+                _loadout.Equip(_latestLoot);
+                _guideStep = Math.Max(_guideStep, 2);
+            }
             var overflowSummary = overflowReward.SoftCurrency > 0
                 ? $"\n安全回收低价值装备：灵砂 +{overflowReward.SoftCurrency:N0} · 强化石 +{overflowReward.EnhancementMaterial}"
                 : string.Empty;
@@ -271,6 +282,7 @@ namespace ImmortalLoot.UI
             lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
             if (_stageNumber == 10)
             {
+                _guideStep = Math.Max(_guideStep, 4);
                 _validationTelemetry.TrackOnce("first_boss_defeated", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString());
                 if (guideText != null) guideText.text = "Boss 已击败：可领取挂机收益并准备境界突破";
             }
@@ -314,6 +326,7 @@ namespace ImmortalLoot.UI
             }
             var before = _power;
             _loadout.Equip(_latestLoot);
+            _guideStep = Math.Max(_guideStep, 2);
             RefreshProgressDisplay();
             _validationTelemetry.TrackOnce("first_equipment_equipped", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString(), Math.Max(0, _power - before));
             _feedback.PlayEquip();
@@ -367,16 +380,27 @@ namespace ImmortalLoot.UI
 
         private void RestoreProgress(PlayerSaveSnapshot saved)
         {
-            if (saved == null) return;
-            _level = Math.Max(1, saved.Level);
-            _exp = Math.Max(0, saved.Exp);
-            _kills = Math.Max(0, saved.Kills);
-            _softCurrency = Math.Max(0, saved.SoftCurrency);
-            _premiumCurrency = Math.Max(0, saved.PremiumCurrency);
-            _realmStage = Math.Max(1, saved.RealmStage);
+            var realm = _progressState.Realm;
+            _level = Math.Max(1, realm.PlayerLevel);
+            _exp = Math.Max(0, realm.Experience);
+            _realmStage = Math.Max(1, realm.RealmStage);
+            _guideStep = Math.Max(0, _progressState.GuideStep);
+            _taskClaimed = _progressState.TaskClaimed;
+            var fireRootProgress = GetFireRootProgress();
+            _spiritualRootPoints = Math.Clamp(fireRootProgress.Level, 0, GetFireRootMaxLevel());
+            fireRootProgress.Level = _spiritualRootPoints;
+            if (saved != null)
+            {
+                _kills = Math.Max(0, saved.Kills);
+                _softCurrency = Math.Max(0, saved.SoftCurrency);
+                _premiumCurrency = Math.Max(0, saved.PremiumCurrency);
+            }
             _baseStats.Attack += (_level - 1) * 2f;
             _baseStats.HP += (_level - 1) * 15f;
-            _pacing.Restore(saved.StageElapsedSeconds);
+            _baseStats.FireDamage += _spiritualRootPoints * 0.01f;
+            _pacing.Restore(AlignElapsedToAggregateStage(saved?.StageElapsedSeconds ?? 0d));
+            _stageNumber = _pacing.CurrentStageNumber;
+            if (saved == null) return;
             var equipped = JsonUtility.FromJson<EquippedIds>(saved.EquippedInstanceIdsJson);
             if (equipped?.ids == null) return;
             foreach (var id in equipped.ids)
@@ -427,15 +451,70 @@ namespace ImmortalLoot.UI
             if (_saveRepository == null || _inventory == null || _pacing == null) return;
             var equipped = new EquippedIds();
             foreach (var item in _loadout.Equipped.Values) equipped.ids.Add(item.InstanceId);
+            var progress = CaptureProgressState();
             _saveRepository.Save(new PlayerSaveSnapshot
             {
                 PlayerId = "local-player", Nickname = "云游剑客", Level = _level, Exp = _exp,
-                RealmStage = _realmStage, Kills = _kills, SoftCurrency = _softCurrency,
+                RealmId = progress.Realm.RealmId, RealmStage = _realmStage,
+                Kills = _kills, SoftCurrency = _softCurrency,
                 PremiumCurrency = _premiumCurrency, StageElapsedSeconds = _pacing.ElapsedSeconds,
                 LastActiveUnixSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 InventoryJson = JsonUtility.ToJson(_inventory.State),
-                EquippedInstanceIdsJson = JsonUtility.ToJson(equipped)
+                EquippedInstanceIdsJson = JsonUtility.ToJson(equipped),
+                ProgressJson = PlayerProgressStateCodec.Serialize(progress)
             });
+        }
+
+        private PlayerProgressState CaptureProgressState()
+        {
+            _progressState.CurrentStageId = $"stage_1_{Math.Clamp(_stageNumber, 1, 10)}";
+            _progressState.GuideStep = Math.Max(0, _guideStep);
+            _progressState.TaskClaimed = _taskClaimed;
+            _progressState.Realm.PlayerLevel = Math.Max(1, _level);
+            _progressState.Realm.Experience = Math.Max(0, _exp);
+            _progressState.Realm.RealmStage = Math.Max(1, _realmStage);
+            GetFireRootProgress().Level = Math.Clamp(_spiritualRootPoints, 0, GetFireRootMaxLevel());
+            return _progressState;
+        }
+
+        private double AlignElapsedToAggregateStage(double elapsedSeconds)
+        {
+            if (!TryParseStageNumber(_progressState.CurrentStageId, out var stageNumber)) return elapsedSeconds;
+            if (double.IsNaN(elapsedSeconds) || double.IsInfinity(elapsedSeconds)) elapsedSeconds = 0d;
+
+            var bossSecond = Math.Max(1d, _pacingConfig.firstBossMinute * 60d);
+            if (stageNumber >= 10) return elapsedSeconds >= bossSecond ? elapsedSeconds : bossSecond + 0.001d;
+
+            var stageBandSeconds = bossSecond / 9d;
+            var lowerBound = (stageNumber - 1) * stageBandSeconds;
+            var upperBound = stageNumber * stageBandSeconds;
+            if (elapsedSeconds >= lowerBound && elapsedSeconds < upperBound) return elapsedSeconds;
+            return lowerBound + stageBandSeconds * 0.5d;
+        }
+
+        private static bool TryParseStageNumber(string stageId, out int stageNumber)
+        {
+            const string prefix = "stage_1_";
+            stageNumber = 0;
+            return !string.IsNullOrWhiteSpace(stageId) &&
+                   stageId.StartsWith(prefix, StringComparison.Ordinal) &&
+                   int.TryParse(stageId.Substring(prefix.Length), out stageNumber) &&
+                   stageNumber >= 1 && stageNumber <= 10;
+        }
+
+        private SpiritualRootProgress GetFireRootProgress()
+        {
+            _progressState.SpiritualRoots.Roots.RemoveAll(value => value == null);
+            var progress = _progressState.SpiritualRoots.Roots.Find(value => value.RootId == "root_fire");
+            if (progress != null) return progress;
+            progress = new SpiritualRootProgress { RootId = "root_fire" };
+            _progressState.SpiritualRoots.Roots.Add(progress);
+            return progress;
+        }
+
+        private int GetFireRootMaxLevel()
+        {
+            return _catalog.SpiritualRoots.TryGetValue("root_fire", out var config) ? Math.Max(0, config.MaxLevel) : 0;
         }
 
         private bool TryMakeRoomForLoot(out DecompositionReward reward)
@@ -571,15 +650,32 @@ namespace ImmortalLoot.UI
                 case "InventoryPage": return ExecuteInventoryAction();
                 case "CultivationPage":
                     _realmStage = Math.Min(10, _realmStage + 1);
-                    _buildIndex = (_buildIndex + 1) % 3;
-                    EquipBuild(_buildIndex);
+                    var equippedBuild = TryEquipNextLearnedBuild(out var nextBuildIndex);
+                    if (equippedBuild) _buildIndex = nextBuildIndex;
+                    _guideStep = Math.Max(_guideStep, 3);
                     RefreshProgressDisplay();
                     _validationTelemetry.TrackOnce("first_realm_breakthrough", _pacing.ElapsedSeconds, _stageNumber, _power, value: _realmStage);
-                    return $"境界突破至 {_realmStage} 阶\n已学习并装备 {BuildName()}\n主修：{PrimaryMethodName()} · 辅修：{AuxiliaryMethodName()}\n统一属性服务重算战力 {_power}";
+                    SaveProgress();
+                    var buildSummary = equippedBuild
+                        ? $"已学习并装备 {BuildName()}"
+                        : HasValidSavedBuild(_progressState.Cultivation)
+                            ? "没有其他完整已学习组合，保留当前功法"
+                            : "当前没有完整已学习的主辅功法组合，保持安全未装配";
+                    return $"境界突破至 {_realmStage} 阶\n{buildSummary}\n主修：{PrimaryMethodName()} · 辅修：{AuxiliaryMethodName()}\n统一属性服务重算战力 {_power}";
                 case "SpiritualRootPage":
+                    var fireRootMaxLevel = GetFireRootMaxLevel();
+                    if (_spiritualRootPoints >= fireRootMaxLevel)
+                    {
+                        _spiritualRootPoints = fireRootMaxLevel;
+                        GetFireRootProgress().Level = fireRootMaxLevel;
+                        SaveProgress();
+                        return $"火灵根已达上限 {_spiritualRootPoints} 点，本次未重复发放成长。";
+                    }
                     _spiritualRootPoints++;
                     _baseStats.FireDamage += 0.01f;
+                    GetFireRootProgress().Level = _spiritualRootPoints;
                     RefreshProgressDisplay();
+                    SaveProgress();
                     return $"渡劫灵根成长：火灵根 +1\n累计 {_spiritualRootPoints} 点";
                 case "StagePage": return $"当前推进 1-{_stageNumber}\n1-10 为石魇 Boss，战斗会自动推进。";
                 case "ShopPage":
@@ -596,6 +692,7 @@ namespace ImmortalLoot.UI
                 case "TaskPage":
                     if (_taskClaimed) return "今日 20 活跃宝箱已领取。";
                     _taskClaimed = true; _softCurrency += 100; RefreshProgressDisplay();
+                    SaveProgress();
                     return "完成登录/推图任务：活跃度 20\n宝箱灵砂 +100";
                 case "ActivityPage": return "灵潮涌动生效中\n服务器挂机收益 ×2";
                 case "DebugPage":
@@ -643,12 +740,82 @@ namespace ImmortalLoot.UI
 
         private string BuildName() => _buildIndex == 0 ? "火修燃烧" : _buildIndex == 1 ? "雷修暴击" : "血修吸血";
 
-        private void EquipBuild(int index)
+        private void PrepareCultivationState(CultivationMethodState state)
+        {
+            state.LearnedMethodIds.RemoveAll(id => string.IsNullOrWhiteSpace(id) || !_catalog.CultivationMethods.ContainsKey(id));
+            if (state.LearnedMethodIds.Count == 0)
+                foreach (var methodId in _catalog.CultivationMethods.Keys) state.LearnedMethodIds.Add(methodId);
+            if (!string.IsNullOrEmpty(state.PrimaryMethodId) &&
+                (!_catalog.CultivationMethods.TryGetValue(state.PrimaryMethodId, out var primary) || !primary.IsPrimary ||
+                 !state.LearnedMethodIds.Contains(state.PrimaryMethodId)))
+                state.PrimaryMethodId = string.Empty;
+            for (var i = 0; i < state.AuxiliaryMethodIds.Length; i++)
+            {
+                var id = state.AuxiliaryMethodIds[i];
+                if (string.IsNullOrEmpty(id)) continue;
+                if (!_catalog.CultivationMethods.TryGetValue(id, out var auxiliary) || auxiliary.IsPrimary ||
+                    !state.LearnedMethodIds.Contains(id))
+                    state.AuxiliaryMethodIds[i] = string.Empty;
+            }
+            if (!string.IsNullOrEmpty(state.AuxiliaryMethodIds[0]) && state.AuxiliaryMethodIds[0] == state.AuxiliaryMethodIds[1])
+                state.AuxiliaryMethodIds[1] = string.Empty;
+        }
+
+        private bool HasValidSavedBuild(CultivationMethodState state)
+        {
+            return !string.IsNullOrEmpty(state.PrimaryMethodId) &&
+                   state.LearnedMethodIds.Contains(state.PrimaryMethodId);
+        }
+
+        private static int ResolveBuildIndex(string primaryMethodId)
+        {
+            if (primaryMethodId == "method_thunder_pulse") return 1;
+            if (primaryMethodId == "method_crimson_well") return 2;
+            return 0;
+        }
+
+        private bool TryEquipFirstLearnedBuild(out int buildIndex)
+        {
+            for (var index = 0; index < 3; index++)
+            {
+                if (!TryEquipBuild(index)) continue;
+                buildIndex = index;
+                return true;
+            }
+            buildIndex = 0;
+            return false;
+        }
+
+        private bool TryEquipNextLearnedBuild(out int buildIndex)
+        {
+            for (var offset = 1; offset <= 3; offset++)
+            {
+                var candidate = (_buildIndex + offset) % 3;
+                if (!TryEquipBuild(candidate)) continue;
+                buildIndex = candidate;
+                return true;
+            }
+            buildIndex = _buildIndex;
+            return false;
+        }
+
+        private bool TryEquipBuild(int index)
         {
             var primary = index == 0 ? "method_cinder_scripture" : index == 1 ? "method_thunder_pulse" : "method_crimson_well";
             var auxiliary = index == 0 ? "method_ember_breath" : index == 1 ? "method_quick_spark" : "method_blood_return";
+            var state = _progressState.Cultivation;
+            if (!state.LearnedMethodIds.Contains(primary) || !state.LearnedMethodIds.Contains(auxiliary)) return false;
+            for (var slot = 0; slot < state.AuxiliaryMethodIds.Length; slot++) state.AuxiliaryMethodIds[slot] = string.Empty;
             _cultivation.EquipPrimary(primary);
             _cultivation.EquipAuxiliary(0, auxiliary);
+            return true;
+        }
+
+        private void ClearActiveCultivationBuild()
+        {
+            var state = _progressState.Cultivation;
+            state.PrimaryMethodId = string.Empty;
+            for (var slot = 0; slot < state.AuxiliaryMethodIds.Length; slot++) state.AuxiliaryMethodIds[slot] = string.Empty;
         }
 
         private string PrimaryMethodName()
@@ -697,6 +864,9 @@ namespace ImmortalLoot.UI
         public void SaveForTests() => SaveProgress();
         public int SkippedPendingRewardWindowsForTests => _skippedPendingRewardWindows;
         public int PendingRewardWindowsForTests => _pacing.PendingRewards;
+        public long SoftCurrencyForTests => _softCurrency;
+        public PlayerProgressState ProgressForTests =>
+            PlayerProgressStateCodec.Deserialize(PlayerProgressStateCodec.Serialize(CaptureProgressState()));
 #endif
     }
 }

@@ -28,3 +28,5 @@
 - 基线门禁已经留下 EditMode 81/81、PlayMode 5/5 与 APK/AAB 成功证据。
 - 最新代码回归时，Hub 当前跟踪的是另一项目路径；本项目 batch 无法连接持有 entitlement 的版本化 IPC，独立 LicensingClient 又没有 Hub 会话令牌，因此返回 198。
 - 该问题记录为 `QA-REGRESSION-002` 技术阻塞，不重新升级 RED、不要求用户重复登录或激活；其他 P0 继续执行。
+- 后续只读复核确认：当前可见交互 Editor 已连接 `LicenseClient-Admin`，但 `Editor.log` 绑定的是另一 Unity 工作区；本项目 `Temp/UnityLockfile` 未被进程持有，不能据此宣称本项目存在可复用的已授权 Editor 会话。
+- 这仍是自动化会话/项目绑定差异，不是许可证缺失；未发现需要老板执行的具体账号或权限动作，因此保持无 OPEN RED，并继续处理不依赖 Unity Test Runner 的 P0。
