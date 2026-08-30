@@ -11,6 +11,16 @@ $formula = Get-Content -Raw -Encoding UTF8 (Join-Path $configRoot 'battle_formul
 $skillFile = Get-Content -Raw -Encoding UTF8 (Join-Path $configRoot 'skills.json') | ConvertFrom-Json
 $monsterFile = Get-Content -Raw -Encoding UTF8 (Join-Path $configRoot 'monsters.json') | ConvertFrom-Json
 $stageFile = Get-Content -Raw -Encoding UTF8 (Join-Path $configRoot 'stages.json') | ConvertFrom-Json
+$realmFile = Get-Content -Raw -Encoding UTF8 (Join-Path $configRoot 'realms.json') | ConvertFrom-Json
+$realmFormula = Get-Content -Raw -Encoding UTF8 (Join-Path $configRoot 'realm_formula.json') | ConvertFrom-Json
+
+$firstRealm = @($realmFile.realms | Sort-Object order)[0]
+$firstBoss = @($stageFile.stages | Where-Object { $_.isBossStage } | Sort-Object chapter, stageNumber)[0]
+$firstMinorCost = [math]::Max(1, [math]::Ceiling(
+    [double]$firstRealm.breakthroughCost * [double]$realmFormula.minorCostScale / [double]$firstRealm.stageCount))
+if ($null -eq $firstBoss -or [long]$firstBoss.rewardBreakthroughMaterial -lt [long]$firstMinorCost) {
+    throw "The first Boss must fund at least one configured minor realm breakthrough (needs $firstMinorCost)."
+}
 
 function Invariant([object]$value) {
     return [Convert]::ToString($value, [Globalization.CultureInfo]::InvariantCulture)

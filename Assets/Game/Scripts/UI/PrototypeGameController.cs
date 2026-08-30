@@ -56,6 +56,8 @@ namespace ImmortalLoot.UI
         private EquipmentLoadoutService _loadout;
         private CharacterStatService _stats;
         private CharacterStatService _progressionStats;
+        private RealmProgressionService _realmProgression;
+        private TribulationRewardCoordinator _tribulationRewards;
         private PowerCalculator _powerCalculator;
         private PrototypeLoginController _login;
         private string _serverLatestInstanceId = string.Empty;
@@ -192,8 +194,20 @@ namespace ImmortalLoot.UI
             _latestLoot = _inventory.State.PendingEquipment;
             _decomposition = new EquipmentDecompositionService(_inventory, DecompositionFormulaLoader.Load(new ResourcesConfigSource()));
             _loadout = new EquipmentLoadoutService(_catalog);
+            _realmProgression = new RealmProgressionService(
+                _catalog,
+                RealmFormulaLoader.Load(new ResourcesConfigSource()),
+                _progressState.Realm,
+                new SystemRandomSource(),
+                new UtcClock());
+            var spiritualRootService = new SpiritualRootService(_catalog, _progressState.SpiritualRoots, new SystemRandomSource());
+            _tribulationRewards = new TribulationRewardCoordinator(_realmProgression, spiritualRootService);
+            var realmStats = new RealmStatProvider(_catalog, _progressState.Realm);
+            var spiritualRootStats = new SpiritualRootStatProvider(_catalog, _progressState.SpiritualRoots);
             _stats = new CharacterStatService();
             _stats.AddProvider(new EquipmentStatProvider(_catalog, _loadout));
+            _stats.AddProvider(realmStats);
+            _stats.AddProvider(spiritualRootStats);
             PrepareCultivationState(_progressState.Cultivation);
             _cultivation = new CultivationMethodService(_catalog, _progressState.Realm, _progressState.Cultivation);
             _buildIndex = ResolveBuildIndex(_progressState.Cultivation.PrimaryMethodId);
@@ -202,6 +216,8 @@ namespace ImmortalLoot.UI
             var cultivationStats = new CultivationMethodStatProvider(_cultivation);
             _stats.AddProvider(cultivationStats);
             _progressionStats = new CharacterStatService();
+            _progressionStats.AddProvider(realmStats);
+            _progressionStats.AddProvider(spiritualRootStats);
             _progressionStats.AddProvider(cultivationStats);
             _pacing = new DemoPacingSession(_pacingConfig);
             RestoreProgress(saved);
@@ -216,6 +232,7 @@ namespace ImmortalLoot.UI
             };
             progress.Realm.PlayerLevel = Math.Max(1, profile.level);
             progress.Realm.Experience = Math.Max(0, profile.exp);
+            progress.Realm.CultivationExperience = Math.Max(0, profile.exp);
             progress.Realm.RealmId = string.IsNullOrWhiteSpace(profile.realmId) ? "realm_body_tempering" : profile.realmId;
             progress.Realm.RealmStage = Math.Max(1, profile.realmStage);
             if (profile.spiritualRoots != null)
@@ -575,8 +592,12 @@ namespace ImmortalLoot.UI
             _kills++;
             if (transition.ClearResult.IsFirstClear)
                 _premiumCurrency += completedStage.FirstClearPremiumCurrency;
+            var tribulationSummary = string.Empty;
             if (completedStage.IsBossStage)
+            {
+                tribulationSummary = ResolvePendingTribulationAfterBossVictory(completedStage.StageNumber);
                 GrantConfiguredStageRewards(completedStage);
+            }
 
             if (_inventory.State.PendingEquipment != null)
             {
@@ -587,6 +608,8 @@ namespace ImmortalLoot.UI
                 if (guideText != null) guideText.text = skippedRewardWindows > 0
                     ? $"待领取区仍有装备：已明确跳过 {skippedRewardWindows} 个新装备窗口，不会在重启后补发。已结算 {completedStage.Name}，请到背包处理待领取装备。"
                     : $"待领取区仍有装备：已结算 {completedStage.Name}，新的装备结算暂停至待领取区清空。";
+                if (guideText != null && !string.IsNullOrEmpty(tribulationSummary))
+                    guideText.text += "\n" + tribulationSummary;
                 if (completedStage.IsBossStage)
                 {
                     _guideStep = Math.Max(_guideStep, 4);
@@ -624,7 +647,8 @@ namespace ImmortalLoot.UI
             if (drop.Equipment == null)
             {
                 if (drop.ItemId == "soft_currency") _softCurrency += Math.Max(0, drop.Count);
-                if (lootText != null) lootText.text = $"{completedStage.Name} 阶段掉落：{drop.ItemId} +{drop.Count}";
+                if (lootText != null) lootText.text = $"{completedStage.Name} 阶段掉落：{drop.ItemId} +{drop.Count}" +
+                    (string.IsNullOrEmpty(tribulationSummary) ? string.Empty : "\n" + tribulationSummary);
                 RefreshProgressDisplay();
                 SaveProgress();
                 Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
@@ -662,13 +686,16 @@ namespace ImmortalLoot.UI
                 : string.Empty;
             lootText.text = FormatLoot(_latestLoot) + (autoUpgrade.ShouldEquip
                 ? $"\n\n自动换装成功 · 战力预计 +{autoUpgrade.PowerGain}"
-                : "\n\n点击“穿戴最新装备”进行比较") + overflowSummary;
+                : "\n\n点击“穿戴最新装备”进行比较") + overflowSummary +
+                (string.IsNullOrEmpty(tribulationSummary) ? string.Empty : "\n" + tribulationSummary);
             lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
             if (completedStage.IsBossStage)
             {
                 _guideStep = Math.Max(_guideStep, 4);
                 _validationTelemetry.TrackOnce("first_boss_defeated", _pacing.ElapsedSeconds, completedStage.StageNumber, _power, _latestLoot.Quality.ToString());
-                if (guideText != null) guideText.text = "Boss 已击败：可领取挂机收益并准备境界突破";
+                if (guideText != null) guideText.text = string.IsNullOrEmpty(tribulationSummary)
+                    ? "Boss 已击败：可领取挂机收益并准备境界突破"
+                    : "Boss 已击败：" + tribulationSummary;
             }
             RefreshProgressDisplay();
             if (autoUpgrade.ShouldEquip)
@@ -687,6 +714,28 @@ namespace ImmortalLoot.UI
 #endif
             GrantExperience(completedStage.RewardExp);
             _softCurrency += completedStage.RewardSoftCurrency;
+            _progressState.Realm.BreakthroughMaterial += Math.Max(0, completedStage.RewardBreakthroughMaterial);
+        }
+
+        private string ResolvePendingTribulationAfterBossVictory(int completedStageNumber)
+        {
+            var pending = _progressState.Realm.PendingTribulation;
+            if (pending == null || string.IsNullOrWhiteSpace(pending.Token)) return string.Empty;
+
+            SyncRuntimeIntoRealmProgress();
+            var resolution = _tribulationRewards.Resolve(pending.Token, true);
+            var result = resolution.Realm;
+            SyncRuntimeFromRealmProgress();
+            _spiritualRootPoints = Math.Clamp(GetFireRootProgress().Level, 0, GetFireRootMaxLevel());
+            RefreshProgressDisplay();
+            if (result.Status != RealmBreakthroughStatus.RealmAdvanced)
+                return "渡劫结算异常，进度已安全保留";
+
+            _validationTelemetry.TrackOnce("first_realm_advanced", _pacing.ElapsedSeconds, completedStageNumber, _power, result.RealmId);
+            var rootSummary = resolution.SpiritualRoot.HasValue && !string.IsNullOrEmpty(resolution.SpiritualRoot.Value.RootId)
+                ? $"，获得 {_catalog.SpiritualRoots[resolution.SpiritualRoot.Value.RootId].Name} +1"
+                : string.Empty;
+            return $"渡劫成功，晋升 {_catalog.Realms[result.RealmId].Name} 1 阶{rootSummary}";
         }
 
         private VictoryDrivenStageTransition RecordCompletedStageVictory(StageConfig completedStage)
@@ -746,7 +795,7 @@ namespace ImmortalLoot.UI
             var calculated = _stats.Calculate(_baseStats);
             _power = _powerCalculator.Calculate(calculated);
             if (profileText != null) profileText.text = $"云游剑客  Lv.{_level}\n战力 {_power}";
-            if (currencyText != null) currencyText.text = $"灵砂 {_softCurrency:N0}    仙晶 {_premiumCurrency:N0}";
+            if (currencyText != null) currencyText.text = $"灵砂 {_softCurrency:N0}    仙晶 {_premiumCurrency:N0}\n修为 {_progressState.Realm.CultivationExperience:N0}    破境石 {_progressState.Realm.BreakthroughMaterial:N0}";
         }
 
         private IEnumerator FlashPowerGain()
@@ -797,7 +846,6 @@ namespace ImmortalLoot.UI
             }
             _baseStats.Attack += (_level - 1) * 2f;
             _baseStats.HP += (_level - 1) * 15f;
-            _baseStats.FireDamage += _spiritualRootPoints * 0.01f;
             _pacing.Restore(saved?.StageElapsedSeconds ?? 0d);
             _stageNumber = _stageLoop.CurrentStageNumber;
             if (saved == null) return;
@@ -836,7 +884,9 @@ namespace ImmortalLoot.UI
 
         private void GrantExperience(long amount)
         {
-            _exp += Math.Max(0, amount);
+            var granted = Math.Max(0, amount);
+            _progressState.Realm.CultivationExperience = checked(_progressState.Realm.CultivationExperience + granted);
+            _exp = checked(_exp + granted);
             while (_exp >= _level * 50L)
             {
                 _exp -= _level * 50L;
@@ -876,7 +926,7 @@ namespace ImmortalLoot.UI
             _progressState.Realm.PlayerLevel = Math.Max(1, _level);
             _progressState.Realm.Experience = Math.Max(0, _exp);
             _progressState.Realm.RealmStage = Math.Max(1, _realmStage);
-            GetFireRootProgress().Level = Math.Clamp(_spiritualRootPoints, 0, GetFireRootMaxLevel());
+            _spiritualRootPoints = Math.Clamp(GetFireRootProgress().Level, 0, GetFireRootMaxLevel());
             return _progressState;
         }
 
@@ -1015,7 +1065,7 @@ namespace ImmortalLoot.UI
             {
                 case "CharacterPage":
                     RefreshProgressDisplay();
-                    return $"等级 {_level} · 战力 {_power}\n经验 {_exp}/{_level * 50L}\n当前境界 {_realmStage} 阶";
+                    return $"等级 {_level} · 战力 {_power}\n经验 {_exp}/{_level * 50L} · 修为 {_progressState.Realm.CultivationExperience:N0}\n当前境界 {_catalog.Realms[_progressState.Realm.RealmId].Name} {_realmStage} 阶 · 破境石 {_progressState.Realm.BreakthroughMaterial:N0}";
                 case "EquipmentPage":
                     if (_latestLoot == null) return "尚无装备，先完成一场战斗。";
                     var comparison = new EquipmentComparisonService(_catalog).Compare(_progressionStats.Calculate(_baseStats), _loadout.Equipped, _latestLoot);
@@ -1026,32 +1076,20 @@ namespace ImmortalLoot.UI
                     EquipLatest();
                     return $"{comparisonText}\n已穿戴 {latestName}\n统一战力更新为 {_power}";
                 case "InventoryPage": return ExecuteInventoryAction();
-                case "CultivationPage":
-                    _realmStage = Math.Min(10, _realmStage + 1);
-                    var equippedBuild = TryEquipNextLearnedBuild(out var nextBuildIndex);
-                    if (equippedBuild) _buildIndex = nextBuildIndex;
-                    _guideStep = Math.Max(_guideStep, 3);
-                    RefreshProgressDisplay();
-                    _validationTelemetry.TrackOnce("first_realm_breakthrough", _pacing.ElapsedSeconds, _stageNumber, _power, value: _realmStage);
-                    SaveProgress();
-                    var buildSummary = equippedBuild
-                        ? $"已学习并装备 {BuildName()}"
-                        : HasValidSavedBuild(_progressState.Cultivation)
-                            ? "没有其他完整已学习组合，保留当前功法"
-                            : "当前没有完整已学习的主辅功法组合，保持安全未装配";
-                    return $"境界突破至 {_realmStage} 阶\n{buildSummary}\n主修：{PrimaryMethodName()} · 辅修：{AuxiliaryMethodName()}\n统一属性服务重算战力 {_power}";
+                case "CultivationPage": return ExecuteCultivationAction();
                 case "SpiritualRootPage":
                     var fireRootMaxLevel = GetFireRootMaxLevel();
+                    var fireRootProgress = GetFireRootProgress();
+                    _spiritualRootPoints = Math.Clamp(fireRootProgress.Level, 0, fireRootMaxLevel);
                     if (_spiritualRootPoints >= fireRootMaxLevel)
                     {
                         _spiritualRootPoints = fireRootMaxLevel;
-                        GetFireRootProgress().Level = fireRootMaxLevel;
+                        fireRootProgress.Level = fireRootMaxLevel;
                         SaveProgress();
                         return $"火灵根已达上限 {_spiritualRootPoints} 点，本次未重复发放成长。";
                     }
                     _spiritualRootPoints++;
-                    _baseStats.FireDamage += 0.01f;
-                    GetFireRootProgress().Level = _spiritualRootPoints;
+                    fireRootProgress.Level = _spiritualRootPoints;
                     RefreshProgressDisplay();
                     SaveProgress();
                     return $"渡劫灵根成长：火灵根 +1\n累计 {_spiritualRootPoints} 点";
@@ -1077,6 +1115,65 @@ namespace ImmortalLoot.UI
                     return SettingsSummary();
                 default: return "功能已就绪。";
             }
+        }
+
+        private string ExecuteCultivationAction()
+        {
+            SyncRuntimeIntoRealmProgress();
+            var breakthrough = _realmProgression.BeginBreakthrough();
+            SyncRuntimeFromRealmProgress();
+
+            var equippedBuild = TryEquipNextLearnedBuild(out var nextBuildIndex);
+            if (equippedBuild) _buildIndex = nextBuildIndex;
+            _guideStep = Math.Max(_guideStep, 3);
+            RefreshProgressDisplay();
+            if (breakthrough.Status == RealmBreakthroughStatus.AdvancedStage)
+                _validationTelemetry.TrackOnce("first_realm_breakthrough", _pacing.ElapsedSeconds, _stageNumber, _power, value: _realmStage);
+            SaveProgress();
+
+            var buildSummary = equippedBuild
+                ? $"已学习并装备 {BuildName()}"
+                : HasValidSavedBuild(_progressState.Cultivation)
+                    ? "没有其他完整已学习组合，保留当前功法"
+                    : "当前没有完整已学习的主辅功法组合，保持安全未装配";
+            return $"{FormatBreakthroughResult(breakthrough)}\n{buildSummary}\n主修：{PrimaryMethodName()} · 辅修：{AuxiliaryMethodName()}\n统一属性服务重算战力 {_power}";
+        }
+
+        private string FormatBreakthroughResult(RealmBreakthroughResult result)
+        {
+            switch (result.Status)
+            {
+                case RealmBreakthroughStatus.AdvancedStage:
+                    return $"境界突破至 {result.RealmStage} 阶 · 消耗修为 {result.RequiredExperience:N0} / 破境石 {result.MaterialSpent:N0}";
+                case RealmBreakthroughStatus.TribulationRequired:
+                    return $"渡劫已开启 · 已预留破境石 {result.MaterialSpent:N0}，击败下一只 Boss 完成晋升";
+                case RealmBreakthroughStatus.Failed:
+                    return $"突破失败 · 损失破境石 {result.MaterialSpent:N0}，冷却后可再次尝试";
+                case RealmBreakthroughStatus.RequirementsNotMet:
+                    return $"突破条件不足 · 至少需要修为 {result.RequiredExperience:N0}，并满足等级与破境石要求；当前修为 {_progressState.Realm.CultivationExperience:N0} / 破境石 {_progressState.Realm.BreakthroughMaterial:N0}";
+                case RealmBreakthroughStatus.CooldownActive:
+                    return "突破冷却中 · 进度与资源已安全保留";
+                case RealmBreakthroughStatus.TrialAlreadyPending:
+                    return "渡劫已在进行中 · 击败下一只 Boss 完成晋升";
+                case RealmBreakthroughStatus.MaximumRealm:
+                    return "已达到当前版本最高境界";
+                default:
+                    return "境界状态暂不可推进 · 进度与资源已安全保留";
+            }
+        }
+
+        private void SyncRuntimeIntoRealmProgress()
+        {
+            _progressState.Realm.PlayerLevel = Math.Max(1, _level);
+            _progressState.Realm.Experience = Math.Max(0, _exp);
+            _progressState.Realm.RealmStage = Math.Max(1, _realmStage);
+        }
+
+        private void SyncRuntimeFromRealmProgress()
+        {
+            _level = Math.Max(1, _progressState.Realm.PlayerLevel);
+            _exp = Math.Max(0, _progressState.Realm.Experience);
+            _realmStage = Math.Max(1, _progressState.Realm.RealmStage);
         }
 
         public void RecordShopExposure()

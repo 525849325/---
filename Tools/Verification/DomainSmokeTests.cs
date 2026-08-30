@@ -6,6 +6,7 @@ using ImmortalLoot.Config;
 using ImmortalLoot.Core;
 using ImmortalLoot.Equipment;
 using ImmortalLoot.Inventory;
+using ImmortalLoot.Realm;
 
 internal static class DomainSmokeTests
 {
@@ -16,6 +17,7 @@ internal static class DomainSmokeTests
             VerifyBattle();
             VerifyValidationTelemetry();
             VerifyInventoryOverflowProtection();
+            VerifyRealmProgressionAndStats();
             VerifyTenThousandEquipmentItems();
             Console.WriteLine("PASS: all domain smoke tests completed.");
             return 0;
@@ -65,6 +67,60 @@ internal static class DomainSmokeTests
         Require(InventoryOverflowPolicy.SelectDiscardCandidate(
             new[] { equipped, locked, legendary }, protectedIds) == null,
             "overflow must refuse replacement when every item is protected");
+    }
+
+    private static void VerifyRealmProgressionAndStats()
+    {
+        var realms = new Dictionary<string, RealmConfig>
+        {
+            {
+                "realm_body_tempering",
+                new RealmConfig
+                {
+                    Id = "realm_body_tempering", Name = "Body Tempering", Order = 1, StageCount = 10,
+                    RequiredLevel = 1, RequiredExp = 100, BreakthroughCost = 500,
+                    BreakthroughSuccessRate = 1f, BaseStatBonus = 0.05f
+                }
+            },
+            {
+                "realm_qi_coalescence",
+                new RealmConfig
+                {
+                    Id = "realm_qi_coalescence", Name = "Qi Coalescence", Order = 2, StageCount = 10,
+                    RequiredLevel = 10, RequiredExp = 1200, BreakthroughCost = 2000,
+                    BreakthroughSuccessRate = 0.95f, BaseStatBonus = 0.08f
+                }
+            }
+        };
+        var catalog = new GameConfigCatalog(
+            new Dictionary<string, EquipmentDefinition>(),
+            new Dictionary<EquipmentQuality, AffixCountRange>(),
+            realms);
+        var state = new RealmProgressState
+        {
+            RealmId = "realm_body_tempering", RealmStage = 1, PlayerLevel = 1,
+            Experience = 7, CultivationExperience = 100, BreakthroughMaterial = 500
+        };
+        var stats = new ImmortalLoot.Character.CharacterStatService();
+        stats.AddProvider(new RealmStatProvider(catalog, state));
+        var before = stats.Calculate(new ImmortalLoot.Character.CharacterStats { HP = 100, Attack = 100, Defense = 100 });
+        var result = new RealmProgressionService(
+            catalog,
+            new RealmFormulaConfig
+            {
+                MinorCostScale = 1f, MinorExpScale = 1f, MinorFailureLossRatio = 0.25f,
+                TribulationFailureLossRatio = 0.25f, FailureCooldownSeconds = 300
+            },
+            state,
+            new FixedRandom(),
+            new FixedClock()).BeginBreakthrough();
+        var after = stats.Calculate(new ImmortalLoot.Character.CharacterStats { HP = 100, Attack = 100, Defense = 100 });
+
+        Require(result.Status == RealmBreakthroughStatus.AdvancedStage, "funded realm breakthrough should advance one stage");
+        Require(state.RealmStage == 2 && state.Experience == 7 && state.CultivationExperience == 90 && state.BreakthroughMaterial == 450,
+            "realm breakthrough must consume cultivation experience without corrupting level experience");
+        Require(after.Attack > before.Attack && after.HP > before.HP,
+            "realm stat provider must turn a successful breakthrough into visible character growth");
     }
 
     private static void VerifyTenThousandEquipmentItems()
@@ -158,6 +214,11 @@ internal static class DomainSmokeTests
     {
         public int Range(int minInclusive, int maxExclusive) => minInclusive;
         public float Value() => 0.99f;
+    }
+
+    private sealed class FixedClock : IServerClock
+    {
+        public DateTime UtcNow => new DateTime(2026, 8, 30, 0, 0, 0, DateTimeKind.Utc);
     }
 
     private sealed class MemoryValidationSink : IValidationEventSink

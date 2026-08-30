@@ -60,7 +60,11 @@ namespace ImmortalLoot.Player
         public static PlayerProgressState Deserialize(string json)
         {
             var state = new PlayerProgressState();
+            var hasCultivationExperience = !string.IsNullOrWhiteSpace(json) &&
+                json.IndexOf("\"CultivationExperience\"", StringComparison.Ordinal) >= 0;
             if (!string.IsNullOrWhiteSpace(json)) JsonUtility.FromJsonOverwrite(json, state);
+            if (!hasCultivationExperience && state.Realm != null)
+                state.Realm.CultivationExperience = Math.Max(0, state.Realm.Experience);
             Normalize(state);
             return state;
         }
@@ -75,6 +79,7 @@ namespace ImmortalLoot.Player
             state.Realm.RealmStage = Math.Max(1, snapshot.RealmStage);
             state.Realm.PlayerLevel = Math.Max(1, snapshot.Level);
             state.Realm.Experience = Math.Max(0, snapshot.Exp);
+            state.Realm.CultivationExperience = Math.Max(0, snapshot.Exp);
             state.CurrentStageId = DeriveV2StageId(snapshot.StageElapsedSeconds);
             return state;
         }
@@ -132,6 +137,7 @@ namespace ImmortalLoot.Player
             state.Realm.RealmStage = Math.Max(1, state.Realm.RealmStage);
             state.Realm.PlayerLevel = Math.Max(1, state.Realm.PlayerLevel);
             state.Realm.Experience = Math.Max(0, state.Realm.Experience);
+            state.Realm.CultivationExperience = Math.Max(0, state.Realm.CultivationExperience);
             state.Realm.BreakthroughMaterial = Math.Max(0, state.Realm.BreakthroughMaterial);
             var pendingTribulation = state.Realm.PendingTribulation;
             if (pendingTribulation != null &&

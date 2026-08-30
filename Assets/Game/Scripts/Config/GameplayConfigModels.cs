@@ -103,6 +103,7 @@ namespace ImmortalLoot.Config
         public long RecommendedPower;
         public long RewardExp;
         public long RewardSoftCurrency;
+        public long RewardBreakthroughMaterial;
         public long FirstClearPremiumCurrency;
         public string DropTableId;
         public string FirstClearDropTableId;

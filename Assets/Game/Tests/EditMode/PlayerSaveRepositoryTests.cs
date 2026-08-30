@@ -69,7 +69,7 @@ namespace ImmortalLoot.Tests
                 Realm = new RealmProgressState
                 {
                     RealmId = "realm_qi_coalescence", RealmStage = 4, PlayerLevel = 12,
-                    Experience = 345, BreakthroughMaterial = 678, CooldownUntilUnixSeconds = 999,
+                    Experience = 345, CultivationExperience = 456, BreakthroughMaterial = 678, CooldownUntilUnixSeconds = 999,
                     PendingTribulation = new PendingTribulation
                     {
                         Token = "trial-token", TargetRealmId = "realm_spirit_foundation",
@@ -105,6 +105,7 @@ namespace ImmortalLoot.Tests
             Assert.That(restored.Realm.RealmStage, Is.EqualTo(4));
             Assert.That(restored.Realm.PlayerLevel, Is.EqualTo(12));
             Assert.That(restored.Realm.Experience, Is.EqualTo(345));
+            Assert.That(restored.Realm.CultivationExperience, Is.EqualTo(456));
             Assert.That(restored.Realm.BreakthroughMaterial, Is.EqualTo(678));
             Assert.That(restored.Realm.CooldownUntilUnixSeconds, Is.EqualTo(999));
             Assert.That(restored.Realm.PendingTribulation.Token, Is.EqualTo("trial-token"));
@@ -121,6 +122,20 @@ namespace ImmortalLoot.Tests
             Assert.That(restored.SpiritualRoots.GrantRecords[0].TribulationToken, Is.EqualTo("trial-token"));
             Assert.That(restored.SpiritualRoots.GrantRecords[0].RootId, Is.EqualTo("root_fire"));
             Assert.That(restored.SpiritualRoots.GrantRecords[0].NewLevel, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ProgressState_LegacyAggregateSeedsCultivationExperienceFromLevelExperienceOnce()
+        {
+            var migrated = PlayerProgressStateCodec.Deserialize("{\"Realm\":{\"Experience\":345}}");
+            Assert.That(migrated.Realm.Experience, Is.EqualTo(345));
+            Assert.That(migrated.Realm.CultivationExperience, Is.EqualTo(345));
+
+            migrated.Realm.CultivationExperience = 12;
+            var restored = PlayerProgressStateCodec.Deserialize(PlayerProgressStateCodec.Serialize(migrated));
+            Assert.That(restored.Realm.Experience, Is.EqualTo(345));
+            Assert.That(restored.Realm.CultivationExperience, Is.EqualTo(12),
+                "The explicit cultivation pool must not be reseeded from level experience after migration.");
         }
 
         [Test]

@@ -57,7 +57,7 @@ namespace ImmortalLoot.Tests
             var realmState = new RealmProgressState
             {
                 RealmId = "realm_body_tempering", RealmStage = 10, PlayerLevel = 10,
-                Experience = 2000, BreakthroughMaterial = 3000
+                CultivationExperience = 2000, BreakthroughMaterial = 3000
             };
             var realm = new RealmProgressionService(catalog, RealmFormulaLoader.Load(new ResourcesConfigSource()), realmState, new FirstRandom(), new FixedClock());
             var rootState = new SpiritualRootState();

@@ -62,6 +62,7 @@ namespace ImmortalLoot.Realm
         public int RealmStage = 1;
         public int PlayerLevel = 1;
         public long Experience;
+        public long CultivationExperience;
         public long BreakthroughMaterial;
         public long CooldownUntilUnixSeconds;
         public PendingTribulation PendingTribulation;
@@ -126,12 +127,12 @@ namespace ImmortalLoot.Realm
 
             var requiredExp = Math.Max(1L, (long)Math.Ceiling((double)current.RequiredExp * _formula.MinorExpScale * _state.RealmStage / current.StageCount));
             var requiredMaterial = Math.Max(1L, (long)Math.Ceiling((double)current.BreakthroughCost * _formula.MinorCostScale * _state.RealmStage / current.StageCount));
-            if (_state.PlayerLevel < current.RequiredLevel || _state.Experience < requiredExp || _state.BreakthroughMaterial < requiredMaterial)
+            if (_state.PlayerLevel < current.RequiredLevel || _state.CultivationExperience < requiredExp || _state.BreakthroughMaterial < requiredMaterial)
                 return Result(RealmBreakthroughStatus.RequirementsNotMet, requiredExperience: requiredExp);
             _state.BreakthroughMaterial -= requiredMaterial;
             if (_random.Value() <= current.BreakthroughSuccessRate)
             {
-                _state.Experience -= requiredExp;
+                _state.CultivationExperience -= requiredExp;
                 _state.RealmStage++;
                 return Result(RealmBreakthroughStatus.AdvancedStage, requiredMaterial, requiredExp);
             }
@@ -144,6 +145,11 @@ namespace ImmortalLoot.Realm
             var pending = _state.PendingTribulation;
             if (pending == null || string.IsNullOrWhiteSpace(token) || pending.Token != token)
                 return Result(RealmBreakthroughStatus.InvalidTrialToken);
+            if (string.IsNullOrWhiteSpace(pending.TargetRealmId) ||
+                !_catalog.Realms.ContainsKey(pending.TargetRealmId) ||
+                pending.ReservedMaterial <= 0 || pending.RequiredExp <= 0 ||
+                _state.CultivationExperience < pending.RequiredExp)
+                return Result(RealmBreakthroughStatus.InvalidTrialToken);
             _state.PendingTribulation = null;
             if (!victory)
             {
@@ -151,7 +157,7 @@ namespace ImmortalLoot.Realm
                 return Result(RealmBreakthroughStatus.Failed, spent, pending.RequiredExp);
             }
             var target = _catalog.Realms[pending.TargetRealmId];
-            _state.Experience -= pending.RequiredExp;
+            _state.CultivationExperience -= pending.RequiredExp;
             _state.RealmId = target.Id;
             _state.RealmStage = 1;
             _state.CooldownUntilUnixSeconds = 0;
@@ -164,7 +170,7 @@ namespace ImmortalLoot.Realm
             var index = _ordered.FindIndex(value => value.Id == current.Id);
             if (index < 0 || index + 1 >= _ordered.Count) return Result(RealmBreakthroughStatus.MaximumRealm);
             var target = _ordered[index + 1];
-            if (_state.PlayerLevel < target.RequiredLevel || _state.Experience < target.RequiredExp || _state.BreakthroughMaterial < target.BreakthroughCost)
+            if (_state.PlayerLevel < target.RequiredLevel || _state.CultivationExperience < target.RequiredExp || _state.BreakthroughMaterial < target.BreakthroughCost)
                 return Result(RealmBreakthroughStatus.RequirementsNotMet, requiredExperience: target.RequiredExp);
             _state.BreakthroughMaterial -= target.BreakthroughCost;
             var token = Guid.NewGuid().ToString("N");

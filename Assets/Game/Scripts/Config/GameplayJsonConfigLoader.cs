@@ -90,7 +90,8 @@ namespace ImmortalLoot.Config
                 {
                     Id = row.id, Chapter = row.chapter, StageNumber = row.stageNumber, Name = row.name,
                     MonsterGroup = row.monsterGroup ?? Array.Empty<string>(), RecommendedPower = row.recommendedPower,
-                    RewardExp = row.rewardExp, RewardSoftCurrency = row.rewardSoftCurrency, FirstClearPremiumCurrency = row.firstClearPremiumCurrency,
+                    RewardExp = row.rewardExp, RewardSoftCurrency = row.rewardSoftCurrency,
+                    RewardBreakthroughMaterial = row.rewardBreakthroughMaterial, FirstClearPremiumCurrency = row.firstClearPremiumCurrency,
                     DropTableId = row.dropTableId, FirstClearDropTableId = row.firstClearDropTableId,
                     AfkRewardRate = row.afkRewardRate, UnlockCondition = row.unlockCondition, IsBossStage = row.isBossStage
                 }, "stage"),
@@ -210,6 +211,7 @@ namespace ImmortalLoot.Config
             }
             foreach (var stage in data.Stages.Values)
             {
+                if (stage.RewardBreakthroughMaterial < 0) throw new ConfigException($"Stage '{stage.Id}' has a negative breakthrough-material reward.");
                 RequireRef(data.DropTables, stage.DropTableId, $"Stage '{stage.Id}' drop table");
                 RequireRef(data.DropTables, stage.FirstClearDropTableId, $"Stage '{stage.Id}' first-clear table");
                 if (stage.MonsterGroup.Length == 0) throw new ConfigException($"Stage '{stage.Id}' has no monsters.");
@@ -241,7 +243,7 @@ namespace ImmortalLoot.Config
     [Serializable] internal sealed class MonsterFile { public int schemaVersion; public MonsterRow[] monsters; }
     [Serializable] internal sealed class MonsterRow { public string id; public string name; public string rank; public float maxHp; public float attack; public float defense; public float attackInterval; public string dropTableId; public string[] skillIds; public float enrageSeconds; }
     [Serializable] internal sealed class StageFile { public int schemaVersion; public StageRow[] stages; }
-    [Serializable] internal sealed class StageRow { public string id; public int chapter; public int stageNumber; public string name; public string[] monsterGroup; public long recommendedPower; public long rewardExp; public long rewardSoftCurrency; public long firstClearPremiumCurrency; public string dropTableId; public string firstClearDropTableId; public float afkRewardRate; public string unlockCondition; public bool isBossStage; }
+    [Serializable] internal sealed class StageRow { public string id; public int chapter; public int stageNumber; public string name; public string[] monsterGroup; public long recommendedPower; public long rewardExp; public long rewardSoftCurrency; public long rewardBreakthroughMaterial; public long firstClearPremiumCurrency; public string dropTableId; public string firstClearDropTableId; public float afkRewardRate; public string unlockCondition; public bool isBossStage; }
     [Serializable] internal sealed class ShopFile { public int schemaVersion; public ShopRow[] items; }
     [Serializable] internal sealed class ShopRow { public string id; public string shopId; public string itemId; public string currency; public long price; public string limitType; public int limitCount; public string refreshType; public string unlockCondition; }
     [Serializable] internal sealed class ActivityFile { public int schemaVersion; public ActivityRow[] activities; }

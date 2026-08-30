@@ -13,6 +13,7 @@ using ImmortalLoot.Inventory;
 using ImmortalLoot.Equipment;
 using ImmortalLoot.Battle;
 using ImmortalLoot.Cultivation;
+using ImmortalLoot.Realm;
 using ImmortalLoot.SpiritualRoot;
 using ImmortalLoot.Analytics;
 using System.IO;
@@ -189,7 +190,7 @@ namespace ImmortalLoot.Tests.PlayMode
 
             GameObject.Find("Nav_CultivationPage").GetComponent<Button>().onClick.Invoke();
             GameObject.Find("Action_CultivationPage").GetComponent<Button>().onClick.Invoke();
-            Assert.That(GameObject.Find("CultivationPageContent").GetComponent<Text>().text, Does.Contain("境界突破"));
+            Assert.That(GameObject.Find("CultivationPageContent").GetComponent<Text>().text, Does.Contain("突破条件不足"));
             Assert.That(GameObject.Find("CultivationPageContent").GetComponent<Text>().text, Does.Contain("九霄鸣脉录"));
             Assert.That(GameObject.Find("CultivationPageContent").GetComponent<Text>().text, Does.Contain("惊霆引"));
             GameObject.Find("Action_CultivationPage").GetComponent<Button>().onClick.Invoke();
@@ -691,6 +692,14 @@ namespace ImmortalLoot.Tests.PlayMode
         public IEnumerator LocalSave_ReloadRestoresAggregateGrowthStateWithoutDuplicateTaskReward()
         {
             DeleteLocalSave();
+            SaveSeededProgress(new PlayerProgressState
+            {
+                Realm = new RealmProgressState
+                {
+                    RealmId = "realm_body_tempering", RealmStage = 1, PlayerLevel = 1,
+                    Experience = 0, CultivationExperience = 100, BreakthroughMaterial = 500
+                }
+            });
             SceneManager.LoadScene("Main");
             yield return null;
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
@@ -738,6 +747,118 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(restored.SoftCurrencyForTests, Is.EqualTo(currencyBeforeDuplicateClaim),
                 "A repeated task action after reload must not grant soft currency again.");
             Assert.That(restored.ExecutePageAction("SpiritualRootPage"), Does.Contain("累计 3 点"));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator CultivationPage_ConsumesConfiguredRealmResources_AndRaisesPower()
+        {
+            DeleteLocalSave();
+            var progress = new PlayerProgressState
+            {
+                Realm = new RealmProgressState
+                {
+                    RealmId = "realm_body_tempering",
+                    RealmStage = 1,
+                    PlayerLevel = 1,
+                    Experience = 0,
+                    CultivationExperience = 100,
+                    BreakthroughMaterial = 500
+                }
+            };
+            JsonPlayerSaveRepository.CreateDefault().Save(new PlayerSaveSnapshot
+            {
+                Level = 1,
+                Exp = 0,
+                RealmId = progress.Realm.RealmId,
+                RealmStage = progress.Realm.RealmStage,
+                LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                InventoryJson = JsonUtility.ToJson(new InventoryState { EquipmentCapacity = 120 }),
+                ProgressJson = PlayerProgressStateCodec.Serialize(progress)
+            });
+
+            PrototypeGameController.PauseNextBattleForTests();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = EnterOfflineGameplay();
+            var powerBefore = controller.Power;
+
+            var result = controller.ExecutePageAction("CultivationPage");
+
+            Assert.That(result, Does.Contain("境界突破至 2 阶"));
+            Assert.That(controller.ProgressForTests.Realm.Experience, Is.Zero);
+            Assert.That(controller.ProgressForTests.Realm.CultivationExperience, Is.EqualTo(90));
+            Assert.That(controller.ProgressForTests.Realm.BreakthroughMaterial, Is.EqualTo(450));
+            Assert.That(controller.Power, Is.GreaterThan(powerBefore),
+                "The real realm stat provider must make a successful breakthrough visibly increase unified power.");
+            controller.SaveForTests();
+
+            var restored = PlayerProgressStateCodec.Deserialize(JsonPlayerSaveRepository.CreateDefault().Load().ProgressJson);
+            Assert.That(restored.Realm.RealmStage, Is.EqualTo(2));
+            Assert.That(restored.Realm.Experience, Is.Zero);
+            Assert.That(restored.Realm.CultivationExperience, Is.EqualTo(90));
+            Assert.That(restored.Realm.BreakthroughMaterial, Is.EqualTo(450));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator MajorBreakthrough_PersistsPendingTrial_AndBossResolvesItOnce()
+        {
+            DeleteLocalSave();
+            SaveSeededProgress(new PlayerProgressState
+            {
+                CurrentStageId = "stage_1_10",
+                Realm = new RealmProgressState
+                {
+                    RealmId = "realm_body_tempering", RealmStage = 10, PlayerLevel = 10,
+                    Experience = 0, CultivationExperience = 2000, BreakthroughMaterial = 3000
+                }
+            });
+
+            PrototypeGameController.PauseNextBattleForTests();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var controller = EnterOfflineGameplay();
+            Assert.That(controller.ExecutePageAction("CultivationPage"), Does.Contain("渡劫已开启"));
+            var pendingToken = controller.ProgressForTests.Realm.PendingTribulation?.Token;
+            Assert.That(pendingToken, Is.Not.Empty);
+            Assert.That(controller.ProgressForTests.Realm.BreakthroughMaterial, Is.EqualTo(1000));
+
+            PrototypeGameController.PauseNextBattleForTests();
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var restored = EnterOfflineGameplay();
+            Assert.That(restored.ProgressForTests.Realm.PendingTribulation?.Token, Is.EqualTo(pendingToken),
+                "A pending major breakthrough must survive a process-style scene reload.");
+            Assert.That(restored.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_10"));
+            var materialBeforeBoss = restored.ProgressForTests.Realm.BreakthroughMaterial;
+            var experienceGrantedBeforeBoss = restored.ConfiguredStageExperienceGrantedForTests;
+            var powerBeforeBoss = restored.Power;
+
+            restored.ResolveCurrentBattleForTests();
+
+            var settled = restored.ProgressForTests;
+            Assert.That(settled.Realm.RealmId, Is.EqualTo("realm_qi_coalescence"));
+            Assert.That(settled.Realm.RealmStage, Is.EqualTo(1));
+            Assert.That(settled.Realm.PendingTribulation, Is.Null);
+            Assert.That(settled.Realm.BreakthroughMaterial, Is.EqualTo(materialBeforeBoss + 100),
+                "Trial resolution must not double-spend the reserved material and must still grant the Boss reward.");
+            Assert.That(settled.Realm.CultivationExperience, Is.EqualTo(1050),
+                "The trial must consume 1200 accumulated cultivation experience before the Boss reward adds 250.");
+            Assert.That(settled.SpiritualRoots.GrantRecords.Count, Is.EqualTo(1));
+            Assert.That(settled.SpiritualRoots.GrantRecords[0].TribulationToken, Is.EqualTo(pendingToken));
+            Assert.That(settled.SpiritualRoots.Roots.FindAll(value => value.Level > 0).Count, Is.EqualTo(1),
+                "A successful major breakthrough must grant exactly one idempotent spiritual-root level.");
+            Assert.That(restored.ConfiguredStageExperienceGrantedForTests, Is.EqualTo(experienceGrantedBeforeBoss + 250));
+            Assert.That(restored.Power, Is.GreaterThan(powerBeforeBoss));
+
+            var saved = PlayerProgressStateCodec.Deserialize(JsonPlayerSaveRepository.CreateDefault().Load().ProgressJson);
+            Assert.That(saved.Realm.RealmId, Is.EqualTo("realm_qi_coalescence"));
+            Assert.That(saved.Realm.PendingTribulation, Is.Null);
+            Assert.That(saved.Realm.BreakthroughMaterial, Is.EqualTo(materialBeforeBoss + 100));
+            Assert.That(saved.Realm.CultivationExperience, Is.EqualTo(1050));
+            Assert.That(saved.SpiritualRoots.GrantRecords.Count, Is.EqualTo(1));
+            Assert.That(saved.SpiritualRoots.GrantRecords[0].TribulationToken, Is.EqualTo(pendingToken));
             DeleteLocalSave();
         }
 
@@ -921,6 +1042,8 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_10"));
             var configuredExperienceBefore = controller.ConfiguredStageExperienceGrantedForTests;
             var softCurrencyBefore = controller.SoftCurrencyForTests;
+            var breakthroughMaterialBefore = controller.ProgressForTests.Realm.BreakthroughMaterial;
+            var cultivationExperienceBefore = controller.ProgressForTests.Realm.CultivationExperience;
 
             controller.ResolveCurrentBattleForTests();
 
@@ -928,6 +1051,12 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(controller.LatestLoot.Quality, Is.GreaterThanOrEqualTo(EquipmentQuality.Rare));
             Assert.That(controller.ConfiguredStageExperienceGrantedForTests, Is.EqualTo(configuredExperienceBefore + 250));
             Assert.That(controller.SoftCurrencyForTests, Is.EqualTo(softCurrencyBefore + 25));
+            Assert.That(controller.ProgressForTests.Realm.BreakthroughMaterial,
+                Is.EqualTo(breakthroughMaterialBefore + 100),
+                "The configured Boss reward must fund the first real realm breakthrough instead of leaving the resource loop disconnected.");
+            Assert.That(controller.ProgressForTests.Realm.CultivationExperience,
+                Is.EqualTo(cultivationExperienceBefore + 250),
+                "Boss experience must accumulate as realm cultivation progress even when level experience rolls over.");
             Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_10"));
             Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"),
                 "A completed chapter Boss must loop back instead of leaving the runtime permanently on stage 10.");
@@ -953,6 +1082,8 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(partial.ProgressForTests.Cultivation.PrimaryMethodId, Is.Empty);
             Assert.That(partial.ExecutePageAction("CultivationPage"), Does.Contain("安全未装配"));
             Assert.That(partial.ProgressForTests.Cultivation.PrimaryMethodId, Is.Empty);
+            Assert.That(partial.ProgressForTests.Realm.RealmStage, Is.EqualTo(1),
+                "Opening cultivation without resources must never grant a free realm stage.");
 
             SaveSeededProgress(new PlayerProgressState
             {

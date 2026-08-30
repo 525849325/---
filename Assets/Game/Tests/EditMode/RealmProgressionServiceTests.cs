@@ -11,11 +11,12 @@ namespace ImmortalLoot.Tests
         [Test]
         public void MinorBreakthrough_ConsumesConfiguredResourcesAndAdvancesOneStage()
         {
-            var state = new RealmProgressState { PlayerLevel = 1, Experience = 100, BreakthroughMaterial = 500 };
+            var state = new RealmProgressState { PlayerLevel = 1, Experience = 7, CultivationExperience = 100, BreakthroughMaterial = 500 };
             var result = Service(state, 0f).BeginBreakthrough();
             Assert.That(result.Status, Is.EqualTo(RealmBreakthroughStatus.AdvancedStage));
             Assert.That(state.RealmStage, Is.EqualTo(2));
-            Assert.That(state.Experience, Is.EqualTo(90));
+            Assert.That(state.Experience, Is.EqualTo(7));
+            Assert.That(state.CultivationExperience, Is.EqualTo(90));
             Assert.That(state.BreakthroughMaterial, Is.EqualTo(450));
         }
 
@@ -25,14 +26,14 @@ namespace ImmortalLoot.Tests
             var state = new RealmProgressState
             {
                 RealmId = "realm_qi_coalescence", RealmStage = 1, PlayerLevel = 10,
-                Experience = 1000, BreakthroughMaterial = 1000
+                CultivationExperience = 1000, BreakthroughMaterial = 1000
             };
             var service = Service(state, 0.99f);
             var failed = service.BeginBreakthrough();
             Assert.That(failed.Status, Is.EqualTo(RealmBreakthroughStatus.Failed));
             Assert.That(failed.MaterialSpent, Is.EqualTo(50));
             Assert.That(state.BreakthroughMaterial, Is.EqualTo(950));
-            Assert.That(state.Experience, Is.EqualTo(1000));
+            Assert.That(state.CultivationExperience, Is.EqualTo(1000));
             Assert.That(service.BeginBreakthrough().Status, Is.EqualTo(RealmBreakthroughStatus.CooldownActive));
         }
 
@@ -52,7 +53,7 @@ namespace ImmortalLoot.Tests
             Assert.That(success.Status, Is.EqualTo(RealmBreakthroughStatus.RealmAdvanced));
             Assert.That(state.RealmId, Is.EqualTo("realm_qi_coalescence"));
             Assert.That(state.RealmStage, Is.EqualTo(1));
-            Assert.That(state.Experience, Is.EqualTo(800));
+            Assert.That(state.CultivationExperience, Is.EqualTo(800));
             Assert.That(success.UnlockedSystems, Does.Contain("SpiritualRoot"));
             Assert.That(service.ResolveTribulation(begin.TrialToken, true).Status, Is.EqualTo(RealmBreakthroughStatus.InvalidTrialToken));
         }
@@ -69,7 +70,25 @@ namespace ImmortalLoot.Tests
             Assert.That(state.BreakthroughMaterial, Is.EqualTo(2500));
             Assert.That(state.RealmId, Is.EqualTo("realm_body_tempering"));
             Assert.That(state.RealmStage, Is.EqualTo(10));
-            Assert.That(state.Experience, Is.EqualTo(2000));
+            Assert.That(state.CultivationExperience, Is.EqualTo(2000));
+        }
+
+        [Test]
+        public void CorruptPendingTribulation_IsRejectedWithoutMutatingProgress()
+        {
+            var state = ReadyForMajor();
+            state.PendingTribulation = new PendingTribulation
+            {
+                Token = "corrupt-token", TargetRealmId = "missing-realm", ReservedMaterial = 2000, RequiredExp = 1200
+            };
+
+            var result = Service(state, 0f).ResolveTribulation("corrupt-token", true);
+
+            Assert.That(result.Status, Is.EqualTo(RealmBreakthroughStatus.InvalidTrialToken));
+            Assert.That(state.PendingTribulation, Is.Not.Null);
+            Assert.That(state.RealmId, Is.EqualTo("realm_body_tempering"));
+            Assert.That(state.CultivationExperience, Is.EqualTo(2000));
+            Assert.That(state.BreakthroughMaterial, Is.EqualTo(3000));
         }
 
         [Test]
@@ -91,7 +110,7 @@ namespace ImmortalLoot.Tests
             var state = new RealmProgressState
             {
                 RealmId = "realm_immortal_ascent", RealmStage = 10, PlayerLevel = 999,
-                Experience = long.MaxValue, BreakthroughMaterial = long.MaxValue
+                CultivationExperience = long.MaxValue, BreakthroughMaterial = long.MaxValue
             };
             Assert.That(Service(state, 0f).BeginBreakthrough().Status, Is.EqualTo(RealmBreakthroughStatus.MaximumRealm));
         }
@@ -99,7 +118,7 @@ namespace ImmortalLoot.Tests
         private static RealmProgressState ReadyForMajor() => new RealmProgressState
         {
             RealmId = "realm_body_tempering", RealmStage = 10, PlayerLevel = 10,
-            Experience = 2000, BreakthroughMaterial = 3000
+            CultivationExperience = 2000, BreakthroughMaterial = 3000
         };
 
         private static RealmProgressionService Service(RealmProgressState state, float random) => new RealmProgressionService(
