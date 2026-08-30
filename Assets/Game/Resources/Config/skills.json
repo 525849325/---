@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "skills": [
+    { "id": "skill_ember_brand", "name": "烬痕诀", "element": "Fire", "type": "Active", "cooldown": 5, "multiplier": 1.5, "targetType": "SingleEnemy", "effectType": "DamageOverTime", "effectValue": 0.25, "duration": 4, "unlockRequirement": "realm_qi_coalescence" },
+    { "id": "skill_chain_thunder", "name": "霆光渡影", "element": "Lightning", "type": "Active", "cooldown": 4, "multiplier": 1.2, "targetType": "AllEnemies", "effectType": "Damage", "effectValue": 0, "duration": 0, "unlockRequirement": "realm_qi_coalescence" },
+    { "id": "skill_blood_tide", "name": "赤潮回元", "element": "Yin", "type": "Passive", "cooldown": 0, "multiplier": 0, "targetType": "Self", "effectType": "Buff", "effectValue": 0.08, "duration": 0, "unlockRequirement": "realm_spirit_foundation" }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "baseGoldPerLevel": 10,
+  "baseMaterialPerLevel": 0.5,
+  "qualityMultipliers": [1.0, 1.4, 2.0, 3.2, 5.0, 8.0],
+  "essenceByQuality": [0, 0, 1, 2, 5, 10]
+}

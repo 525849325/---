@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "durationMinutes": 120,
+  "growthPulseMinutes": 4,
+  "equipmentDropSeconds": 25,
+  "firstEquipmentMinute": 1,
+  "firstLevelMinute": 3,
+  "affixUnlockMinute": 6,
+  "firstBossMinute": 12,
+  "firstBuildDirectionMinute": 15,
+  "firstRealmBreakthroughMinute": 25,
+  "firstSpiritualRootMinute": 28,
+  "cultivationUnlockMinute": 45,
+  "higherQualityMinute": 55,
+  "rankingUnlockMinute": 70,
+  "realmPackEntryMinute": 90,
+  "clearChapterMinute": 115
+}

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "defenseConstant": 100.0,
+  "minimumDamage": 1.0,
+  "maximumDamageReduction": 0.9,
+  "maximumElementResistance": 0.8
+}

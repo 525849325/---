@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    { "id": "shop_daily_afk_ticket", "shopId": "daily_shop", "itemId": "quick_afk_ticket", "currency": "PremiumCurrency", "price": 50, "limitType": "Daily", "limitCount": 1, "refreshType": "Daily", "unlockCondition": "realm_qi_coalescence" },
+    { "id": "shop_spirit_dust", "shopId": "normal_shop", "itemId": "item_spirit_dust", "currency": "SoftCurrency", "price": 1000, "limitType": "Daily", "limitCount": 5, "refreshType": "Daily", "unlockCondition": "" }
+  ]
+}

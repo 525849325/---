@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "maximumOfflineHours": 8,
+  "experiencePerMinute": 12.0,
+  "softCurrencyPerMinute": 8.0,
+  "materialPerMinute": 0.2,
+  "minutesPerEquipmentRoll": 5.0,
+  "quickAfkHours": 2,
+  "freeQuickAfkPerDay": 1
+}

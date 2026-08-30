@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "cultivationMethods": [
+    { "id": "method_cinder_scripture", "name": "烬阳归藏篇", "quality": "Epic", "isPrimary": true, "element": "Fire", "unlockRealmId": "realm_spirit_foundation", "attackBonus": 0.05, "healthBonus": 0, "lifeStealBonus": 0, "elementDamageBonus": 0.12, "critBonus": 0, "skillMultiplierBonus": 0.05, "afkEfficiencyBonus": 0, "bossDamageBonus": 0.03, "lowHealthDamageBonus": 0 },
+    { "id": "method_thunder_pulse", "name": "九霄鸣脉录", "quality": "Epic", "isPrimary": true, "element": "Lightning", "unlockRealmId": "realm_spirit_foundation", "attackBonus": 0.03, "healthBonus": 0, "lifeStealBonus": 0, "elementDamageBonus": 0.10, "critBonus": 0.04, "skillMultiplierBonus": 0.04, "afkEfficiencyBonus": 0, "bossDamageBonus": 0, "lowHealthDamageBonus": 0 },
+    { "id": "method_crimson_well", "name": "玄血生息章", "quality": "Epic", "isPrimary": true, "element": "Yin", "unlockRealmId": "realm_spirit_foundation", "attackBonus": 0, "healthBonus": 0.15, "lifeStealBonus": 0.05, "elementDamageBonus": 0, "critBonus": 0, "skillMultiplierBonus": 0.03, "afkEfficiencyBonus": 0.05, "bossDamageBonus": 0.04, "lowHealthDamageBonus": 0.20 },
+    { "id": "method_ember_breath", "name": "流烬息法", "quality": "Rare", "isPrimary": false, "element": "Fire", "unlockRealmId": "realm_qi_coalescence", "attackBonus": 0.02, "healthBonus": 0, "lifeStealBonus": 0, "elementDamageBonus": 0.05, "critBonus": 0, "skillMultiplierBonus": 0.02, "afkEfficiencyBonus": 0, "bossDamageBonus": 0, "lowHealthDamageBonus": 0 },
+    { "id": "method_quick_spark", "name": "惊霆引", "quality": "Rare", "isPrimary": false, "element": "Lightning", "unlockRealmId": "realm_qi_coalescence", "attackBonus": 0, "healthBonus": 0, "lifeStealBonus": 0, "elementDamageBonus": 0.04, "critBonus": 0.02, "skillMultiplierBonus": 0.01, "afkEfficiencyBonus": 0, "bossDamageBonus": 0, "lowHealthDamageBonus": 0 },
+    { "id": "method_blood_return", "name": "归血小周天", "quality": "Rare", "isPrimary": false, "element": "Yin", "unlockRealmId": "realm_qi_coalescence", "attackBonus": 0, "healthBonus": 0.08, "lifeStealBonus": 0.02, "elementDamageBonus": 0, "critBonus": 0, "skillMultiplierBonus": 0, "afkEfficiencyBonus": 0.03, "bossDamageBonus": 0, "lowHealthDamageBonus": 0.08 }
+  ]
+}

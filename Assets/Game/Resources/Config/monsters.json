@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "monsters": [
+    { "id": "monster_wasteland_beast", "name": "荒原妖兽", "rank": "Normal", "maxHp": 35, "attack": 3, "defense": 2, "attackInterval": 2, "dropTableId": "drop_stage_1", "skillIds": [], "enrageSeconds": 0 },
+    { "id": "monster_stone_nightmare", "name": "石魇", "rank": "Boss", "maxHp": 420, "attack": 15, "defense": 10, "attackInterval": 1.8, "dropTableId": "drop_boss_1", "skillIds": ["skill_blood_tide"], "enrageSeconds": 60 }
+  ]
+}

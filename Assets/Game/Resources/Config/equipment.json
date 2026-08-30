@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "equipment": [
+    { "id": "weapon_cloudsteel_blade", "displayName": "云纹青锋", "slot": "Weapon", "baseAttack": 8, "setId": "set_cloudtrace", "specialEffectPool": ["effect_cinder_echo", "effect_thunder_echo"], "baseStats": [{ "stat": "Attack", "modifierType": "Flat", "baseValue": 8, "valuePerLevel": 1.2 }], "affixPool": ["attack_flat", "attack_pct", "crit", "fire", "lightning", "lifesteal", "attack_speed"] },
+    { "id": "helmet_mistveil", "displayName": "雾隐冠", "slot": "Helmet", "baseAttack": 0, "setId": "set_cloudtrace", "specialEffectPool": ["effect_warding_mist"], "baseStats": [{ "stat": "HP", "modifierType": "Flat", "baseValue": 35, "valuePerLevel": 4 }], "affixPool": ["hp_flat", "defense_flat", "crit", "damage_reduction", "fire", "lightning"] },
+    { "id": "armor_cloudtrace", "displayName": "云迹法衣", "slot": "Armor", "baseAttack": 0, "setId": "set_cloudtrace", "specialEffectPool": ["effect_warding_mist"], "baseStats": [{ "stat": "Defense", "modifierType": "Flat", "baseValue": 8, "valuePerLevel": 1 }], "affixPool": ["hp_flat", "defense_flat", "damage_reduction", "lifesteal", "fire", "lightning"] },
+    { "id": "gloves_starseal", "displayName": "星封护手", "slot": "Gloves", "baseAttack": 0, "setId": "set_cloudtrace", "specialEffectPool": ["effect_cinder_echo"], "baseStats": [{ "stat": "Attack", "modifierType": "Flat", "baseValue": 3, "valuePerLevel": 0.5 }], "affixPool": ["attack_flat", "attack_pct", "crit", "attack_speed", "fire", "lightning", "lifesteal"] },
+    { "id": "boots_windstep", "displayName": "凌风履", "slot": "Boots", "baseAttack": 0, "setId": "set_cloudtrace", "specialEffectPool": ["effect_thunder_echo"], "baseStats": [{ "stat": "Dodge", "modifierType": "Flat", "baseValue": 0.01, "valuePerLevel": 0.001 }], "affixPool": ["hp_flat", "defense_flat", "attack_speed", "crit", "fire", "lightning"] },
+    { "id": "necklace_emberjade", "displayName": "烬玉坠", "slot": "Necklace", "baseAttack": 0, "setId": "", "specialEffectPool": ["effect_cinder_echo"], "baseStats": [{ "stat": "DamageBonus", "modifierType": "Flat", "baseValue": 0.02, "valuePerLevel": 0.001 }], "affixPool": ["attack_pct", "crit", "fire", "lightning", "lifesteal", "attack_speed"] },
+    { "id": "ring_sunscar", "displayName": "曜痕戒", "slot": "Ring1", "baseAttack": 0, "setId": "", "specialEffectPool": ["effect_cinder_echo"], "baseStats": [{ "stat": "CritDamage", "modifierType": "Flat", "baseValue": 0.05, "valuePerLevel": 0.002 }], "affixPool": ["attack_flat", "attack_pct", "crit", "fire", "lifesteal", "attack_speed"] },
+    { "id": "ring_moonpulse", "displayName": "月脉环", "slot": "Ring2", "baseAttack": 0, "setId": "", "specialEffectPool": ["effect_thunder_echo"], "baseStats": [{ "stat": "CritRate", "modifierType": "Flat", "baseValue": 0.01, "valuePerLevel": 0.001 }], "affixPool": ["attack_flat", "attack_pct", "crit", "lightning", "lifesteal", "attack_speed"] },
+    { "id": "belt_earthbind", "displayName": "镇岳带", "slot": "Belt", "baseAttack": 0, "setId": "", "specialEffectPool": ["effect_warding_mist"], "baseStats": [{ "stat": "HP", "modifierType": "Flat", "baseValue": 25, "valuePerLevel": 3 }], "affixPool": ["hp_flat", "defense_flat", "damage_reduction", "lifesteal", "fire", "lightning"] },
+    { "id": "artifact_firstlight", "displayName": "初照古镜", "slot": "Artifact", "baseAttack": 0, "setId": "", "specialEffectPool": ["effect_cinder_echo", "effect_thunder_echo", "effect_warding_mist"], "baseStats": [{ "stat": "DamageBonus", "modifierType": "Flat", "baseValue": 0.03, "valuePerLevel": 0.002 }], "affixPool": ["attack_pct", "crit", "fire", "lightning", "lifesteal", "damage_reduction"] }
+  ],
+  "specialEffects": [
+    { "id": "effect_cinder_echo", "displayName": "烬火回响", "requiredPieces": 1, "modifiers": [{ "stat": "FireDamage", "modifierType": "Flat", "value": 0.12 }] },
+    { "id": "effect_thunder_echo", "displayName": "霆光共鸣", "requiredPieces": 1, "modifiers": [{ "stat": "LightningDamage", "modifierType": "Flat", "value": 0.12 }] },
+    { "id": "effect_warding_mist", "displayName": "雾守", "requiredPieces": 1, "modifiers": [{ "stat": "DamageReduction", "modifierType": "Flat", "value": 0.05 }] }
+  ],
+  "sets": [
+    { "id": "set_cloudtrace_two", "groupId": "set_cloudtrace", "displayName": "云迹套装·二件", "requiredPieces": 2, "modifiers": [{ "stat": "HP", "modifierType": "AdditivePercent", "value": 0.08 }] },
+    { "id": "set_cloudtrace_four", "groupId": "set_cloudtrace", "displayName": "云迹套装·四件", "requiredPieces": 4, "modifiers": [{ "stat": "Attack", "modifierType": "AdditivePercent", "value": 0.1 }] }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "name": "ImmortalLoot.Runtime",
+  "rootNamespace": "ImmortalLoot",
+  "references": ["Unity.ugui", "UnityEngine.UnityWebRequestModule"],
+  "autoReferenced": true
+}

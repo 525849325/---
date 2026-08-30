@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "hpWeight": 0.1,
+  "attackWeight": 5.0,
+  "defenseWeight": 3.0,
+  "critRateWeight": 1000.0,
+  "critDamageWeight": 300.0,
+  "attackSpeedWeight": 250.0,
+  "utilityWeight": 200.0,
+  "elementWeight": 350.0,
+  "resistanceWeight": 150.0
+}

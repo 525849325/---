@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "activities": [
+    { "id": "activity_double_afk_launch", "name": "灵潮涌动", "type": "AfkRewardMultiplier", "startTimeUtc": "2026-01-01T00:00:00Z", "endTimeUtc": "2030-01-01T00:00:00Z", "condition": "", "rewardModifier": 2.0 }
+  ]
+}

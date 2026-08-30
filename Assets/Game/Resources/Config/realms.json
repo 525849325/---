@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "realms": [
+    { "id": "realm_body_tempering", "name": "炼体", "order": 1, "stageCount": 10, "requiredLevel": 1, "requiredExp": 100, "breakthroughCost": 500, "breakthroughSuccessRate": 1.0, "baseStatBonus": 0.05, "unlockSystems": ["Equipment"], "dailyDungeonBonus": 0 },
+    { "id": "realm_qi_coalescence", "name": "凝气", "order": 2, "stageCount": 10, "requiredLevel": 10, "requiredExp": 1200, "breakthroughCost": 2000, "breakthroughSuccessRate": 0.95, "baseStatBonus": 0.08, "unlockSystems": ["SpiritualRoot"], "dailyDungeonBonus": 0 },
+    { "id": "realm_spirit_foundation", "name": "筑灵", "order": 3, "stageCount": 10, "requiredLevel": 20, "requiredExp": 8000, "breakthroughCost": 8000, "breakthroughSuccessRate": 0.9, "baseStatBonus": 0.12, "unlockSystems": ["CultivationMethod"], "dailyDungeonBonus": 1 },
+    { "id": "realm_core_crystallization", "name": "结丹", "order": 4, "stageCount": 10, "requiredLevel": 30, "requiredExp": 30000, "breakthroughCost": 24000, "breakthroughSuccessRate": 0.85, "baseStatBonus": 0.16, "unlockSystems": ["RealmGift"], "dailyDungeonBonus": 1 },
+    { "id": "realm_soul_incarnation", "name": "化婴", "order": 5, "stageCount": 10, "requiredLevel": 40, "requiredExp": 90000, "breakthroughCost": 60000, "breakthroughSuccessRate": 0.8, "baseStatBonus": 0.21, "unlockSystems": ["Artifact"], "dailyDungeonBonus": 1 },
+    { "id": "realm_spirit_wandering", "name": "神游", "order": 6, "stageCount": 10, "requiredLevel": 50, "requiredExp": 240000, "breakthroughCost": 140000, "breakthroughSuccessRate": 0.75, "baseStatBonus": 0.27, "unlockSystems": ["WorldBoss"], "dailyDungeonBonus": 2 },
+    { "id": "realm_void_cavern", "name": "洞虚", "order": 7, "stageCount": 10, "requiredLevel": 60, "requiredExp": 600000, "breakthroughCost": 320000, "breakthroughSuccessRate": 0.72, "baseStatBonus": 0.34, "unlockSystems": ["AdvancedAffix"], "dailyDungeonBonus": 2 },
+    { "id": "realm_way_union", "name": "合道", "order": 8, "stageCount": 10, "requiredLevel": 70, "requiredExp": 1400000, "breakthroughCost": 700000, "breakthroughSuccessRate": 0.7, "baseStatBonus": 0.42, "unlockSystems": ["AncientMethod"], "dailyDungeonBonus": 2 },
+    { "id": "realm_heaven_crossing", "name": "渡天", "order": 9, "stageCount": 10, "requiredLevel": 80, "requiredExp": 3200000, "breakthroughCost": 1500000, "breakthroughSuccessRate": 0.68, "baseStatBonus": 0.51, "unlockSystems": ["MythicEquipment"], "dailyDungeonBonus": 3 },
+    { "id": "realm_immortal_ascent", "name": "登仙", "order": 10, "stageCount": 10, "requiredLevel": 90, "requiredExp": 7000000, "breakthroughCost": 3200000, "breakthroughSuccessRate": 0.65, "baseStatBonus": 0.62, "unlockSystems": ["AscensionMap"], "dailyDungeonBonus": 3 }
+  ]
+}

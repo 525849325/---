@@ -1,0 +1,12 @@
+{
+  "name": "ImmortalLoot.PlayModeTests",
+  "references": [
+    "UnityEngine.TestRunner",
+    "ImmortalLoot.Runtime",
+    "Unity.ugui"
+  ],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "autoReferenced": true,
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"]
+}

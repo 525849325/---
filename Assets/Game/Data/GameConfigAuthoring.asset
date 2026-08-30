@@ -1,0 +1,63 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b6e02b97c0db284996bf1f813b921d5, type: 3}
+  m_Name: GameConfigAuthoring
+  m_EditorClassIdentifier: ImmortalLoot.Runtime::ImmortalLoot.Config.JsonConfigAuthoringAsset
+  Entries:
+  - ConfigName: affixes
+    RuntimeJson: {fileID: 4900000, guid: e68d5e4a3bece2447a50c701a2bc1aeb, type: 3}
+    JsonOverride: 
+  - ConfigName: equipment
+    RuntimeJson: {fileID: 4900000, guid: 12bbadac9c52c20469b7d0cfebb61c61, type: 3}
+    JsonOverride: 
+  - ConfigName: quality_rules
+    RuntimeJson: {fileID: 4900000, guid: 4cafe93099696f647b3df5b3115a9943, type: 3}
+    JsonOverride: 
+  - ConfigName: realms
+    RuntimeJson: {fileID: 4900000, guid: b8ffc4d7e8589524dbeda44d4a881636, type: 3}
+    JsonOverride: 
+  - ConfigName: spiritual_roots
+    RuntimeJson: {fileID: 4900000, guid: bdde69f14651bee4ea680d54d17d046a, type: 3}
+    JsonOverride: 
+  - ConfigName: skills
+    RuntimeJson: {fileID: 4900000, guid: 9a42551c4964e5f40affe44b4147020b, type: 3}
+    JsonOverride: 
+  - ConfigName: cultivation_methods
+    RuntimeJson: {fileID: 4900000, guid: c68634d0467c55e46ba4d23595f063cc, type: 3}
+    JsonOverride: 
+  - ConfigName: drop_tables
+    RuntimeJson: {fileID: 4900000, guid: 40f2cfaac74b46f4bb3fd89028b211f0, type: 3}
+    JsonOverride: 
+  - ConfigName: monsters
+    RuntimeJson: {fileID: 4900000, guid: 39a47caa5ffa10041be50d4d2adb0e1f, type: 3}
+    JsonOverride: 
+  - ConfigName: stages
+    RuntimeJson: {fileID: 4900000, guid: 2a064b247d7070e4380f17669bc7e4e9, type: 3}
+    JsonOverride: 
+  - ConfigName: shop
+    RuntimeJson: {fileID: 4900000, guid: 04abd456c58e67f40aa5d7426dbd0dbf, type: 3}
+    JsonOverride: 
+  - ConfigName: activities
+    RuntimeJson: {fileID: 4900000, guid: 78d8b3687a7e1c14fb04e44260353601, type: 3}
+    JsonOverride: 
+  - ConfigName: battle_formula
+    RuntimeJson: {fileID: 4900000, guid: 942d5575bdf664044b5da2cf6dbceb18, type: 3}
+    JsonOverride: 
+  - ConfigName: inventory_formula
+    RuntimeJson: {fileID: 4900000, guid: 253c52ddb8dbc4b41a214061b7ceb0ca, type: 3}
+    JsonOverride: 
+  - ConfigName: afk
+    RuntimeJson: {fileID: 4900000, guid: 3aed91b593b6e164d8be72ea03a4ddb9, type: 3}
+    JsonOverride: 
+  - ConfigName: realm_formula
+    RuntimeJson: {fileID: 4900000, guid: fbd41c392c526854aa37c01915a96fd4, type: 3}
+    JsonOverride: 

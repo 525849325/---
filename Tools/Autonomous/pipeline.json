@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "projectName": "太初拾遗录",
+  "unityVersion": "6000.5.10f1",
+  "unityExe": "C:\\Program Files\\Unity\\Hub\\Editor\\6000.5.10f1\\Editor\\Unity.exe",
+  "scene": "Assets/Game/Scenes/Main.unity",
+  "windowsBuildMethod": "ImmortalLoot.Editor.PlayerBuildTools.BuildWindowsDevelopmentPlayer",
+  "windowsPlayer": "Build/Windows/ImmortalLoot.exe",
+  "quality": {
+    "minimumScreenshots": 8,
+    "minimumButtonHeight": 44,
+    "allowTextClipping": false,
+    "allowOutOfBounds": false
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "tasks": [
+    { "id": "daily_login", "eventType": "Login", "target": 1, "activityPoints": 20, "softCurrency": 50, "premiumCurrency": 0, "items": {} },
+    { "id": "daily_stage_3", "eventType": "StageClear", "target": 3, "activityPoints": 20, "softCurrency": 100, "premiumCurrency": 0, "items": {} },
+    { "id": "daily_boss_1", "eventType": "BossVictory", "target": 1, "activityPoints": 20, "softCurrency": 50, "premiumCurrency": 5, "items": {} },
+    { "id": "daily_enhance_1", "eventType": "EquipmentEnhance", "target": 1, "activityPoints": 20, "softCurrency": 80, "premiumCurrency": 0, "items": {} },
+    { "id": "daily_decompose_5", "eventType": "EquipmentDecompose", "target": 5, "activityPoints": 20, "softCurrency": 80, "premiumCurrency": 0, "items": {} },
+    { "id": "daily_tribulation_1", "eventType": "Tribulation", "target": 1, "activityPoints": 20, "softCurrency": 120, "premiumCurrency": 0, "items": {} }
+  ],
+  "activityChests": [
+    { "requiredPoints": 20, "softCurrency": 100, "premiumCurrency": 0, "items": {} },
+    { "requiredPoints": 40, "softCurrency": 150, "premiumCurrency": 0, "items": {} },
+    { "requiredPoints": 60, "softCurrency": 200, "premiumCurrency": 5, "items": {} },
+    { "requiredPoints": 80, "softCurrency": 250, "premiumCurrency": 10, "items": {} },
+    { "requiredPoints": 100, "softCurrency": 400, "premiumCurrency": 20, "items": { "quick_afk_ticket": 1 } }
+  ]
+}

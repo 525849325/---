@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "products": [
+    { "id": "first_charge_6", "name": "初缘礼", "type": "FirstCharge", "amountMinorUnits": 600, "currencyCode": "CNY", "immediatePremium": 60, "dailyPremium": 0, "durationDays": 0, "afkCapBonusHours": 0, "quickAfkBonus": 0, "lifetimeLimit": 1, "unlockRealmId": "", "rewardItemId": "quick_afk_ticket", "rewardItemCount": 2 },
+    { "id": "monthly_card_30", "name": "望月修行契", "type": "MonthlyCard", "amountMinorUnits": 3000, "currencyCode": "CNY", "immediatePremium": 300, "dailyPremium": 30, "durationDays": 30, "afkCapBonusHours": 4, "quickAfkBonus": 1, "lifetimeLimit": 0, "unlockRealmId": "", "rewardItemId": "", "rewardItemCount": 0 },
+    { "id": "permanent_card_98", "name": "长明行旅印", "type": "PermanentCard", "amountMinorUnits": 9800, "currencyCode": "CNY", "immediatePremium": 980, "dailyPremium": 10, "durationDays": -1, "afkCapBonusHours": 2, "quickAfkBonus": 0, "lifetimeLimit": 1, "unlockRealmId": "", "rewardItemId": "", "rewardItemCount": 0 },
+    { "id": "daily_pack_6", "name": "每日灵砂囊", "type": "DailyPack", "amountMinorUnits": 600, "currencyCode": "CNY", "immediatePremium": 60, "dailyPremium": 0, "durationDays": 0, "afkCapBonusHours": 0, "quickAfkBonus": 0, "lifetimeLimit": 0, "unlockRealmId": "", "rewardItemId": "item_spirit_dust", "rewardItemCount": 20 },
+    { "id": "realm_pack_core", "name": "结丹启程礼", "type": "RealmPack", "amountMinorUnits": 1800, "currencyCode": "CNY", "immediatePremium": 180, "dailyPremium": 0, "durationDays": 0, "afkCapBonusHours": 0, "quickAfkBonus": 0, "lifetimeLimit": 1, "unlockRealmId": "realm_core_crystallization", "rewardItemId": "quick_afk_ticket", "rewardItemCount": 3 },
+    { "id": "jade_60", "name": "仙晶小匣", "type": "PremiumCurrency", "amountMinorUnits": 600, "currencyCode": "CNY", "immediatePremium": 60, "dailyPremium": 0, "durationDays": 0, "afkCapBonusHours": 0, "quickAfkBonus": 0, "lifetimeLimit": 0, "unlockRealmId": "", "rewardItemId": "", "rewardItemCount": 0 }
+  ]
+}

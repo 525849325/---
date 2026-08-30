@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "spiritualRoots": [
+    { "id": "root_metal", "name": "金灵根", "element": "Metal", "maxLevel": 20, "damageBonusPerLevel": 0.01, "resistanceBonusPerLevel": 0.005, "skillBonusPerLevel": 0.006 },
+    { "id": "root_wood", "name": "木灵根", "element": "Wood", "maxLevel": 20, "damageBonusPerLevel": 0.01, "resistanceBonusPerLevel": 0.005, "skillBonusPerLevel": 0.006 },
+    { "id": "root_water", "name": "水灵根", "element": "Water", "maxLevel": 20, "damageBonusPerLevel": 0.01, "resistanceBonusPerLevel": 0.005, "skillBonusPerLevel": 0.006 },
+    { "id": "root_fire", "name": "火灵根", "element": "Fire", "maxLevel": 20, "damageBonusPerLevel": 0.01, "resistanceBonusPerLevel": 0.005, "skillBonusPerLevel": 0.006 },
+    { "id": "root_earth", "name": "土灵根", "element": "Earth", "maxLevel": 20, "damageBonusPerLevel": 0.01, "resistanceBonusPerLevel": 0.005, "skillBonusPerLevel": 0.006 },
+    { "id": "root_wind", "name": "风灵根", "element": "Wind", "maxLevel": 20, "damageBonusPerLevel": 0.01, "resistanceBonusPerLevel": 0.005, "skillBonusPerLevel": 0.006 },
+    { "id": "root_lightning", "name": "雷灵根", "element": "Lightning", "maxLevel": 20, "damageBonusPerLevel": 0.01, "resistanceBonusPerLevel": 0.005, "skillBonusPerLevel": 0.006 },
+    { "id": "root_yin", "name": "阴灵根", "element": "Yin", "maxLevel": 20, "damageBonusPerLevel": 0.01, "resistanceBonusPerLevel": 0.005, "skillBonusPerLevel": 0.006 },
+    { "id": "root_yang", "name": "阳灵根", "element": "Yang", "maxLevel": 20, "damageBonusPerLevel": 0.01, "resistanceBonusPerLevel": 0.005, "skillBonusPerLevel": 0.006 }
+  ]
+}

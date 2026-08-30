@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "minorCostScale": 1.0,
+  "minorExpScale": 1.0,
+  "minorFailureLossRatio": 0.25,
+  "tribulationFailureLossRatio": 0.25,
+  "failureCooldownSeconds": 300
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "dropTables": [
+    { "id": "drop_stage_1", "name": "荒原普通掉落", "rollCount": 1, "entries": [
+      { "itemId": "soft_currency", "weight": 600, "minCount": 8, "maxCount": 14, "minQuality": "Common", "maxQuality": "Common", "condition": "" },
+      { "itemId": "weapon_cloudsteel_blade", "weight": 400, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Epic", "condition": "" }
+    ]},
+    { "id": "drop_boss_1", "name": "石魇首领掉落", "rollCount": 2, "entries": [
+      { "itemId": "weapon_cloudsteel_blade", "weight": 700, "minCount": 1, "maxCount": 1, "minQuality": "Rare", "maxQuality": "Legendary", "condition": "" },
+      { "itemId": "item_spirit_dust", "weight": 300, "minCount": 2, "maxCount": 5, "minQuality": "Common", "maxQuality": "Common", "condition": "" }
+    ]},
+    { "id": "drop_first_clear_1", "name": "首通奖励", "rollCount": 1, "entries": [
+      { "itemId": "premium_currency", "weight": 1, "minCount": 10, "maxCount": 10, "minQuality": "Common", "maxQuality": "Common", "condition": "FirstClear" }
+    ]},
+    { "id": "drop_prototype_equipment", "name": "原型场景装备验证", "rollCount": 1, "entries": [
+      { "itemId": "weapon_cloudsteel_blade", "weight": 1, "minCount": 1, "maxCount": 1, "minQuality": "Fine", "maxQuality": "Legendary", "condition": "" }
+    ]}
+  ]
+}

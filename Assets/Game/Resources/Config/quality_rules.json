@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "rules": [
+    { "quality": "Common", "minAffixes": 1, "maxAffixes": 1 },
+    { "quality": "Fine", "minAffixes": 2, "maxAffixes": 2 },
+    { "quality": "Rare", "minAffixes": 2, "maxAffixes": 3 },
+    { "quality": "Epic", "minAffixes": 3, "maxAffixes": 4 },
+    { "quality": "Legendary", "minAffixes": 4, "maxAffixes": 5 },
+    { "quality": "Mythic", "minAffixes": 5, "maxAffixes": 5 }
+  ]
+}

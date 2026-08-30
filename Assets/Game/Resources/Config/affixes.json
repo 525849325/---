@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "affixes": [
+    { "id": "attack_flat", "displayName": "攻击", "stat": "Attack", "modifierType": "Flat", "minValue": 3, "maxValue": 9, "weight": 100, "conflictGroup": "attack_primary" },
+    { "id": "attack_pct", "displayName": "攻击%", "stat": "Attack", "modifierType": "AdditivePercent", "minValue": 0.02, "maxValue": 0.06, "weight": 70, "conflictGroup": "attack_primary" },
+    { "id": "hp_flat", "displayName": "生命", "stat": "HP", "modifierType": "Flat", "minValue": 15, "maxValue": 45, "weight": 100, "conflictGroup": "hp_primary" },
+    { "id": "defense_flat", "displayName": "防御", "stat": "Defense", "modifierType": "Flat", "minValue": 2, "maxValue": 7, "weight": 90, "conflictGroup": "defense_primary" },
+    { "id": "crit", "displayName": "会心率%", "stat": "CritRate", "modifierType": "Flat", "minValue": 0.01, "maxValue": 0.04, "weight": 45, "conflictGroup": "crit" },
+    { "id": "fire", "displayName": "炎元伤害%", "stat": "FireDamage", "modifierType": "Flat", "minValue": 0.03, "maxValue": 0.08, "weight": 35, "conflictGroup": "element" },
+    { "id": "lightning", "displayName": "霆元伤害%", "stat": "LightningDamage", "modifierType": "Flat", "minValue": 0.03, "maxValue": 0.08, "weight": 35, "conflictGroup": "element" },
+    { "id": "lifesteal", "displayName": "汲元%", "stat": "LifeSteal", "modifierType": "Flat", "minValue": 0.01, "maxValue": 0.03, "weight": 25, "conflictGroup": "sustain" },
+    { "id": "attack_speed", "displayName": "攻速%", "stat": "AttackSpeed", "modifierType": "AdditivePercent", "minValue": 0.02, "maxValue": 0.07, "weight": 35, "conflictGroup": "speed" },
+    { "id": "damage_reduction", "displayName": "减伤%", "stat": "DamageReduction", "modifierType": "Flat", "minValue": 0.01, "maxValue": 0.04, "weight": 25, "conflictGroup": "defense_special" }
+  ]
+}
