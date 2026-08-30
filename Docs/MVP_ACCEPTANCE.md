@@ -1,56 +1,44 @@
-# Project ImmortalLoot MVP 验收矩阵
+# 《太初：无尽轮回》V0.1 MVP 验收矩阵
 
-状态定义：`PASS` 表示当前工作区存在直接实现和自动化/运行证据；`PARTIAL` 表示领域或 API 已存在，但完整玩家交互或生产边界未闭环；`WAIVED` 表示用户明确批准不纳入本次 MVP 验收，但风险仍被记录。
+审计日期：2026-08-30。当前源码基线：`bffd195`。状态只接受与当前源码对应的直接证据；更早提交的测试、构建、模拟器截图只保留为历史参考，不自动继承为当前 PASS。
 
-## 最终玩家流程
+状态定义：`PASS` 为当前源码已有直接自动化或运行证据；`TESTING` 为实现已落地但当前 Unity/设备证据未闭合；`BLOCKED` 为存在外部或环境依赖；`PARTIAL` 为功能可用但发布边界尚未完成。
 
-| 要求 | 状态 | 当前证据 / 缺口 |
-|---|---|---|
-| 登录并创建角色 | PASS | Main 明确提供离线演示与服务器登录两种入口；REST 网关和真实 Kestrel 建档/资料调用均验证通过，失败不会伪装成功。 |
-| 自动战斗、击杀与技能 | PASS | Main PlayMode、纯 C# 战斗测试；主动/被动、CD、AOE、DOT、Buff/Debuff、Boss 狂暴均覆盖。 |
-| 获得经验并升级 | PASS | Main 可见升级；服务端战斗权威发经验并按阈值升级。 |
-| 随机装备与合法词条 | PASS | Main 可见词条；服务端生成唯一实例；真实配置 10,000 件统计通过。 |
-| 穿戴并看到战力变化 | PASS | PlayMode 实际点击“穿戴最新装备”并断言统一 Power 上升；服务端穿戴同步 Power。 |
-| 三类背包、筛选、比较、强化与分解 | PASS | 领域测试覆盖装备/材料/消耗品、排序筛选、批量分解和传奇锁定；服务器强化按共享公式幂等扣款并推进每日任务，挂机装备实际入包；原型页已接入比较、强化及安全分解。最新 PlayMode 2/2 通过，夜神竖屏实测可由底部导航进入装备页并穿戴新装备，战力从 986 更新为 1114。 |
-| 1-1～1-10 与 Boss | PASS | 连续配置链；每关经验、灵砂、首通仙晶与 DropTable 均配置化，SQLite 验证十关权威通关、锁关拒绝、首通日志和 Boss 高品质下限。 |
-| 离线挂机与快速挂机 | PASS | 客户端领域、服务器共享 `afk.json` 公式、基础 8 小时上限、卡权益额外上限、双倍活动和幂等均通过；在线活动页可领取普通及 2 小时快速挂机，服务器按 UTC 日限制免费与月卡次数。 |
-| 境界突破与渡劫 | PASS | 客户端完整领域与服务器突破 API 通过；在线修炼/灵根页会提交幂等突破并展示权威结果。 |
-| 随机灵根 | PASS | 大境界渡劫从未满级的九系配置中随机，落库 `PlayerSpiritualRoot`；重放总等级保持 1，资料接口和在线灵根页返回等级/上限。 |
-| 学习功法并形成三套 Build | PASS | 火/雷/血主辅功法由配置学习和装备，`CultivationMethodStatProvider` 汇入统一属性/战力；最新 PlayMode 在真实 Main 场景连续切换雷修、血修、火修，并分别断言配置中的主辅功法名称。 |
-| 排行榜 | PASS | 服务器永久/周榜、三维快照和防作弊通过；在线 UGUI 排行页会请求并展示权威战力榜及自身排名。 |
-| 模拟仙晶购买 | PASS | 在线商城按钮已串联服务器建单→Mock Provider→回执验证→权益展示；服务器事务发放仙晶、首充法器/材料/挂机券，计算月卡/永久卡权益并提供每日仙晶幂等领取；Production 默认拒绝 Mock 回执，客户端不直接发币。 |
-| 每日任务与活跃宝箱 | PASS | 六类任务和 20/40/60/80/100 宝箱由共享 `tasks.json` 驱动；SQLite 实际执行登录、推图、Boss、强化、5 次分解和成功渡劫，确认全部任务可领/已领；在线 UGUI 可逐项领取任务与活跃宝箱。 |
-| 邮件奖励 | PASS | 过期过滤和附件幂等通过；在线 UGUI 会列出并领取首封未领取有效邮件。 |
-
-## 架构、安全与数据
+## 商业验证核心循环
 
 | 要求 | 状态 | 当前证据 / 缺口 |
 |---|---|---|
-| JSON 运行时配置 + ScriptableObject 编辑 | PASS | 统一 Repository、全表交叉验证、Authoring asset 与导出菜单。 |
-| UI/表现与战斗数值分离 | PASS | AutoBattleEngine 为纯 C#；控制器只适配 UGUI。 |
-| 服务器权威重要数值 | PASS | 客户端 REST DTO 不含 PlayerId/价格/奖励；服务器校验关卡解锁及战力门槛后才结算战斗，低战力 Boss 零奖励；货币、境界、排行和支付均由服务器计算，装备掉落读取共享关卡 DropTable、权重及品质边界。 |
-| 支付/奖励/副本幂等 | PASS | SQLite 覆盖订单、交易号、首充、月卡/永久卡、每日权益、境界/终身购买限制、战斗、商城、任务、宝箱、邮件、挂机和分解重放；支付奖励同时写 Payment/Currency/Item/Equipment/Reward 日志。 |
-| 六类日志 | PASS | Currency/Item/Equipment/Payment/Reward/Battle 表及写入验证。 |
-| PostgreSQL/Redis 替换点 | PASS | 原目标允许开发使用 SQLite、只要求预留；持久化完全位于 EF Core DbContext，排行缓存通过 `IRankingCache` 隔离，可替换 Provider 而不改领域服务。 |
-| 存档 | PASS | 服务端数据库存档；客户端非权威缓存使用版本、SHA-256、原子写入且不保存 Token。 |
-| GM Debug | PASS | Development-only 页面按钮实际调用 `GameDebugService`，逐步覆盖资源/等级、指定词条 Mythic 装备、突破/关卡/灵根/功法、离线/充值及清档；PlayMode 全序列通过。 |
-| 后续系统接口 | PASS | Pet/Guild/Trade/Auction/PvP/CrossServer/Season/Profession 只定义接口。 |
+| 启动后进入离线自动战斗 | TESTING | 当前程序集静态编译与核心循环 smoke PASS；需 `bffd195` 对应 PlayMode 运行。 |
+| 20–60 秒首件装备、比较/换装、战力增长 | TESTING | 10/60 分钟领域和真实战斗节奏 smoke PASS；当前 Unity 场景与真机触控未复验。 |
+| 2–4 分钟首 Boss、奖励窗口和循环推进 | TESTING | 首 Boss 约 182 秒到达、193 秒击败；离线 smoke 奖励账一致，待当前 PlayMode 与设备确认。 |
+| 保存、重进与离线收益 | TESTING | 聚合存档、原子写入、损坏隔离、离线单次领取和累计修为旧档迁移已有实现与离线证据；待当前 Unity 重进回归。 |
+| 境界、破境石、渡劫、灵根和统一战力 | TESTING | `bffd195` 已接入真实突破服务、Boss 资源、跨重启 pending、幂等灵根与单一属性 Provider；静态编译和领域 smoke PASS，新增 Unity 用例尚未运行。 |
+| 10/60 分钟节奏与不死锁 | PASS | 当前 CoreLoop、RealBattle 与 Balance smoke 均 PASS；该结论不替代真机性能与触控验收。 |
+| 商店结构与 Development Mock | PARTIAL | 商品结构、成长后曝光、Release 拒绝 Mock 与设置入口已实现；真实渠道账号、商品与签名不属于自动化闭环。 |
 
-## 测试、性能与发布
+## 工程、安全与后端
 
 | 要求 | 状态 | 当前证据 / 缺口 |
 |---|---|---|
-| 指定系统 Unit Tests | PASS | Equipment、Affix、Damage、Power、Drop、AFK、Realm、Currency、Payment 全部存在。 |
-| 10,000 件装备统计 | PASS | 真实 Mythic 与混合品质统计均通过。 |
-| ≤20 单位 | PASS | 20 单位支持、21 单位拒绝；1,000×20 单位压力烟雾通过。 |
-| 对象池与有界背包 | PASS | GameObjectPool 复用测试；2,000 掉落保持 120 格上限。 |
-| 2 小时节奏 | PASS | 配置驱动真实 Player；虚拟单测与 120× soak 跑满 7,200 秒：24 采样、359 击杀、286/286 奖励窗口、0 待处理、背包 120、战力 1,181、内存 73.89–73.92 MB、零异常；PlayMode 单独覆盖玩家按钮闭环。真人记录保留为平衡调优而非 MVP 机械验收门槛。 |
-| Unity EditMode / PlayMode | PASS | Unity 6000.5.10f1 于 2026-08-29 14:39 完成最新回归：EditMode 68/68、PlayMode 2/2，均为 0 failed、0 skipped；结果见 `TestResults/EditMode.xml` 与 `TestResults/PlayMode.xml`。PlayMode 已覆盖 Main 核心循环、全部必需原型页面、三套 Build、GM 全序列及服务器战斗/装备同步。 |
-| Windows Player | PASS | 最新 Development Player 154,145,164 bytes；普通启动通过，无图形 soak 在全部奖励清空后于 61.80 秒自行退出。 |
-| WebGL Player | PASS | Development 构建成功（18 文件、39,407,695 bytes / 98.96 秒），提供第二平台编译与裁剪证据，不冒充 Android 验证。 |
-| Android APK 与模拟器 | PASS | Unity 6000.5.10f1 的 Android Build Support、SDK/NDK 与 OpenJDK 已安装；`Build/Android/ImmortalLoot-development.apk`（41,484,832 bytes）包含 ARMv7+ARM64。已在夜神 Android 7.1.2/x86+ARM 转译环境安装并启动，传统 `UnityPlayerActivity` 前台稳定；实测竖屏离线登录、自动战斗、连续击杀、Rare 随机词条掉落、六页导航及装备穿戴。2026-08-30 复验前台 PID 4281、PSS TOTAL 142,920 KB，日志无 FATAL/ANR。截图见 `Build/Android/immortalloot-nox-portrait-login.png`、`Build/Android/immortalloot-nox-loot.png`、`Build/Android/immortalloot-nox-equipment-nav.png` 与 `Build/Android/immortalloot-nox-equipment-action.png`。 |
-| 低端 Android 物理真机 | WAIVED | 用户于 2026-08-30 明确批准本次 MVP 不做真机测试、继续以夜神完成 Android 验收。该项不冒充 PASS；`Tools/Android/Invoke-PhysicalDeviceAcceptance.ps1` 和 `Docs/PHYSICAL_ANDROID_TEST.md` 保留供未来正式发布认证使用。 |
+| Unity 必需目录和 `.meta` 纳入 Git | PASS | `Assets/`、`Packages/`、`ProjectSettings/` 与 `Docs/` 已版本管理。 |
+| 生成目录与本地缓存排除 | PASS | Unity Library/Temp/Logs/obj/Build 缓存按 `.gitignore` 排除。 |
+| 敏感信息与大文件门禁 | PASS | 当前扫描未发现真实密码、API Key、Token、私钥、证书或签名文件；无新增 50 MB 文件。 |
+| 后端权威战斗与真实 HTTP 合同 | PASS | Backend Verification 与真实 Kestrel HTTP 39/39 为当前后端基线；本次客户端境界提交未修改该合同。 |
+| Development 在线境界语义 | PARTIAL | 在线实现仍需从等级经验残值迁移到累计修为，并进一步对齐破境石与 pending→Boss；记录为 `SERVER-REALM-XP-001` / Y-013。 |
+| P0/P1 范围冻结 | TESTING | 当前未新增非发布必需功能；仍需关闭境界运行时、Android 重建、竖屏视觉和真机 P0。 |
+
+## 测试、构建与发布 Gate
+
+| 要求 | 状态 | 当前证据 / 缺口 |
+|---|---|---|
+| 当前 Unity EditMode | BLOCKED | 预计 111 项；尚未在 `bffd195` 运行。`2bee3ac` 的 109/109 仅为历史证据。 |
+| 当前 Unity PlayMode | BLOCKED | 预计 28 项；尚未在 `bffd195` 运行。`2bee3ac` 的 26/26 仅为历史证据。 |
+| 当前 Android RC APK | BLOCKED | 旧 APK 对应 `2bee3ac`，已过期；必须在当前 Unity 全绿后重建。 |
+| 当前 Android RC AAB | BLOCKED | 旧 AAB 对应 `2bee3ac`，已过期；必须重建并复验 metadata、ABI、zipalign/signature 或 bundletool。 |
+| 1080×1920 九页视觉验收 | BLOCKED | 目前只有结构性 UI 证据，没有当前完整竖屏截图集。 |
+| Android 物理真机 10/60 分钟 | BLOCKED | 当前 ADB 为 0 台已授权物理设备；没有有效豁免，也不得以模拟器代替。 |
+| 正式商店签名 | PARTIAL | 历史 RC 为 Unity 默认测试签名；商店发布需要独立 upload/release keystore。 |
 
 ## 当前结论
 
-Phase 20 已在本次批准范围内完成：Windows/WebGL/Android 三平台构建、Unity EditMode 68/68、覆盖全部必需页面与三套 Build 的 PlayMode 2/2、后端权威验证、夜神实际运行和真实 Player 7,200 秒逻辑时轴均有直接证据。用户明确豁免物理真机测试；该豁免不等同于真机认证，未来面向商店发布前仍建议执行 `Docs/PHYSICAL_ANDROID_TEST.md`。逐项证据见 `Docs/COMPLETION_AUDIT.md`。
+V0.1 核心源码已经进入 RC-candidate，但 **MVP 尚未完成，GATE 4 保持 OPEN**。当前不能用历史 109/26、历史 APK/AAB、模拟器截图或旧“真机豁免”给 `bffd195` 放行。放行顺序固定为：当前 EditMode 111 → PlayMode 28 → APK → AAB → 1080×1920 视觉 → 物理真机 10/60 分钟与日志/性能验收。

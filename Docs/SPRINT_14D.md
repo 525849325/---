@@ -1,6 +1,6 @@
 # 《太初：无尽轮回》V0.1 14 日冲刺
 
-> 当前执行状态（2026-08-30）：约 88%，处于 GATE 4。最新 EditMode 109/109、PlayMode 26/26 与 `2bee3ac` 对应 APK/AAB 门禁已通过；QA-DEVICE-001 因 0 台已授权真机保持 BLOCKED，其他 Workstream 继续执行。
+> 当前执行状态（2026-08-30）：约 86%，处于 GATE 4。源码 `bffd195` 的程序集与离线 smoke PASS，但当前 EditMode 111、PlayMode 28 尚未运行；`2bee3ac` 的 109/109、26/26 与 APK/AAB 只作历史证据，当前双产物必须重建。竖屏视觉和 QA-DEVICE-001 同样保持 BLOCKED，其他 Workstream 继续执行。
 
 基于现有领域实现，目标可压缩为 10–12 个开发日，Day 13–14 作为真机、修复与发布缓冲。
 

@@ -1,6 +1,6 @@
 # 《太初：无尽轮回》V0.1 项目审计
 
-> 当前状态补充（2026-08-30）：本文主体是启动审计快照。最新权威状态见 `DAILY_REPORT.md` 与 `TASK_QUEUE.md`。Unity RC `2bee3ac` 已完成登录门禁、本地/服务器状态隔离与 profile 镜像校正、EditMode 109/109、PlayMode 26/26 及 Android APK/AAB；后端 `4a28d4c` 完成 exact-current-stage、单活动会话、并发幂等、失联恢复和旧 SQLite schema 升级，`b7ea774` 再将真实 Kestrel HTTP 39 项契约纳入总门禁。剩余主要外部证据是真机 10/60 分钟、完整视觉/触控与正式商店签名。
+> 当前状态补充（2026-08-30）：本文主体是启动审计快照。最新权威状态见 `DAILY_REPORT.md` 与 `TASK_QUEUE.md`。当前源码为 `bffd195`：离线境界/渡劫闭环已接入，程序集编译及离线 smoke PASS；当前 Unity EditMode 111 与 PlayMode 28 尚未运行。`2bee3ac` 的 109/109、26/26 和 APK/AAB 仅为历史证据且产物已过期。GATE 4 仍缺当前 Unity 回归、重建双产物、完整竖屏视觉与物理真机验收。
 
 审计日期：2026-08-30  
 审计基线：安全检查点 `ced7a07` 之后的当前工作区。状态只依据当前源码与本轮重新运行的测试/构建结果；旧报告中的历史 PASS 不自动继承。
@@ -18,7 +18,7 @@
 - Build Settings：唯一启用场景 `Assets/Game/Scenes/Main.unity`。
 - 规模：约 97 个 C# 文件、8,699 行；302 个受版本管理工程文件；3 个场景（其中 2 个为 `_Recovery`），0 Prefab，0 图片/音频/字体/动画/材质/Shader 自有资源。
 - 架构：`Assets/Game/Scripts` 为客户端领域层与原型 UI；`Resources/Config` 为 20 份 JSON 配置；`Backend` 为可选权威服务；EditMode/PlayMode 与后端验证程序已存在。
-- 工具限制：Graphify/Python 运行时在本机不可用，本次使用 `rg`、Unity YAML、程序集与测试清单完成结构审计。
+- 工具补充：后续已生成本地 Graphify 图并用于发现境界集成与 Gate 证据缺口；图存在 234 个悬空端点、387 条有向折叠边和 393 条无向折叠边，只作为导航线索，结论均由源码、测试与构建证据复核。
 
 ## 2. 系统复用判断
 
@@ -34,20 +34,20 @@
 | 数值/战力 | READY | 统一属性与战力计算存在并测试单调性。 |
 | 关卡 | READY | 1-1～1-10 配置链、Boss 关与服务存在。 |
 | 地图 | MISSING | 独立地图系统不存在；V0.1 用关卡进度条即可，不新增大地图。 |
-| 境界 | REFACTOR | 完整领域服务存在；主场景按钮直接自增阶段，没有接入真实突破状态机。 |
+| 境界 | TESTING | `bffd195` 已接入真实突破成本、累计修为、Boss 破境石、跨重启渡劫、灵根与统一战力；待当前 Unity 111/28 实跑。 |
 | 技能 | REFACTOR | 主动/被动/CD/AOE/DOT 等战斗支持存在；缺少可理解的玩家反馈。 |
 | 本地存档 | REFACTOR | 原子写入、版本、SHA-256 仓库存在且单测覆盖，但主场景未调用。 |
 | 离线收益 | REFACTOR | 计算/领取与后端接口存在；离线本地闭环及回归测试未接入主场景。 |
 | UI/UX | REBUILD | 单场景 UGUI 可操作，但大量页面写明“占位交互”，缺少商业产品层级、装备卡片与战斗表现。保留领域调用，重做信息架构和关键页面。 |
-| 音频 | MISSING | 无音频文件、Mixer 或 AudioSource 产品实现。 |
+| 音频 | TESTING | 无外部音频资产；已实现五类运行时程序化短音效，待真机听感与音量验收。 |
 | 商店 | REFACTOR | 商品、货币、限购与页面入口存在；本地模式行为为硬编码。 |
 | 商业化 | REFACTOR | 商品结构、权益服务、订单流程与 Mock Provider 存在；需延后曝光并统一接口。 |
 | 支付 | REFACTOR | Development Mock 与 Google Play/抖音占位 Provider 存在；真实 SDK/账号未接。 |
 | 广告 | MISSING | V0.1 可不接真实广告，但应保留无广告假入口或明确不启用。 |
 | Analytics | MISSING | 只有本地 playtest JSONL；缺少事件接口和关键漏斗定义。 |
 | 设置 | MISSING | 未发现音量、震动、隐私或存档操作页面。 |
-| 测试 | READY | 68 个历史 EditMode 测试、2 个 PlayMode 流程与后端验证源码存在；必须本轮重跑。 |
-| Build Pipeline | REFACTOR | Windows/WebGL/Android Development 入口存在；缺 Release APK/AAB、签名与 RC 一键门禁。 |
+| 测试 | TESTING | 当前源码预计 EditMode 111、PlayMode 28；静态程序集与离线 smoke PASS，Unity Test Runner 因目标项目会话绑定阻塞尚未运行。 |
+| Build Pipeline | TESTING | RC APK/AAB 方法及产物门禁已存在；`2bee3ac` 历史双产物通过，但必须为 `bffd195` 重建。 |
 
 ## 3. 修旧与重写比较
 

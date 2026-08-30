@@ -1,19 +1,20 @@
 # RED Alerts
 
-当前状态：**无 OPEN RED**。最近复核：真实 Kestrel HTTP 39/39、Backend Verification 与离线门禁均 PASS（检查点 `b7ea774`）。
+当前状态：**无 OPEN RED**。Unity Personal 许可证和 Hub 人工启动已由用户验证有效；当前阻塞不是“用户没有许可证”，也没有需要用户重复激活、登录或授权的具体动作。
 
-## RED-001｜Unity Editor/headless entitlement
+## RED-001｜Unity Editor 自动化授权链路
 
-- **TASK：** QA-UNITY-001 / BUILD-ANDROID-001
-- **问题：** 早期 batchmode 在加载项目代码前返回 198，而同用户通过 Hub 启动 Editor 正常。
-- **真实原因：** Hub 启动的 Editor 自动携带 Hub 会话；受限 batch 环境未自动连接当前版本的授权 IPC。许可证本身、Personal seat、headless 与 Android entitlement 均有效。
-- **已经尝试：** 对比 Hub/Editor/batch 日志；检查启动用户、进程冲突、项目锁、许可证缓存与命令行；停止重复无效命令；在同一 Windows 用户上下文显式传入版本化 IPC `LicenseClient-Admin-6000.5.10`。
-- **结果：** EditMode 109/109、PlayMode 26/26、最新 Unity RC 对应 APK 与 AAB 构建全部 exit 0；日志确认成功连接 IPC 并解析 entitlement。后续后端权威性检查点 `4a28d4c` 不改变 Unity/Android 产物。batch 没有 Hub access token 用于在线刷新，但本地 entitlement 可正常解析，不构成失败。
-- **推荐方案：** 自动化继续复用版本化 IPC；不终止用户的 Hub/Editor，不删除许可证缓存，不要求重复激活。
-- **备选方案：** 若版本升级导致 IPC 名变化，先只读枚举同版本 LicensingClient/日志，再使用当前用户上下文启动；禁止机械重复旧命令。
-- **风险：** 完整视觉/真机稳定性仍属于 QA-DEVICE-001；测试签名不可用于商店发布。
-- **最晚需要用户决定：** 无；当前不需要账号或权限动作。
-- **状态：** RESOLVED（2026-08-30）；本轮无需账号、权限或许可证操作，不重新升级 RED。
+- **TASK：** QA-UNITY-POSTCHANGE-002 / BUILD-ANDROID-003
+- **初始问题：** 早期 batchmode 在加载项目代码前返回 entitlement 错误，而同一用户通过 Hub 可正常启动 Editor。
+- **历史恢复：** 在源码检查点 `2bee3ac`，版本化 Licensing IPC 曾让 EditMode 109/109、PlayMode 26/26、APK 与 AAB 构建全部 exit 0。这证明 Personal seat、Editor、headless 与 Android entitlement 当时有效，但该证据不自动适用于当前源码。
+- **当前复核：** 当前 Hub 授权的主 Editor 进程实际打开 `C:\Users\Admin\Documents\Codex\2026-08-28\apk-unity-x20\HuanLingXiuXian`，不是本仓库。目标项目没有可复用的已授权 Editor 会话。
+- **已经尝试：** 只读检查启动用户、Unity/Hub/Licensing 进程、项目路径、锁和日志；分别尝试版本化 IPC 与通用 Hub IPC；尝试带安全软件条款参数的直接交互启动；尝试 GUI 替代入口。IPC 路径均拒绝或超时，直接启动停在 Software Terms，GUI 不能可靠定位。所有遗留尝试进程均安全停止，未删除许可证缓存、未结束用户正在使用的 Editor、未读取或复用会话 Token。
+- **环境差异：** Hub 正常启动的 Editor 具有 Hub 会话绑定；当前目标仓库的独立 batch/交互进程没有取得同一授权上下文。当前活动授权 Editor 又被另一项目占用，因此无法直接复用到本项目。
+- **推荐方案：** 保留用户当前 Hub/Editor 状态；后续目标项目出现可复用授权 Editor/Licensing 会话时，先运行 EditMode 111 与 PlayMode 28，再重建 APK/AAB。不得机械重复已失败的两种 IPC 命令。
+- **备选方案：** 使用 Unity 官方支持的直接 Editor 命令行或已授权 Editor 内部菜单触发自动化；只在可验证目标项目上下文后执行，避免错误项目被测试或构建。
+- **风险：** `bffd195` 的境界闭环尚无当前 Unity 运行证据；`2bee3ac` 的 APK/AAB 已过期，不能作为当前 RC。
+- **最晚需要用户决定：** 无；当前没有具体账号、权限或许可证动作。
+- **状态：** RESOLVED（许可证/授权能力已证明）；`QA-UNITY-POSTCHANGE-002` 作为非 RED 环境阻塞保持 BLOCKED，其他任务继续。
 
 ## RED-002｜GitHub 仓库 URL
 

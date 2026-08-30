@@ -13,12 +13,12 @@
 | UI 图像/Prefab | 0 | NEEDS_EDIT | 当前 UI 全部嵌在 Main 场景或由 Editor 脚本生成。 |
 | 背景 | 0 | PLACEHOLDER | 建议程序化渐变/山峦剪影，避免等待美术。 |
 | 特效 | 0 | PLACEHOLDER | 用 UGUI tween、屏幕闪烁、粒子基础形状实现。 |
-| 音效/音乐 | 0 | PLACEHOLDER | GATE 1 可静音；RC 前至少补攻击、掉落、换装、Boss、突破 5 类合法音效。 |
+| 音效/音乐 | 0 个外部文件；5 类程序化短音效 | NEEDS_EDIT | 攻击、掉落、换装、Boss、突破由运行时代码生成，无外部版权依赖；待真机听感与音量验收。 |
 | 字体 | Unity 内置 LegacyRuntime | NEEDS_EDIT | 可开发使用；中文发布需确认 Android 字形完整并引入有授权字体。 |
 | 动画/Animator | 0 | PLACEHOLDER | 用程序化位移/缩放先完成反馈。 |
 | Material/Shader | 0 自有 | DIRECT_USE | Built-in UI 默认 Shader 足够 V0.1。 |
 | JSON 数值配置 | `Assets/Game/Resources/Config/*.json` 20 份 | DIRECT_USE | 怪物、Boss、装备、品质、词条、关卡、境界、商店等可调。 |
-| Editor 工具 | `Assets/Game/Editor` | NEEDS_EDIT | 场景生成与构建可复用，需增加 RC Build。 |
+| Editor 工具 | `Assets/Game/Editor` | DIRECT_USE | 场景生成、RC APK/AAB 构建方法和规格测试已存在；当前需在 `bffd195` 的 111/28 全绿后重建双产物。 |
 
 ## 资产策略
 

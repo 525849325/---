@@ -507,7 +507,9 @@ SQLite 验证六类目录及六种真实行为，包含三次推关、Boss、一
 
 进入 Phase 20：整体测试、完整可玩闭环、UGUI、性能、2 小时节奏和最终验收。
 
-## Phase 20 — 整体测试（完成，物理真机测试按批准范围豁免）
+## Phase 20 — 整体测试（历史快照；当前 RC Gate 已重新打开）
+
+> 本节记录 2026-08-29 原型验收历史。它已被当前 `bffd195` 的 RC Gate 取代：当前 Unity 111/28 未运行，历史 Android 产物已过期，旧真机豁免不再作为当前放行条件。
 
 ### 已完成
 
@@ -517,15 +519,15 @@ SQLite 验证六类目录及六种真实行为，包含三次推关、Boss、一
 - 客户端统一 REST 网关只提交意图和幂等键；Bearer Token 不写入本地存档。
 - 本地缓存存档具有 schemaVersion、SHA-256 校验和、篡改拒绝和原子替换。
 - 永久榜与周榜独立快照；双倍挂机活动已实际乘入服务器收益。
-- Unity 6000.5.10f1 于 2026-08-29 14:39 完成最新完整回归：EditMode 68/68、PlayMode 2/2，均为 0 failed、0 skipped；PlayMode 已覆盖全部必需原型页面及火/雷/血三套 Build 的玩家操作；后端 Release 与 SQLite 权威集成验证通过。
+- Unity 6000.5.10f1 于 2026-08-29 14:39 完成当时原型回归：EditMode 68/68、PlayMode 2/2，均为 0 failed、0 skipped；该历史结果不代表当前 `bffd195`。后端 Release 与 SQLite 权威集成验证当时通过。
 - 压力烟雾覆盖 1,000 场二十单位战斗与 2,000 次掉落/120 格背包轮转。
 - Windows Development Player 构建成功（约 154 MB），隐藏启动 6 秒无异常或崩溃。
 - 真实 Kestrel HTTP 烟雾覆盖建档、资料、战斗/重放、装备入包、商城、周榜、六类任务和活动；服务停止后端口无残留监听。
 
-### 发布后续与范围豁免
+### 历史发布记录与当前边界
 
 - 逐项验收矩阵见 `Docs/MVP_ACCEPTANCE.md`；UGUI 页面现均有可点击操作与反馈。
-- Android Build Support 与依赖模块已经安装，APK 已在夜神完成安装和核心循环验证；用户于 2026-08-30 明确批准本次 MVP 不做物理真机测试。该豁免只关闭本次验收门槛，不构成真机发布认证。
+- Android Build Support 与依赖模块已安装，历史 APK 曾在夜神完成安装和核心循环验证。早期“不做物理真机”的范围豁免不适用于当前 RC Gate；模拟器结果不构成当前源码或物理真机放行。
 - `PlayerBuildTools.BuildAndroidDevelopmentApk` 会输出 `Build/Android/ImmortalLoot-development.apk`，并固定包名、双 ARM 架构、旧系统 Activity 入口与必需 UGUI 着色器。
 - Development Player 已加入非 batch 的五分钟遥测采样器；`Docs/TWO_HOUR_PLAYTEST.md` 定义 0–120 分钟检查点、证据路径和不得预填的人工结论。
 - `DemoPacingSession` 已把 `demo_pacing.json` 接入真实 Player：发布默认 1×实时推进，测试才可显式加速；确定性虚拟 120 分钟验证掉落次数、成长脉冲、1-10 Boss 与所有里程碑。最新 Player 已验证遥测文件实际写盘。
@@ -540,6 +542,6 @@ SQLite 验证六类目录及六种真实行为，包含三次推关、Boss、一
 - 最新 Windows Development Player 重建成功（154,138,538 bytes / 4.08 秒），隐藏启动 6 秒无错误；WebGL Development Player 构建成功（39,407,695 bytes / 98.96 秒）。
 - Unity Android Build Support、SDK/NDK 与 OpenJDK 已安装；构建脚本固定包名、ARMv7+ARM64、传统 Activity 入口，并强制包含 UGUI/Sprite 默认着色器。
 - Android Development APK 已生成于 `Build/Android/ImmortalLoot-development.apk`（41,484,832 bytes），在夜神 Android 7.1.2 上安装并稳定前台运行；竖屏离线登录、自动战斗、19 次击杀、Rare 两词条掉落、六页导航和装备穿戴实测可见，战力从 986 更新为 1114，PSS TOTAL 约 139 MB，无 FATAL/ANR。
-- 夜神作为本次批准的 Android 功能与兼容验收环境；物理真机的温升、长时内存、休眠恢复、触控和帧率仍列为未来正式发布风险。
+- 夜神仅保留为历史 Android 功能与兼容参考；物理真机的温升、长时内存、休眠恢复、触控和帧率是当前 GATE 4 必需证据。
 - `Tools/Android/Invoke-PhysicalDeviceAcceptance.ps1` 已把该门槛固化为标准 120 分钟采集流程：安装/冷启动、逐分钟 PSS/电量/温度/前台状态、thermal、gfx framestats、logcat 与人工触控/休眠/弱网签署表；设备检查已实测拒绝夜神 `127.0.0.1:62001`，不会生成伪真机证据。
-- 自动化、三平台构建与模拟器闭环均已完成；在用户批准不做物理真机测试的范围下，Phase 20 验收完成。
+- 以上自动化、三平台构建与模拟器闭环仅描述当时原型。当前 Phase 20 / GATE 4 未完成，必须以 `DAILY_REPORT.md`、`TASK_QUEUE.md` 和 `MVP_ACCEPTANCE.md` 的当前证据为准。
