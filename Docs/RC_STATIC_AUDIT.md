@@ -1,6 +1,6 @@
 # V0.1 RC 静态完成审计
 
-日期：2026-08-30。本文保留为首次静态审计快照；实时状态以 `DAILY_REPORT.md` 与 `TASK_QUEUE.md` 为准。此后基线 `060f4df` 已实际通过 Unity Test Runner 并生成 APK/AAB，但最新背包检查点仍需回归与重构建。默认离线玩家路径仍有聚合存档、胜利驱动关卡和真实成长接线缺口，不能宣称 GATE 1–4 完成。
+日期：2026-08-30。本文主体保留为首次静态审计快照；实时状态以 `DAILY_REPORT.md` 与 `TASK_QUEUE.md` 为准。快照中的聚合存档、胜利驱动关卡、最新回归与重构建缺口均已在后续任务关闭：截至 `2bee3ac`，EditMode 109/109、PlayMode 26/26、后端/离线门禁与对应 APK/AAB 已通过。GATE 4 仍因真机、完整视觉/触控和正式签名证据未完成而保持开放。
 
 ## P0
 
@@ -15,7 +15,7 @@
 | 基础引导 | 当前只有动态提示语，没有可持久化步骤状态机 | P0 GAP；待最小四步引导 |
 | 商店 / 商品 / 商业接口 | 配置商品、成长后曝光、UI 不直接发币、Development-only Mock | VERIFIED（程序集+后端）；待场景 |
 | 设置 | 独立声音、震动、自动换装、立即保存、隐私与协议入口 | IMPLEMENTED；待触控验收 |
-| Android Build | API 26、ARMv7+ARM64、APK/AAB RC 工具和规格测试 | 基线 APK/AAB VERIFIED；最新 HEAD 由 BUILD-ANDROID-002 阻塞 |
+| Android Build | API 26、ARMv7+ARM64、APK/AAB RC 工具和规格测试 | `2bee3ac` 对应 APK/AAB VERIFIED；物理设备验收单独 BLOCKED |
 
 ## P1
 
@@ -38,8 +38,8 @@
 
 ## 未闭合证据
 
-- 基线 `060f4df` 已执行 Unity Test Runner；最新背包实现尚未执行对应回归。
-- 基线 APK/AAB 已产出并完成静态校验；最新 HEAD 尚无对应产物，且所有产物均未完成物理真机安装验收。
+- 最新 `2bee3ac` 已执行 EditMode 109/109 与 PlayMode 26/26；代码与测试独立复审 P0=0、P1=0。
+- 最新 `2bee3ac` 对应 APK/AAB 已产出并完成静态校验；仍未完成物理真机安装验收。
 - 10 分钟与 60 分钟真机测试未执行。
 
-`RED-001` 已解决；最新自动化仍受 QA-REGRESSION-002 的版本化 Hub/Editor IPC 会话错配阻塞。必须按 `TASK_QUEUE.md` 执行，不得以程序集编译、基线产物或模拟代替最新运行证据。
+`RED-001` 已解决，版本化 Hub/Editor IPC 已恢复自动化；QA-REGRESSION-002 已完成。当前仅 QA-DEVICE-001 因 0 台已授权物理设备保持 BLOCKED。必须按 `TASK_QUEUE.md` 执行，不得以模拟代替真机证据。

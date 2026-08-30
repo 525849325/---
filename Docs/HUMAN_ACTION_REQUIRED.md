@@ -1,6 +1,6 @@
 # 需要人工处理
 
-Unity Personal 许可证与 Editor/headless/Android entitlement 已验证有效，`RED-001` 已关闭。当前最新回归受 Hub/Editor IPC 会话错配这一技术问题阻塞，不要求用户重复登录或激活。
+Unity Personal 许可证与 Editor/headless/Android entitlement 已验证有效，`RED-001` 已关闭。版本化 IPC 已恢复自动化，当前 EditMode 109/109、PlayMode 26/26 与 APK/AAB 构建均通过；唯一当前外部 QA 阻塞是 QA-DEVICE-001 尚无已授权真机，不要求用户重复登录或激活 Unity。
 
 | 问题 | 为什么需要人工 | 用户需要做什么 | 预计耗时 | 阻塞主线 | 最晚时间 |
 |---|---|---|---:|---|---|
