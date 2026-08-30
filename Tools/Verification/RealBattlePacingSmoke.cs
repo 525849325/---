@@ -29,7 +29,7 @@ internal static class RealBattlePacingSmoke
             VerifyResult(sixtyMinutes);
 
             Console.WriteLine("PASS: BALANCE-001 real-battle pacing smoke");
-            Console.WriteLine("growth-resistance: deterministic level-1 Boss defeats -> stage-9 farm recovery -> level-5 Boss victory");
+            Console.WriteLine("growth-resistance: deterministic level-1 Boss defeats -> stage-9 farm recovery -> level-4 Boss victory within 120s");
             Console.WriteLine(
                 "model: production battle/factory/stage/pacing; tick=1/60s; respawn=0.65s; " +
                 "player=controller baseline plus configured stage-exp level growth; equipment/cultivation bonuses excluded");
@@ -202,6 +202,10 @@ internal static class RealBattlePacingSmoke
         var retreats = 0;
         var farmVictories = 0;
         var bossVictory = false;
+        var bossVictoryStartLevel = 0;
+        var bossVictoryRemainingHp = 0f;
+        var encountersUsed = 0;
+        var recoveryStartedSecond = pacing.ElapsedSeconds;
 
         var baseline = CreatePlayer(fixture.Catalog, progression.Level);
         Require(Math.Abs(baseline.MaxHp - 180f) < 0.001f && baseline.MaxHp < 9999f,
@@ -209,6 +213,7 @@ internal static class RealBattlePacingSmoke
 
         for (var encounter = 0; encounter < 20 && !bossVictory; encounter++)
         {
+            encountersUsed++;
             var stage = loop.CurrentStage;
             var battle = battles.Create(stage.Id, CreatePlayer(fixture.Catalog, progression.Level));
             battle.SuppressPresentationEvents = true;
@@ -223,11 +228,15 @@ internal static class RealBattlePacingSmoke
 
             Require(result == BattleState.Victory, "the recovery encounter did not settle");
             var transition = loop.RecordVictory(pacing.CurrentStageNumber);
-            if (stage.IsBossStage || pacing.TryConsumeBattleReward())
+            var victoryStartLevel = progression.Level;
+            var consumedRewardWindow = pacing.TryConsumeBattleReward();
+            if (stage.IsBossStage || consumedRewardWindow)
                 progression.GrantExperience(stage.RewardExp);
             if (stage.IsBossStage)
             {
                 bossVictory = true;
+                bossVictoryStartLevel = victoryStartLevel;
+                bossVictoryRemainingHp = battle.Player.Hp;
                 Require(transition.Advanced && transition.CompletedChapter && loop.CurrentStageId == FirstStageId,
                     "the recovered Boss victory did not loop the chapter");
             }
@@ -239,13 +248,15 @@ internal static class RealBattlePacingSmoke
             }
         }
 
-        Require(bossDefeats >= DefeatsBeforeRetreat && retreats > 0 && farmVictories > 0,
+        Require(bossDefeats == 6 && retreats == 2 && farmVictories == 2 && encountersUsed == 9,
             "an under-level migrated Boss state did not exercise the bounded retreat/farm recovery path");
-        Require(bossVictory && progression.Level == 5,
-            "the bounded recovery path did not turn real stage experience into a level-5 Boss victory");
-        var grown = CreatePlayer(fixture.Catalog, progression.Level);
-        Require(Math.Abs(grown.MaxHp - 240f) < 0.001f && grown.MaxHp < 9999f,
-            "the recovered player did not use the controller's real level-5 HP");
+        Require(bossVictory && bossVictoryStartLevel == 4 && progression.Level == 5 && bossVictoryRemainingHp > 0f,
+            "the bounded recovery path did not turn real stage experience into a survivable level-4 Boss victory");
+        Require(pacing.ElapsedSeconds - recoveryStartedSecond <= 120d,
+            "the deterministic migrated-save recovery exceeded the two-minute liveness guardrail");
+        var grown = CreatePlayer(fixture.Catalog, bossVictoryStartLevel);
+        Require(Math.Abs(grown.MaxHp - 225f) < 0.001f && grown.MaxHp < 9999f,
+            "the recovered Boss attempt did not use the controller's real level-4 HP");
     }
 
     private static BattleState ResolveWithProductionPacing(AutoBattleEngine battle, DemoPacingSession pacing)
@@ -295,6 +306,8 @@ internal static class RealBattlePacingSmoke
             $"{result.Minutes}-minute simulation missed the 4-minute first-Boss defeat guardrail");
         Require(result.BossVictories > 1,
             $"{result.Minutes}-minute simulation did not complete a second Boss cycle");
+        Require(result.Defeats <= 2,
+            $"{result.Minutes}-minute simulation accumulated {result.Defeats} defeats and regressed into retry churn");
         Require(result.PostBossTransitions > 0,
             $"{result.Minutes}-minute simulation made no stage transition after its first Boss victory");
         var expectedRewardWindows = result.Minutes == 10 ? 22 : 142;

@@ -615,6 +615,8 @@ namespace ImmortalLoot.UI
                 var skippedRewardWindows = 0;
                 while (_pacing.TryConsumeBattleReward()) skippedRewardWindows++;
                 _skippedPendingRewardWindows += skippedRewardWindows;
+                if (!completedStage.IsBossStage && skippedRewardWindows > 0)
+                    GrantConfiguredStageRewards(completedStage);
                 shouldCheckpoint |= skippedRewardWindows > 0;
                 if (guideText != null) guideText.text = skippedRewardWindows > 0
                     ? $"待领取区仍有装备：已明确跳过 {skippedRewardWindows} 个新装备窗口，不会在重启后补发。已结算 {completedStage.Name}，请到背包处理待领取装备。"

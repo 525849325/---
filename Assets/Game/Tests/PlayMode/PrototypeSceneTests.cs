@@ -974,7 +974,7 @@ namespace ImmortalLoot.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator PendingBackpressureSkipsNormalWindowWithoutConfiguredRewards()
+        public IEnumerator PendingBackpressureSkipsOnlyEquipmentAndPreservesConfiguredProgression()
         {
             DeleteLocalSave();
             var inventory = new InventoryState
@@ -1007,8 +1007,9 @@ namespace ImmortalLoot.Tests.PlayMode
             controller.ResolveCurrentBattleForTests();
 
             Assert.That(controller.SkippedPendingRewardWindowsForTests, Is.EqualTo(1));
-            Assert.That(controller.ExperienceForTests, Is.EqualTo(experienceBefore));
-            Assert.That(controller.SoftCurrencyForTests, Is.EqualTo(softCurrencyBefore));
+            Assert.That(controller.ExperienceForTests, Is.EqualTo(experienceBefore + 25),
+                "Equipment backpressure must not remove the level growth needed to recover from a blocked Boss.");
+            Assert.That(controller.SoftCurrencyForTests, Is.EqualTo(softCurrencyBefore + 10));
             Assert.That(controller.LatestLoot?.InstanceId, Is.EqualTo("pending-before-window"));
             DeleteLocalSave();
         }
@@ -1035,7 +1036,27 @@ namespace ImmortalLoot.Tests.PlayMode
         public IEnumerator ThirdOfflineDefeatRetreatsToFarmableStageAndPersistsRecovery()
         {
             DeleteLocalSave();
-            SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_10" });
+            var pending = new EquipmentInstance
+            {
+                InstanceId = "pending-during-boss-recovery",
+                BaseId = "weapon_cloudsteel_blade",
+                DisplayName = "待领取恢复装备",
+                Level = 1,
+                Quality = EquipmentQuality.Fine,
+                CreateTimeUtc = System.DateTime.UtcNow
+            };
+            JsonPlayerSaveRepository.CreateDefault().Save(new PlayerSaveSnapshot
+            {
+                StageElapsedSeconds = 180d,
+                LastActiveUnixSeconds = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                InventoryJson = JsonUtility.ToJson(new InventoryState
+                {
+                    EquipmentCapacity = 120,
+                    PendingEquipment = pending
+                }),
+                ProgressJson = PlayerProgressStateCodec.Serialize(
+                    new PlayerProgressState { CurrentStageId = "stage_1_10" })
+            });
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
@@ -1056,9 +1077,23 @@ namespace ImmortalLoot.Tests.PlayMode
             var saved = JsonPlayerSaveRepository.CreateDefault().Load();
             Assert.That(PlayerProgressStateCodec.Deserialize(saved.ProgressJson).CurrentStageId, Is.EqualTo("stage_1_9"),
                 "The farmable recovery stage must survive an app restart instead of reopening on the blocked Boss.");
+            var configuredExperienceBeforeFarm = controller.ConfiguredStageExperienceGrantedForTests;
+            var cultivationExperienceBeforeFarm = controller.ProgressForTests.Realm.CultivationExperience;
+            var currencyBeforeFarm = controller.SoftCurrencyForTests;
             controller.RespawnCurrentBattleForTests();
             Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_9"),
                 "The production respawn path must actually create the recovery encounter.");
+            controller.AdvancePacingForTests(5d);
+            controller.ResolveCurrentBattleForTests();
+            Assert.That(controller.ConfiguredStageExperienceGrantedForTests,
+                Is.EqualTo(configuredExperienceBeforeFarm + 225));
+            Assert.That(controller.ProgressForTests.Realm.CultivationExperience,
+                Is.EqualTo(cultivationExperienceBeforeFarm + 225));
+            Assert.That(controller.SoftCurrencyForTests, Is.EqualTo(currencyBeforeFarm + 10));
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_10"),
+                "A recovery farm victory must return to the Boss after granting real growth.");
+            Assert.That(controller.LatestLoot?.InstanceId, Is.EqualTo(pending.InstanceId),
+                "Recovery must preserve the older pending equipment while skipping only the new equipment window.");
             DeleteLocalSave();
         }
 
