@@ -110,11 +110,10 @@ namespace ImmortalLoot.Tests.PlayMode
             GameObject.Find("Action_MailPage").GetComponent<Button>().onClick.Invoke();
             Assert.That(GameObject.Find("MailPageContent").GetComponent<Text>().text, Does.Contain("领取成功"));
 
-            Assert.That(controller.ExecutePageAction("DebugPage"), Does.Contain("资源命令"));
-            Assert.That(controller.ExecutePageAction("DebugPage"), Does.Contain("Mythic"));
-            Assert.That(controller.ExecutePageAction("DebugPage"), Does.Contain("进度命令"));
-            Assert.That(controller.ExecutePageAction("DebugPage"), Does.Contain("离线 8 小时"));
-            Assert.That(controller.ExecutePageAction("DebugPage"), Does.Contain("清档命令"));
+            GameObject.Find("Nav_DebugPage").GetComponent<Button>().onClick.Invoke();
+            Assert.That(GameObject.Find("PageHeader").GetComponent<Text>().text, Is.EqualTo("设置"));
+            Assert.That(controller.ExecutePageAction("DebugPage"), Does.Contain("声音："));
+            Assert.That(controller.ExecutePageAction("DebugPage"), Does.Contain("震动："));
         }
 
         [UnityTest]

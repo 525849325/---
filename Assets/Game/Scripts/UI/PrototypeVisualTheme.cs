@@ -50,6 +50,10 @@ namespace ImmortalLoot.UI
             }
             var camera = Camera.main;
             if (camera != null) camera.backgroundColor = Ink;
+            SetLabel("Nav_DebugPage", "设置");
+            SetLabel("Action_DebugPage", "切换设置");
+            var settingsContent = FindIncludingInactive("DebugPageContent")?.GetComponent<Text>();
+            if (settingsContent != null) settingsContent.text = "声音 / 震动设置\n\n点击下方按钮依次切换并持久化\n隐私政策 / 用户协议将在发布前展示";
         }
 
         public static Color QualityColor(EquipmentQuality quality)
@@ -87,6 +91,13 @@ namespace ImmortalLoot.UI
             foreach (var transform in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
                 if (transform.name == name) return transform.gameObject;
             return null;
+        }
+
+        private static void SetLabel(string objectName, string value)
+        {
+            var target = FindIncludingInactive(objectName);
+            var label = target == null ? null : target.GetComponentInChildren<Text>(true);
+            if (label != null) label.text = value;
         }
 
         private static Color Hex(string value)

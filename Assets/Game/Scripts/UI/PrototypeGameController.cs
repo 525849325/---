@@ -13,6 +13,7 @@ using ImmortalLoot.Realm;
 using ImmortalLoot.Debugging;
 using ImmortalLoot.Player;
 using ImmortalLoot.Stage;
+using ImmortalLoot.Settings;
 using System.Collections.Generic;
 using System.Collections;
 using System.IO;
@@ -66,6 +67,8 @@ namespace ImmortalLoot.UI
         private string _saveLoadWarning;
         private AfkState _afkState;
         private string _offlineRewardSummary;
+        private GameSettingsService _settings;
+        private int _settingsActionStep;
         private readonly CharacterStats _baseStats = new CharacterStats
         {
             HP = 180f, Attack = 12f, Defense = 3f, CritRate = 0.1f, CritDamage = 1.5f, AttackSpeed = 1f, FireDamage = 0.1f
@@ -77,6 +80,8 @@ namespace ImmortalLoot.UI
         private void Start()
         {
             PrototypeVisualTheme.Apply(FindAnyObjectByType<Canvas>());
+            _settings = new GameSettingsService(new PlayerPrefsSettingsStore());
+            _settings.ApplySound();
             _catalog = new JsonConfigRepository(new ResourcesConfigSource()).LoadAll();
             _saveRepository = JsonPlayerSaveRepository.CreateDefault();
             var saved = LoadSnapshotSafely();
@@ -402,7 +407,11 @@ namespace ImmortalLoot.UI
                     return "完成登录/推图任务：活跃度 20\n宝箱灵砂 +100";
                 case "ActivityPage": return "灵潮涌动生效中\n服务器挂机收益 ×2";
                 case "DebugPage":
-                    return ExecuteDebugStep();
+                    if ((_settingsActionStep++ & 1) == 0) _settings.ToggleSound();
+                    else _settings.ToggleVibration();
+                    _settings.ApplySound();
+                    _settings.TryVibrate();
+                    return $"声音：{(_settings.SoundEnabled ? "开启" : "关闭")}\n震动：{(_settings.VibrationEnabled ? "开启" : "关闭")}\n再次点击依次切换声音与震动\n隐私政策 / 用户协议：发布前由渠道主体确认";
                 default: return "功能已就绪。";
             }
         }

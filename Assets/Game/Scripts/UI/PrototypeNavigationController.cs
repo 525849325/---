@@ -30,8 +30,6 @@ namespace ImmortalLoot.UI
             }
             var enter = GameObject.Find("EnterGameButton")?.GetComponent<Button>();
             if (enter != null) enter.onClick.AddListener(() => { GameObject.Find("LoginPage")?.SetActive(false); Show("BattlePage"); });
-            var debugButton = GameObject.Find("Nav_DebugPage");
-            if (debugButton != null && !Debug.isDebugBuild) debugButton.SetActive(false);
             Show("BattlePage");
         }
 
@@ -197,7 +195,7 @@ namespace ImmortalLoot.UI
                 case "MailPage": return "飞简邮件";
                 case "TaskPage": return "每日修行";
                 case "ActivityPage": return "限时活动";
-                case "DebugPage": return "GM Debug";
+                case "DebugPage": return "设置";
                 default: return pageName;
             }
         }
