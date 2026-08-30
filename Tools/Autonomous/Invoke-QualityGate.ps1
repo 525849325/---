@@ -6,6 +6,8 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $config = Get-Content (Join-Path $PSScriptRoot 'pipeline.json') -Raw | ConvertFrom-Json
 $unity = $config.unityExe
 if (-not (Test-Path -LiteralPath $unity)) { throw "Unity not found: $unity" }
+$dotnet = Join-Path (Split-Path $unity -Parent) 'Data\DotNetSdk\dotnet.exe'
+if (-not (Test-Path -LiteralPath $dotnet)) { throw "Unity embedded .NET SDK not found: $dotnet" }
 $lockFile = Join-Path $root 'Temp\UnityLockfile'
 if (Test-Path -LiteralPath $lockFile) {
     try {
@@ -57,6 +59,8 @@ try {
     Invoke-Step 'EditMode' { Invoke-Unity @('-projectPath', $root, '-runTests', '-testPlatform', 'EditMode', '-testResults', (Join-Path $runDir 'EditMode.xml'), '-logFile', (Join-Path $runDir 'EditMode.log')) }
     Invoke-Step 'PlayMode+Screenshots+UIAudit' { Invoke-Unity @('-projectPath', $root, '-runTests', '-testPlatform', 'PlayMode', '-testResults', (Join-Path $runDir 'PlayMode.xml'), '-logFile', (Join-Path $runDir 'PlayMode.log')) }
     Invoke-Step 'BackendDomain' { & (Join-Path $root 'Tools\Verification\run-domain-tests.ps1') *>&1 | Tee-Object -FilePath (Join-Path $runDir 'BackendDomain.log') }
+    Invoke-Step 'BackendAuthorityVerification' { & $dotnet run --project (Join-Path $root 'Backend\tests\ImmortalLoot.Server.Verification\ImmortalLoot.Server.Verification.csproj') *>&1 | Tee-Object -FilePath (Join-Path $runDir 'BackendAuthorityVerification.log') }
+    Invoke-Step 'BackendHttpContract' { & (Join-Path $root 'Tools\Verification\run-http-contract-tests.ps1') -SkipBuild *>&1 | Tee-Object -FilePath (Join-Path $runDir 'BackendHttpContract.log') }
     Invoke-Step 'UIEvidence' {
         $auditPath = Join-Path $uiDir 'ui-audit.json'
         if (-not (Test-Path $auditPath)) { throw 'UI audit report was not generated.' }

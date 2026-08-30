@@ -330,6 +330,7 @@ app.MapPost("/battle/finish", async (BattleFinishRequest request, HttpRequest ht
     }
     catch (KeyNotFoundException exception) { return Results.NotFound(new { error = exception.Message }); }
     catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
+    catch (InvalidOperationException exception) { return Results.Conflict(new { error = exception.Message }); }
 });
 
 app.Run();
