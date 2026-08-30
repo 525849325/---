@@ -39,6 +39,21 @@ namespace ImmortalLoot.Stage
             return true;
         }
 
+        public void Restore(double elapsedSeconds)
+        {
+            ElapsedSeconds = Math.Clamp(elapsedSeconds, 0d, _config.durationMinutes * 60d);
+            _pendingRewards = 0;
+            GeneratedRewardWindows = 0;
+            ConsumedRewardWindows = 0;
+            var firstRewardSecond = _config.firstEquipmentMinute * 60d;
+            if (ElapsedSeconds < firstRewardSecond) _nextRewardSecond = firstRewardSecond;
+            else
+            {
+                var completedIntervals = Math.Floor((ElapsedSeconds - firstRewardSecond) / _config.equipmentDropSeconds) + 1d;
+                _nextRewardSecond = firstRewardSecond + completedIntervals * _config.equipmentDropSeconds;
+            }
+        }
+
         public int CurrentStageNumber
         {
             get

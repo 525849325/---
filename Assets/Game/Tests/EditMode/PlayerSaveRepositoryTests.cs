@@ -14,11 +14,22 @@ namespace ImmortalLoot.Tests
             var path = Path.Combine(directory, "save.json");
             try
             {
-                var repository = new JsonPlayerSaveRepository(path);
-                repository.Save(new PlayerSaveSnapshot { PlayerId = "player-1", Nickname = "云游客", Level = 8, InventoryJson = "{\"count\":3}" });
+                var savedAt = new DateTime(2026, 8, 30, 0, 0, 0, DateTimeKind.Utc);
+                var repository = new JsonPlayerSaveRepository(path, () => savedAt);
+                repository.Save(new PlayerSaveSnapshot
+                {
+                    PlayerId = "player-1", Nickname = "云游客", Level = 8, SoftCurrency = 120,
+                    StageElapsedSeconds = 181, LastActiveUnixSeconds = 1234,
+                    InventoryJson = "{\"count\":3}", EquippedInstanceIdsJson = "{\"ids\":[\"equip-1\"]}"
+                });
                 var loaded = repository.Load();
                 Assert.That(loaded.PlayerId, Is.EqualTo("player-1"));
                 Assert.That(loaded.Level, Is.EqualTo(8));
+                Assert.That(loaded.SoftCurrency, Is.EqualTo(120));
+                Assert.That(loaded.StageElapsedSeconds, Is.EqualTo(181));
+                Assert.That(loaded.LastActiveUnixSeconds, Is.EqualTo(1234));
+                Assert.That(loaded.SavedAtUnixSeconds, Is.EqualTo(new DateTimeOffset(savedAt).ToUnixTimeSeconds()));
+                Assert.That(loaded.EquippedInstanceIdsJson, Does.Contain("equip-1"));
                 Assert.That(File.ReadAllText(path), Does.Not.Contain("AccessToken"));
                 Assert.That(File.Exists(path + ".tmp"), Is.False);
             }

@@ -9,16 +9,23 @@ namespace ImmortalLoot.Player
     [Serializable]
     public sealed class PlayerSaveSnapshot
     {
-        public int SchemaVersion = 1;
+        public const int CurrentSchemaVersion = 2;
+        public int SchemaVersion = CurrentSchemaVersion;
         public string PlayerId;
         public string Nickname;
         public int Level = 1;
         public long Exp;
         public string RealmId = "realm_body_tempering";
         public int RealmStage = 1;
+        public int Kills;
+        public long SoftCurrency;
+        public long PremiumCurrency;
+        public double StageElapsedSeconds;
+        public long LastActiveUnixSeconds;
         public string InventoryJson = "{}";
+        public string EquippedInstanceIdsJson = "{\"ids\":[]}";
         public string ProgressJson = "{}";
-        public DateTime SavedAtUtc;
+        public long SavedAtUnixSeconds;
     }
 
     [Serializable]
@@ -39,15 +46,20 @@ namespace ImmortalLoot.Player
     public sealed class JsonPlayerSaveRepository : IPlayerSaveRepository
     {
         private readonly string _path;
+        private readonly Func<DateTime> _utcNow;
         public bool Exists => File.Exists(_path);
-        public JsonPlayerSaveRepository(string path) => _path = string.IsNullOrWhiteSpace(path) ? throw new ArgumentException("Save path is required.") : Path.GetFullPath(path);
+        public JsonPlayerSaveRepository(string path, Func<DateTime> utcNow = null)
+        {
+            _path = string.IsNullOrWhiteSpace(path) ? throw new ArgumentException("Save path is required.") : Path.GetFullPath(path);
+            _utcNow = utcNow ?? (() => DateTime.UtcNow);
+        }
 
         public void Save(PlayerSaveSnapshot snapshot)
         {
-            if (snapshot == null || snapshot.SchemaVersion != 1) throw new InvalidOperationException("Unsupported save schema.");
-            snapshot.SavedAtUtc = DateTime.UtcNow;
+            if (snapshot == null || snapshot.SchemaVersion != PlayerSaveSnapshot.CurrentSchemaVersion) throw new InvalidOperationException("Unsupported save schema.");
+            snapshot.SavedAtUnixSeconds = new DateTimeOffset(_utcNow()).ToUnixTimeSeconds();
             var payload = JsonUtility.ToJson(snapshot);
-            var envelope = new SaveEnvelope { schemaVersion = 1, payload = payload, checksum = Checksum(payload) };
+            var envelope = new SaveEnvelope { schemaVersion = PlayerSaveSnapshot.CurrentSchemaVersion, payload = payload, checksum = Checksum(payload) };
             var directory = Path.GetDirectoryName(_path);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
             var temporary = _path + ".tmp";
@@ -60,10 +72,15 @@ namespace ImmortalLoot.Player
         {
             if (!Exists) return null;
             var envelope = JsonUtility.FromJson<SaveEnvelope>(File.ReadAllText(_path, Encoding.UTF8));
-            if (envelope == null || envelope.schemaVersion != 1 || string.IsNullOrEmpty(envelope.payload) || !FixedEquals(envelope.checksum, Checksum(envelope.payload)))
+            if (envelope == null || envelope.schemaVersion < 1 || envelope.schemaVersion > PlayerSaveSnapshot.CurrentSchemaVersion || string.IsNullOrEmpty(envelope.payload) || !FixedEquals(envelope.checksum, Checksum(envelope.payload)))
                 throw new InvalidDataException("Save checksum or schema is invalid.");
             var snapshot = JsonUtility.FromJson<PlayerSaveSnapshot>(envelope.payload);
-            if (snapshot == null || snapshot.SchemaVersion != 1) throw new InvalidDataException("Save payload is invalid.");
+            if (snapshot == null || snapshot.SchemaVersion < 1 || snapshot.SchemaVersion > PlayerSaveSnapshot.CurrentSchemaVersion) throw new InvalidDataException("Save payload is invalid.");
+            if (snapshot.SchemaVersion == 1)
+            {
+                snapshot.SchemaVersion = PlayerSaveSnapshot.CurrentSchemaVersion;
+                snapshot.LastActiveUnixSeconds = snapshot.SavedAtUnixSeconds;
+            }
             return snapshot;
         }
 
@@ -79,6 +96,7 @@ namespace ImmortalLoot.Player
             return a.Length == b.Length && CryptographicOperations.FixedTimeEquals(a, b);
         }
 
-        public static JsonPlayerSaveRepository CreateDefault() => new JsonPlayerSaveRepository(Path.Combine(Application.persistentDataPath, "immortal-loot-save.json"));
+        public static string DefaultPath => Path.Combine(Application.persistentDataPath, "immortal-loot-save.json");
+        public static JsonPlayerSaveRepository CreateDefault() => new JsonPlayerSaveRepository(DefaultPath);
     }
 }

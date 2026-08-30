@@ -48,5 +48,19 @@ namespace ImmortalLoot.Tests
             Assert.That(session.Reached(config.realmPackEntryMinute), Is.True);
             Assert.That(session.Reached(config.clearChapterMinute), Is.True);
         }
+
+        [Test]
+        public void Restore_ContinuesStageWithoutReplayingPreviouslyElapsedRewards()
+        {
+            var config = DemoPacingLoader.Load(new ResourcesConfigSource());
+            var session = new DemoPacingSession(config);
+            session.Restore(config.firstBossMinute * 60d);
+            Assert.That(session.CurrentStageNumber, Is.EqualTo(10));
+            Assert.That(session.PendingRewards, Is.Zero);
+            session.Advance(config.equipmentDropSeconds - 1);
+            Assert.That(session.TryConsumeBattleReward(), Is.False);
+            session.Advance(1);
+            Assert.That(session.TryConsumeBattleReward(), Is.True);
+        }
     }
 }
