@@ -72,6 +72,7 @@ namespace ImmortalLoot.UI
         private GameSettingsService _settings;
         private IReadOnlyList<CommercialProductConfig> _commercialProducts;
         private ValidationFunnelTracker _validationTelemetry;
+        private PrototypeCombatFeedback _feedback;
         private readonly CharacterStats _baseStats = new CharacterStats
         {
             HP = 180f, Attack = 12f, Defense = 3f, CritRate = 0.1f, CritDamage = 1.5f, AttackSpeed = 1f, FireDamage = 0.1f
@@ -89,6 +90,8 @@ namespace ImmortalLoot.UI
             _catalog = new JsonConfigRepository(new ResourcesConfigSource()).LoadAll();
             _commercialProducts = CommercialEntitlementService.LoadProducts(new ResourcesConfigSource());
             _validationTelemetry = new ValidationFunnelTracker(new JsonlValidationEventSink(Path.Combine(Application.persistentDataPath, "validation-funnel.jsonl")));
+            _feedback = gameObject.GetComponent<PrototypeCombatFeedback>() ?? gameObject.AddComponent<PrototypeCombatFeedback>();
+            _feedback.Initialize();
             _saveRepository = JsonPlayerSaveRepository.CreateDefault();
             var saved = LoadSnapshotSafely();
             _generator = new EquipmentGenerator(new SystemRandomSource(), _catalog);
@@ -156,6 +159,12 @@ namespace ImmortalLoot.UI
             _battle = new AutoBattleEngine(player, enemy,
                 new DamageCalculator(DamageFormulaConfigLoader.Load(new ResourcesConfigSource()), new SystemRandomSource()));
             _battle.Finished += HandleBattleFinished;
+            _battle.EventRaised += value =>
+            {
+                if (value.Type == BattleEventType.BasicAttack || value.Type == BattleEventType.SkillCast || value.Type == BattleEventType.DamageOverTime)
+                    _feedback.PlayHit(value.IsCritical);
+            };
+            if (monster.Rank == MonsterRank.Boss) _feedback.PlayBossAppearance();
         }
 
         private async void HandleBattleFinished(BattleState state)
@@ -186,6 +195,7 @@ namespace ImmortalLoot.UI
                     lootText.text = FormatServerLoot(item, row) + $"\n\n服务器奖励：经验 +{finished.rewardExp:N0} · 灵砂 +{finished.rewardSoftCurrency:N0}";
                     _kills++;
                     _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, _stageNumber, _power, row?.quality ?? string.Empty);
+                    if (Enum.TryParse(row?.quality, true, out EquipmentQuality serverQuality)) _feedback.PlayLoot(serverQuality);
                     if (_stageNumber == 10)
                     {
                         _validationTelemetry.TrackOnce("first_boss_defeated", _pacing.ElapsedSeconds, _stageNumber, _power, row?.quality ?? string.Empty);
@@ -210,6 +220,7 @@ namespace ImmortalLoot.UI
                 _inventory.RemoveEquipment(_inventory.State.Equipment[0].InstanceId, out _);
             _inventory.AddEquipment(_latestLoot);
             _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString());
+            _feedback.PlayLoot(_latestLoot.Quality);
             lootText.text = FormatLoot(_latestLoot) + "\n\n点击“穿戴最新装备”提升战力";
             lootText.color = PrototypeVisualTheme.QualityColor(_latestLoot.Quality);
             if (_stageNumber == 10)
@@ -233,6 +244,7 @@ namespace ImmortalLoot.UI
                     var result = ImmortalLootApiClient.Parse<EquipResultDto>(await _login.ApiClient.EquipAsync(_serverLatestInstanceId));
                     await RefreshServerProfile();
                     _validationTelemetry.TrackOnce("first_equipment_equipped", _pacing.ElapsedSeconds, _stageNumber, _power, value: Math.Max(0, _power - serverPowerBefore));
+                    _feedback.PlayEquip();
                     if (guideText != null) guideText.text = $"服务器装备成功：{result.slot}{(result.replaced ? "，已替换旧装备" : string.Empty)}";
                 }
                 catch (Exception exception) { if (guideText != null) guideText.text = "服务器穿戴失败：" + exception.Message; }
@@ -243,6 +255,7 @@ namespace ImmortalLoot.UI
             _loadout.Equip(_latestLoot);
             RefreshProgressDisplay();
             _validationTelemetry.TrackOnce("first_equipment_equipped", _pacing.ElapsedSeconds, _stageNumber, _power, _latestLoot.Quality.ToString(), Math.Max(0, _power - before));
+            _feedback.PlayEquip();
             StartCoroutine(FlashPowerGain());
             SaveProgress();
             if (guideText != null) guideText.text = $"装备成功，战力 {before} → {_power}。继续推图挑战 1-10 Boss";

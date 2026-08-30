@@ -13,8 +13,8 @@
 | QA-DEVICE-001 | P0 | BUILD-ANDROID-001 | BLOCKED | E | 等待可安装包后执行 10/60 分钟真机测试 |
 | SETTINGS-UI-001 | P1 | SAVE-001 | TESTING | C/D | 声音、震动、立即保存、隐私与协议四入口已编译；待当前提交与 Unity 场景运行 |
 | FUNNEL-001 | P1 | CORE-001 | DONE | D/E | 无 PII 本地 JSONL 漏斗、会话关联、可替换 Sink 与可执行烟测完成 |
-| FEEDBACK-001 | P1 | CORE-001 | TODO | C | 最小战斗音效/命中与 Boss 反馈；不得引入未授权素材 |
+| FEEDBACK-001 | P1 | CORE-001 | TESTING | C | 五类程序化音效已接入且程序集编译通过；待 Unity 场景听感/音量验收 |
 | BALANCE-001 | P1 | CORE-001 | DONE | A/B/E | 10m=22、60m=142；十槽 8%–12%，品质 40/30/20/10 门禁通过 |
 | WARNINGS-001 | P2 | — | TODO | E | 迁移 Unity 6 已弃用查找/BuildTarget API，不阻塞 RC 逻辑 |
 
-当前自动执行：`FEEDBACK-001`；若 Unity 授权恢复，立即抢占并执行 `QA-UNITY-001`。
+当前自动执行：`WARNINGS-001` 的低风险 Unity 6 API 迁移；若 Unity 授权恢复，立即抢占并执行 `QA-UNITY-001`。

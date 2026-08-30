@@ -1,4 +1,4 @@
-# Project ImmortalLoot / 《太初拾遗录》
+# Project ImmortalLoot / 《太初：无尽轮回》
 
 原创修仙放置刷宝手游 MVP。Phase 1–20 已完成：核心刷宝循环、随机装备词条、挂机、境界渡劫、九系灵根、火/雷/血三套功法 Build、任务活动邮件，以及含鉴权、商城、Development-only Mock 支付和三维周期排行榜的权威后端均已落地。Android 功能与兼容验收使用夜神 Android 7.1.2；按本次 MVP 的用户批准范围，不包含物理真机发布认证。
 
@@ -38,7 +38,9 @@ $env:ASPNETCORE_ENVIRONMENT='Development'
 ```powershell
 & 'C:\Program Files\Unity\Hub\Editor\6000.5.10f1\Editor\Unity.exe' -projectPath . -runTests -testPlatform EditMode -testResults TestResults.xml
 & 'C:\Program Files\Unity\Hub\Editor\6000.5.10f1\Editor\Unity.exe' -projectPath . -runTests -testPlatform PlayMode -testResults PlayModeTestResults.xml
+& '.\Tools\Verification\compile-unity-assemblies.ps1'
 & '.\Tools\Verification\run-domain-tests.ps1'
+& '.\Tools\Verification\run-balance-simulation.ps1'
 ```
 
 ## 架构
