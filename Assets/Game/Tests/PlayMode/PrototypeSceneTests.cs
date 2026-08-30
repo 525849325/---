@@ -475,10 +475,24 @@ namespace ImmortalLoot.Tests.PlayMode
             SceneManager.LoadScene("Main");
             yield return null;
 
+            var authoritativeProfile = CreateServerProfile("stage_1_3", ClearedStages(2));
+            authoritativeProfile.realmStage = 10;
+            authoritativeProfile.breakthroughMaterial = 1000;
+            authoritativeProfile.pendingTribulation = new PendingTribulationDto
+            {
+                targetRealmId = "realm_qi_coalescence",
+                reservedMaterial = 2000,
+                requiredExperience = 1200
+            };
+            authoritativeProfile.spiritualRoots = new[]
+            {
+                new SpiritualRootProfileDto { rootId = "root_fire", level = 2, maxLevel = 10 }
+            };
             var transport = new ServerLoopTransport(
                 requiredStartStageId: "stage_1_1",
                 authoritativeProfileCurrentStageId: "stage_1_3",
-                authoritativeProfileClearedStageIds: ClearedStages(2));
+                authoritativeProfileClearedStageIds: ClearedStages(2),
+                authoritativeProfile: authoritativeProfile);
             var client = new ImmortalLootApiClient(transport);
             var loginTask = client.LoginAsync("server-profile-reconciliation", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
@@ -499,6 +513,114 @@ namespace ImmortalLoot.Tests.PlayMode
                 "The refreshed currentStageId and clearedStageIds must be applied as one authoritative mirror.");
             Assert.That(controller.ProgressForTests.Realm.CultivationExperience, Is.EqualTo(900),
                 "A refreshed server profile must preserve the authoritative cumulative cultivation pool instead of mirroring residual level experience.");
+            Assert.That(controller.ProgressForTests.Realm.BreakthroughMaterial, Is.EqualTo(1000));
+            Assert.That(controller.ProgressForTests.Realm.PendingTribulation, Is.Not.Null);
+            Assert.That(controller.ProgressForTests.Realm.PendingTribulation.TargetRealmId, Is.EqualTo("realm_qi_coalescence"));
+            Assert.That(controller.ProgressForTests.Realm.PendingTribulation.ReservedMaterial, Is.EqualTo(2000));
+            Assert.That(controller.ProgressForTests.SpiritualRoots.Roots.Find(value => value.RootId == "root_fire")?.Level,
+                Is.EqualTo(2), "A refreshed profile must replace the authoritative spiritual-root mirror together with realm state.");
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator ServerCultivation_RefreshesAuthoritativeMaterialAndPendingWithoutClientTrialClaims()
+        {
+            DeleteLocalSave();
+            PrototypeGameController.PauseNextBattleForTests();
+            SceneManager.LoadScene("Main");
+            yield return null;
+
+            var initialProfile = CreateServerProfile();
+            initialProfile.level = 10;
+            initialProfile.realmStage = 10;
+            initialProfile.cultivationExperience = 2000;
+            initialProfile.breakthroughMaterial = 3000;
+            var refreshedProfile = CreateServerProfile();
+            refreshedProfile.level = 10;
+            refreshedProfile.realmStage = 10;
+            refreshedProfile.cultivationExperience = 2000;
+            refreshedProfile.breakthroughMaterial = 1000;
+            refreshedProfile.pendingTribulation = new PendingTribulationDto
+            {
+                targetRealmId = "realm_qi_coalescence",
+                reservedMaterial = 2000,
+                requiredExperience = 1200
+            };
+            var transport = new RealmActionTransport(refreshedProfile, new RealmBreakthroughDto
+            {
+                realmId = "realm_body_tempering",
+                realmStage = 10,
+                status = "TribulationRequired",
+                targetRealmId = "realm_qi_coalescence",
+                requiredLevel = 10,
+                requiredExperience = 1200,
+                requiredMaterial = 2000,
+                materialSpent = 2000,
+                breakthroughMaterial = 1000
+            });
+            var client = new ImmortalLootApiClient(transport);
+            var loginTask = client.LoginAsync("server-realm-action", "在线修士");
+            while (!loginTask.IsCompleted) yield return null;
+            Assert.That(loginTask.Exception, Is.Null);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
+                client, initialProfile, CreateServerInventory());
+
+            GameObject.Find("Nav_CultivationPage").GetComponent<Button>().onClick.Invoke();
+            GameObject.Find("Action_CultivationPage").GetComponent<Button>().onClick.Invoke();
+            var timeout = 2f;
+            while (timeout > 0f && transport.ProfileRequestCount < 1) { timeout -= Time.deltaTime; yield return null; }
+
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var content = GameObject.Find("CultivationPageContent").GetComponent<Text>().text;
+            Assert.That(transport.RealmRequestCount, Is.EqualTo(1));
+            Assert.That(transport.ProfileRequestCount, Is.EqualTo(1), "A confirmed realm action must refresh the authoritative profile before returning UI control.");
+            Assert.That(transport.RealmRequestBody, Does.Not.Contain("Token"));
+            Assert.That(transport.RealmRequestBody, Does.Not.Contain("Victory"));
+            Assert.That(transport.RealmRequestBody, Does.Not.Contain("RequiredLevel"));
+            Assert.That(transport.RealmRequestBody, Does.Not.Contain("Material"));
+            Assert.That(controller.ProgressForTests.Realm.BreakthroughMaterial, Is.EqualTo(1000));
+            Assert.That(controller.ProgressForTests.Realm.PendingTribulation?.TargetRealmId, Is.EqualTo("realm_qi_coalescence"));
+            Assert.That(controller.ProgressForTests.SpiritualRoots.Roots, Is.Empty,
+                "An empty authoritative root list must not be filled with a client-created fire root.");
+            Assert.That(content, Does.Contain("渡劫已开启"));
+            Assert.That(content, Does.Contain("Boss"));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator ServerCultivation_UnknownResponseReusesIntentKeyOnSafeRetry()
+        {
+            DeleteLocalSave();
+            PrototypeGameController.PauseNextBattleForTests();
+            SceneManager.LoadScene("Main");
+            yield return null;
+
+            var refreshedProfile = CreateServerProfile();
+            var transport = new RealmActionTransport(refreshedProfile, new RealmBreakthroughDto
+            {
+                realmId = "realm_body_tempering",
+                realmStage = 2,
+                status = "AdvancedStage"
+            }, failFirstBreakthroughResponse: true);
+            var client = new ImmortalLootApiClient(transport);
+            var loginTask = client.LoginAsync("server-realm-retry", "在线修士");
+            while (!loginTask.IsCompleted) yield return null;
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
+                client, CreateServerProfile(), CreateServerInventory());
+
+            GameObject.Find("Nav_CultivationPage").GetComponent<Button>().onClick.Invoke();
+            var action = GameObject.Find("Action_CultivationPage").GetComponent<Button>();
+            action.onClick.Invoke();
+            var timeout = 2f;
+            while (timeout > 0f && transport.ProfileRequestCount < 1) { timeout -= Time.deltaTime; yield return null; }
+            yield return null;
+            action.onClick.Invoke();
+            timeout = 2f;
+            while (timeout > 0f && transport.ProfileRequestCount < 2) { timeout -= Time.deltaTime; yield return null; }
+
+            Assert.That(transport.RealmRequestBodies.Count, Is.EqualTo(2));
+            Assert.That(transport.RealmRequestBodies[1], Is.EqualTo(transport.RealmRequestBodies[0]),
+                "An unknown response must retry the same server intent instead of creating a second breakthrough.");
             DeleteLocalSave();
         }
 
@@ -556,20 +678,41 @@ namespace ImmortalLoot.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator ServerBossWithoutPendingWindowStillRequestsAuthoritativeReward()
+        public IEnumerator ServerBossWithPendingTribulationRefreshesAuthoritativeResolutionWithoutClientClaims()
         {
             DeleteLocalSave();
             SaveSeededProgress(new PlayerProgressState { CurrentStageId = "stage_1_1" });
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");
             yield return null;
-            var transport = new ServerLoopTransport();
+            var initialProfile = CreateServerProfile("stage_1_10", ClearedStages(9));
+            initialProfile.level = 10;
+            initialProfile.realmStage = 10;
+            initialProfile.cultivationExperience = 2000;
+            initialProfile.breakthroughMaterial = 1000;
+            initialProfile.pendingTribulation = new PendingTribulationDto
+            {
+                targetRealmId = "realm_qi_coalescence",
+                reservedMaterial = 2000,
+                requiredExperience = 1200
+            };
+            var resolvedProfile = CreateServerProfile("stage_1_1", ClearedStages(10));
+            resolvedProfile.level = 10;
+            resolvedProfile.cultivationExperience = 1050;
+            resolvedProfile.realmId = "realm_qi_coalescence";
+            resolvedProfile.realmStage = 1;
+            resolvedProfile.breakthroughMaterial = 1100;
+            resolvedProfile.spiritualRoots = new[]
+            {
+                new SpiritualRootProfileDto { rootId = "root_fire", level = 1, maxLevel = 10 }
+            };
+            var transport = new ServerLoopTransport(authoritativeProfile: resolvedProfile, failInventory: true);
             var client = new ImmortalLootApiClient(transport);
             var loginTask = client.LoginAsync("playmode-server-boss", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
             Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
-                client, CreateServerProfile("stage_1_10", ClearedStages(9)), CreateServerInventory());
+                client, initialProfile, CreateServerInventory());
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
             Assert.That(controller.PendingRewardWindowsForTests, Is.Zero);
 
@@ -582,7 +725,55 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"));
             Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_10"));
             Assert.That(controller.ServerLatestInstanceIdForTests, Is.EqualTo("equip-online"));
-            Assert.That(GameObject.Find("Loot").GetComponent<Text>().text, Does.Contain("服务器掉落"));
+            Assert.That(GameObject.Find("Loot").GetComponent<Text>().text, Does.Contain("装备背包同步失败"));
+            Assert.That(controller.ProgressForTests.Realm.RealmId, Is.EqualTo("realm_qi_coalescence"));
+            Assert.That(controller.ProgressForTests.Realm.RealmStage, Is.EqualTo(1));
+            Assert.That(controller.ProgressForTests.Realm.CultivationExperience, Is.EqualTo(1050));
+            Assert.That(controller.ProgressForTests.Realm.BreakthroughMaterial, Is.EqualTo(1100));
+            Assert.That(controller.ProgressForTests.Realm.PendingTribulation, Is.Null);
+            Assert.That(controller.ProgressForTests.SpiritualRoots.Roots.Find(value => value.RootId == "root_fire")?.Level, Is.EqualTo(1));
+            Assert.That(GameObject.Find("GuideText").GetComponent<Text>().text, Does.Contain("当前权威境界"));
+            Assert.That(GameObject.Find("GuideText").GetComponent<Text>().text, Does.Contain("凝气"));
+            Assert.That(transport.FinishRequestBodies[0], Does.Not.Contain("Token"));
+            Assert.That(transport.FinishRequestBodies[0], Does.Not.Contain("Victory"));
+            Assert.That(transport.Paths, Does.Not.Contain("/realm/resolve"));
+            DeleteLocalSave();
+        }
+
+        [UnityTest]
+        public IEnumerator ServerProfileRefresh_InvalidPendingStateLeavesAuthoritativeMirrorUnchanged()
+        {
+            DeleteLocalSave();
+            PrototypeGameController.PauseNextBattleForTests();
+            SceneManager.LoadScene("Main");
+            yield return null;
+
+            var invalidProfile = CreateServerProfile("stage_1_3", ClearedStages(2));
+            invalidProfile.realmStage = 2;
+            invalidProfile.breakthroughMaterial = 999;
+            invalidProfile.pendingTribulation = new PendingTribulationDto
+            {
+                targetRealmId = "realm_missing",
+                reservedMaterial = 2000,
+                requiredExperience = 1200
+            };
+            var transport = new ServerLoopTransport(authoritativeProfile: invalidProfile);
+            var client = new ImmortalLootApiClient(transport);
+            var loginTask = client.LoginAsync("server-invalid-profile", "在线修士");
+            while (!loginTask.IsCompleted) yield return null;
+            Assert.That(loginTask.Exception, Is.Null);
+            Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
+                client, CreateServerProfile(), CreateServerInventory());
+
+            var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var refresh = controller.RefreshServerProfileAsync();
+            while (!refresh.IsCompleted) yield return null;
+            Assert.That(refresh.Exception, Is.Not.Null);
+            Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"));
+            Assert.That(controller.ProgressForTests.Realm.RealmStage, Is.EqualTo(1));
+            Assert.That(controller.ProgressForTests.Realm.BreakthroughMaterial, Is.Zero);
+            Assert.That(controller.ProgressForTests.Realm.PendingTribulation, Is.Null);
+            Assert.That(controller.ProgressForTests.SpiritualRoots.Roots, Is.Empty);
             DeleteLocalSave();
         }
 
@@ -1475,6 +1666,8 @@ namespace ImmortalLoot.Tests.PlayMode
             private readonly string _requiredStartStageId;
             private readonly string _authoritativeProfileCurrentStageId;
             private readonly string[] _authoritativeProfileClearedStageIds;
+            private readonly PlayerProfileDto _authoritativeProfile;
+            private readonly bool _failInventory;
             private bool _hasSuccessfulFinish;
             private bool _hasRewardedFinish;
             private bool _lostFirstFinishResponse;
@@ -1489,13 +1682,17 @@ namespace ImmortalLoot.Tests.PlayMode
                 bool loseFirstFinishResponseAfterCommit = false,
                 string requiredStartStageId = "",
                 string authoritativeProfileCurrentStageId = "",
-                string[] authoritativeProfileClearedStageIds = null)
+                string[] authoritativeProfileClearedStageIds = null,
+                PlayerProfileDto authoritativeProfile = null,
+                bool failInventory = false)
             {
                 _failBattleFinish = failBattleFinish;
                 _loseFirstFinishResponseAfterCommit = loseFirstFinishResponseAfterCommit;
                 _requiredStartStageId = requiredStartStageId ?? string.Empty;
                 _authoritativeProfileCurrentStageId = authoritativeProfileCurrentStageId ?? string.Empty;
                 _authoritativeProfileClearedStageIds = authoritativeProfileClearedStageIds;
+                _authoritativeProfile = authoritativeProfile;
+                _failInventory = failInventory;
             }
 
             public Task<ApiResponse> SendAsync(ApiRequest request)
@@ -1545,14 +1742,17 @@ namespace ImmortalLoot.Tests.PlayMode
                         break;
                     case "/battle/finish":
                         json = finishRewardWindowEligible
-                            ? "{\"sessionId\":\"" + _currentSessionId + "\",\"status\":\"Finished\",\"rewardSoftCurrency\":10,\"rewardExp\":25,\"equipmentInstanceId\":\"equip-online\",\"replayed\":false}"
-                            : "{\"sessionId\":\"" + _currentSessionId + "\",\"status\":\"Finished\",\"rewardSoftCurrency\":0,\"rewardExp\":0,\"equipmentInstanceId\":\"\",\"replayed\":false}";
+                            ? "{\"sessionId\":\"" + _currentSessionId + "\",\"status\":\"Finished\",\"rewardSoftCurrency\":10,\"rewardExp\":25,\"rewardBreakthroughMaterial\":100,\"equipmentInstanceId\":\"equip-online\",\"replayed\":false}"
+                            : "{\"sessionId\":\"" + _currentSessionId + "\",\"status\":\"Finished\",\"rewardSoftCurrency\":0,\"rewardExp\":0,\"rewardBreakthroughMaterial\":0,\"equipmentInstanceId\":\"\",\"replayed\":false}";
                         break;
-                    case "/player/inventory": json = "{\"items\":[],\"equipment\":[{\"instanceId\":\"equip-online\",\"baseId\":\"gloves_starseal\",\"slot\":\"Gloves\",\"level\":1,\"quality\":\"Rare\",\"isLocked\":false,\"isEquipped\":false,\"instanceJson\":\"{\\\"instanceId\\\":\\\"equip-online\\\",\\\"baseId\\\":\\\"gloves_starseal\\\",\\\"slot\\\":\\\"Gloves\\\",\\\"level\\\":1,\\\"quality\\\":\\\"Rare\\\",\\\"affixes\\\":[{\\\"id\\\":\\\"affix_attack\\\",\\\"value\\\":8.5}]}\"}]}"; break;
+                    case "/player/inventory":
+                        if (_failInventory) return Task.FromResult(new ApiResponse(503, "{\"error\":\"inventory unavailable\"}"));
+                        json = "{\"items\":[],\"equipment\":[{\"instanceId\":\"equip-online\",\"baseId\":\"gloves_starseal\",\"slot\":\"Gloves\",\"level\":1,\"quality\":\"Rare\",\"isLocked\":false,\"isEquipped\":false,\"instanceJson\":\"{\\\"instanceId\\\":\\\"equip-online\\\",\\\"baseId\\\":\\\"gloves_starseal\\\",\\\"slot\\\":\\\"Gloves\\\",\\\"level\\\":1,\\\"quality\\\":\\\"Rare\\\",\\\"affixes\\\":[{\\\"id\\\":\\\"affix_attack\\\",\\\"value\\\":8.5}]}\"}]}";
+                        break;
                     case "/equipment/equip": json = "{\"instanceId\":\"equip-online\",\"slot\":\"Gloves\",\"replaced\":false}"; break;
                     case "/player/profile":
                         ProfileRequestCount++;
-                        json = JsonUtility.ToJson(new PlayerProfileDto
+                        json = JsonUtility.ToJson(_authoritativeProfile ?? new PlayerProfileDto
                         {
                             playerId = "p1",
                             nickname = "在线修士",
@@ -1561,6 +1761,7 @@ namespace ImmortalLoot.Tests.PlayMode
                             cultivationExperience = _hasRewardedFinish ? 925 : 900,
                             realmId = "realm_body_tempering",
                             realmStage = 1,
+                            breakthroughMaterial = _hasRewardedFinish ? 100 : 0,
                             power = 180,
                             softCurrency = _hasRewardedFinish ? 10 : 0,
                             premiumCurrency = _hasSuccessfulFinish ? 10 : 0,
@@ -1602,6 +1803,46 @@ namespace ImmortalLoot.Tests.PlayMode
                 public string SessionId;
                 public string IdempotencyKey;
                 public bool RewardWindowEligible;
+            }
+        }
+
+        private sealed class RealmActionTransport : IApiTransport
+        {
+            private readonly PlayerProfileDto _refreshedProfile;
+            private readonly RealmBreakthroughDto _breakthrough;
+            private readonly bool _failFirstBreakthroughResponse;
+            public int RealmRequestCount { get; private set; }
+            public int ProfileRequestCount { get; private set; }
+            public string RealmRequestBody { get; private set; } = string.Empty;
+            public List<string> RealmRequestBodies { get; } = new List<string>();
+
+            public RealmActionTransport(PlayerProfileDto refreshedProfile, RealmBreakthroughDto breakthrough, bool failFirstBreakthroughResponse = false)
+            {
+                _refreshedProfile = refreshedProfile;
+                _breakthrough = breakthrough;
+                _failFirstBreakthroughResponse = failFirstBreakthroughResponse;
+            }
+
+            public Task<ApiResponse> SendAsync(ApiRequest request)
+            {
+                switch (request.Path)
+                {
+                    case "/auth/login":
+                        return Task.FromResult(new ApiResponse(200,
+                            "{\"playerId\":\"p1\",\"accessToken\":\"token\",\"expiresAtUtc\":\"2030-01-01T00:00:00Z\",\"isNewPlayer\":true}"));
+                    case "/realm/breakthrough":
+                        RealmRequestCount++;
+                        RealmRequestBody = request.JsonBody;
+                        RealmRequestBodies.Add(request.JsonBody);
+                        if (_failFirstBreakthroughResponse && RealmRequestCount == 1)
+                            return Task.FromException<ApiResponse>(new IOException("simulated response loss after commit"));
+                        return Task.FromResult(new ApiResponse(200, JsonUtility.ToJson(_breakthrough)));
+                    case "/player/profile":
+                        ProfileRequestCount++;
+                        return Task.FromResult(new ApiResponse(200, JsonUtility.ToJson(_refreshedProfile)));
+                    default:
+                        return Task.FromResult(new ApiResponse(200, "{}"));
+                }
             }
         }
     }

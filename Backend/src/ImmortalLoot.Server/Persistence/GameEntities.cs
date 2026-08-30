@@ -36,8 +36,13 @@ public sealed class Player : EntityBase
     public int Level { get; set; } = 1;
     public long Exp { get; set; }
     public long CultivationExperience { get; set; }
+    public long BreakthroughMaterial { get; set; }
     [MaxLength(64)] public string RealmId { get; set; } = "realm_body_tempering";
     public int RealmStage { get; set; } = 1;
+    [MaxLength(64)] public string PendingTribulationToken { get; set; } = string.Empty;
+    [MaxLength(64)] public string PendingTribulationTargetRealmId { get; set; } = string.Empty;
+    public long PendingTribulationReservedMaterial { get; set; }
+    public long PendingTribulationRequiredExp { get; set; }
     public long Power { get; set; }
     public DateTime LastLoginTimeUtc { get; set; }
     public DateTime LastOfflineTimeUtc { get; set; }
@@ -199,6 +204,7 @@ public sealed class BattleSession : EntityBase
     public DateTime? FinishedAtUtc { get; set; }
     public long RewardSoftCurrency { get; set; }
     public long RewardExp { get; set; }
+    public long RewardBreakthroughMaterial { get; set; }
     [MaxLength(64)] public string RewardEquipmentInstanceId { get; set; } = string.Empty;
 }
 

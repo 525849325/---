@@ -26,6 +26,16 @@ public static class GameDatabaseInitializer
                 cancellationToken);
         }
 
+        if (db.Database.IsSqlite())
+        {
+            await AddColumnIfMissingAsync(db, "Player", "BreakthroughMaterial", "INTEGER NOT NULL DEFAULT 0", cancellationToken);
+            await AddColumnIfMissingAsync(db, "Player", "PendingTribulationToken", "TEXT NOT NULL DEFAULT ''", cancellationToken);
+            await AddColumnIfMissingAsync(db, "Player", "PendingTribulationTargetRealmId", "TEXT NOT NULL DEFAULT ''", cancellationToken);
+            await AddColumnIfMissingAsync(db, "Player", "PendingTribulationReservedMaterial", "INTEGER NOT NULL DEFAULT 0", cancellationToken);
+            await AddColumnIfMissingAsync(db, "Player", "PendingTribulationRequiredExp", "INTEGER NOT NULL DEFAULT 0", cancellationToken);
+            await AddColumnIfMissingAsync(db, "BattleSession", "RewardBreakthroughMaterial", "INTEGER NOT NULL DEFAULT 0", cancellationToken);
+        }
+
         var activeSessions = await db.BattleSessions
             .Where(value => value.Status == "Started")
             .OrderBy(value => value.PlayerId)
@@ -68,5 +78,22 @@ public static class GameDatabaseInitializer
         command.Parameters.Add(parameter);
         var result = await command.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt64(result) > 0;
+    }
+
+    private static async Task AddColumnIfMissingAsync(
+        GameDbContext db,
+        string tableName,
+        string columnName,
+        string definition,
+        CancellationToken cancellationToken)
+    {
+        if (await HasColumnAsync(db, tableName, columnName, cancellationToken)) return;
+        var table = tableName.Replace("\"", "\"\"", StringComparison.Ordinal);
+        var column = columnName.Replace("\"", "\"\"", StringComparison.Ordinal);
+        var connection = db.Database.GetDbConnection();
+        await using var command = connection.CreateCommand();
+        command.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
+        command.CommandText = $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {definition};";
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

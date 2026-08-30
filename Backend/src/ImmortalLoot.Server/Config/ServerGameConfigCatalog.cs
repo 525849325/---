@@ -3,13 +3,14 @@ using System.Text.Json;
 namespace ImmortalLoot.Server.Config;
 
 public sealed record ServerRealmConfig(string Id, string Name, int Order, int StageCount, int RequiredLevel, long RequiredExp, long BreakthroughCost, double BreakthroughSuccessRate);
+public sealed record ServerRealmFormula(double MinorCostScale, double MinorExpScale, double MinorFailureLossRatio, double TribulationFailureLossRatio, int FailureCooldownSeconds);
 public sealed record ServerShopItemConfig(string Id, string ShopId, string ItemId, string Currency, long Price, string LimitType, int LimitCount, string RefreshType, string UnlockCondition);
 public sealed record ServerCommercialProductConfig(string Id, string Name, string Type, long AmountMinorUnits, string CurrencyCode, long ImmediatePremium, long DailyPremium, int DurationDays, int AfkCapBonusHours, int QuickAfkBonus, int LifetimeLimit, string UnlockRealmId, string RewardItemId, int RewardItemCount);
 public sealed record ServerActivityConfig(string Id, string Name, string Type, DateTime StartTimeUtc, DateTime EndTimeUtc, string Condition, double RewardModifier);
 public sealed record ServerEquipmentConfig(string Id, string DisplayName, string Slot, IReadOnlyList<string> AffixPool);
 public sealed record ServerAffixConfig(string Id, string DisplayName, double MinValue, double MaxValue, int Weight, string ConflictGroup);
 public sealed record ServerQualityRule(string Quality, int MinAffixes, int MaxAffixes);
-public sealed record ServerStageConfig(string Id, int Chapter, int StageNumber, long RecommendedPower, long RewardExp, long RewardSoftCurrency, long FirstClearPremiumCurrency, string DropTableId, string FirstClearDropTableId, string UnlockCondition, bool IsBossStage);
+public sealed record ServerStageConfig(string Id, int Chapter, int StageNumber, long RecommendedPower, long RewardExp, long RewardSoftCurrency, long RewardBreakthroughMaterial, long FirstClearPremiumCurrency, string DropTableId, string FirstClearDropTableId, string UnlockCondition, bool IsBossStage);
 public sealed record ServerDropEntryConfig(string ItemId, int Weight, int MinCount, int MaxCount, string MinQuality, string MaxQuality, string Condition);
 public sealed record ServerDropTableConfig(string Id, string Name, int RollCount, IReadOnlyList<ServerDropEntryConfig> Entries);
 public sealed record ServerSpiritualRootConfig(string Id, string Name, string Element, int MaxLevel);
@@ -21,6 +22,7 @@ public sealed record ServerActivityChestConfig(int RequiredPoints, long SoftCurr
 public sealed class ServerGameConfigCatalog
 {
     public IReadOnlyList<ServerRealmConfig> Realms { get; }
+    public ServerRealmFormula RealmFormula { get; }
     public IReadOnlyList<ServerShopItemConfig> ShopItems { get; }
     public IReadOnlyList<ServerCommercialProductConfig> CommercialProducts { get; }
     public IReadOnlyList<ServerActivityConfig> Activities { get; }
@@ -41,7 +43,13 @@ public sealed class ServerGameConfigCatalog
     private ServerGameConfigCatalog(string directory)
     {
         SourceDirectory = directory;
-        Realms = Load<RealmFile>(directory, "realms.json").Realms;
+        Realms = Load<RealmFile>(directory, "realms.json").Realms
+            .OrderBy(value => value.Order)
+            .ToArray();
+        var realmFormula = Load<RealmFormulaFile>(directory, "realm_formula.json");
+        RealmFormula = new ServerRealmFormula(realmFormula.MinorCostScale, realmFormula.MinorExpScale,
+            realmFormula.MinorFailureLossRatio, realmFormula.TribulationFailureLossRatio,
+            realmFormula.FailureCooldownSeconds);
         ShopItems = Load<ShopFile>(directory, "shop.json").Items;
         CommercialProducts = Load<CommercialFile>(directory, "commercial_products.json").Products;
         Activities = Load<ActivityFile>(directory, "activities.json").Activities;
@@ -74,13 +82,23 @@ public sealed class ServerGameConfigCatalog
 
     private void Validate()
     {
-        if (Realms.Count != 10 || Realms.Select(value => value.Order).Distinct().Count() != Realms.Count) throw new InvalidDataException("Realm config must contain ten unique orders.");
+        if (Realms.Count != 10 ||
+            Realms.Any(value => string.IsNullOrWhiteSpace(value.Id) || value.StageCount <= 0 ||
+                                value.RequiredLevel <= 0 || value.RequiredExp <= 0 || value.BreakthroughCost <= 0 ||
+                                value.BreakthroughSuccessRate is < 0 or > 1) ||
+            Realms.Select(value => value.Id).Distinct(StringComparer.Ordinal).Count() != Realms.Count ||
+            !Realms.Select(value => value.Order).SequenceEqual(Enumerable.Range(1, Realms.Count)))
+            throw new InvalidDataException("Realm config must contain ten unique ids, contiguous orders, and valid requirements.");
         if (Stages.Count != 10 || Stages.Select(value => value.Id).Distinct().Count() != Stages.Count ||
             Stages.Any(value => value.Chapter != 1 || value.StageNumber < 1 || value.StageNumber > 10 ||
                                 !string.Equals(value.Id, $"stage_1_{value.StageNumber}", StringComparison.Ordinal)) ||
             Stages.Select(value => value.StageNumber).Distinct().Count() != 10)
             throw new InvalidDataException("Stage config must contain canonical chapter 1 stages from stage_1_1 through stage_1_10.");
-        if (Stages.Any(value => value.RecommendedPower <= 0 || value.RewardExp <= 0 || value.RewardSoftCurrency <= 0 || value.FirstClearPremiumCurrency < 0)) throw new InvalidDataException("Stage rewards must be configured with positive base values.");
+        if (Stages.Any(value => value.RecommendedPower <= 0 || value.RewardExp <= 0 || value.RewardSoftCurrency <= 0 || value.RewardBreakthroughMaterial < 0 || value.FirstClearPremiumCurrency < 0)) throw new InvalidDataException("Stage rewards must be configured with positive base values.");
+        if (RealmFormula.MinorCostScale <= 0 || RealmFormula.MinorExpScale <= 0 ||
+            RealmFormula.MinorFailureLossRatio is < 0 or > 1 ||
+            RealmFormula.TribulationFailureLossRatio is < 0 or > 1 || RealmFormula.FailureCooldownSeconds < 0)
+            throw new InvalidDataException("Realm formula config is invalid.");
         foreach (var stage in Stages) if (!DropTables.ContainsKey(stage.DropTableId)) throw new InvalidDataException($"Stage '{stage.Id}' references missing drop table.");
         foreach (var table in DropTables.Values)
         {
@@ -118,6 +136,7 @@ public sealed class ServerGameConfigCatalog
 
     private abstract record VersionedFile(int SchemaVersion);
     private sealed record RealmFile(int SchemaVersion, List<ServerRealmConfig> Realms) : VersionedFile(SchemaVersion);
+    private sealed record RealmFormulaFile(int SchemaVersion, double MinorCostScale, double MinorExpScale, double MinorFailureLossRatio, double TribulationFailureLossRatio, int FailureCooldownSeconds) : VersionedFile(SchemaVersion);
     private sealed record ShopFile(int SchemaVersion, List<ServerShopItemConfig> Items) : VersionedFile(SchemaVersion);
     private sealed record CommercialFile(int SchemaVersion, List<ServerCommercialProductConfig> Products) : VersionedFile(SchemaVersion);
     private sealed record ActivityFile(int SchemaVersion, List<ServerActivityConfig> Activities) : VersionedFile(SchemaVersion);

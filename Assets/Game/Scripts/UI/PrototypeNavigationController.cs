@@ -17,6 +17,8 @@ namespace ImmortalLoot.UI
         private PrototypeLoginController _login;
         private GameObject _shopButton;
         private Button _enterButton;
+        private bool _cultivationRequestInFlight;
+        private string _cultivationIntentKey = string.Empty;
 
         private void Start()
         {
@@ -58,6 +60,12 @@ namespace ImmortalLoot.UI
             if (_game == null) return;
             var content = GameObject.Find(pageName + "Content")?.GetComponent<Text>();
             if (content == null) return;
+            var cultivationRequest = pageName == "CultivationPage";
+            if (cultivationRequest && _cultivationRequestInFlight)
+            {
+                content.text = "突破请求正在由服务器确认，请勿重复点击。";
+                return;
+            }
             if (!_game.ServerGameplayActive)
             {
                 content.text = _game.ExecutePageAction(pageName);
@@ -68,9 +76,18 @@ namespace ImmortalLoot.UI
                 content.text = "服务器会话不可用；为保护本地进度，本次操作已取消。";
                 return;
             }
+            if (cultivationRequest) _cultivationRequestInFlight = true;
             content.text = "正在请求权威服务器……";
             try { content.text = await ExecuteServerAction(pageName, _login.ApiClient); }
-            catch (Exception exception) { content.text = "服务器操作失败：" + exception.Message; }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("SERVER_UI_ACTION_FAILED: " + exception);
+                content.text = "服务器操作暂未完成，请稍后重试。";
+            }
+            finally
+            {
+                if (cultivationRequest) _cultivationRequestInFlight = false;
+            }
         }
 
         private void EnterOfflineGameplay()
@@ -127,14 +144,17 @@ namespace ImmortalLoot.UI
             if (_login != null) _login.ServerAuthenticated -= EnterServerGameplay;
         }
 
-        private static async System.Threading.Tasks.Task<string> ExecuteServerAction(string pageName, ImmortalLootApiClient api)
+        private async System.Threading.Tasks.Task<string> ExecuteServerAction(string pageName, ImmortalLootApiClient api)
         {
             switch (pageName)
             {
                 case "CharacterPage":
                 {
                     var profile = ImmortalLootApiClient.Parse<PlayerProfileDto>(await api.GetProfileAsync());
-                    return $"{profile.nickname} · Lv.{profile.level}\n战力 {profile.power:N0} · 经验 {profile.exp:N0}\n境界 {profile.realmId} {profile.realmStage} 阶\n灵砂 {profile.softCurrency:N0} · 仙晶 {profile.premiumCurrency:N0}";
+                    var pending = profile.pendingTribulation == null
+                        ? string.Empty
+                        : $"\n渡劫待完成：击败下一只 Boss 晋升 {profile.pendingTribulation.targetRealmId}";
+                    return $"{profile.nickname} · Lv.{profile.level}\n战力 {profile.power:N0} · 经验 {profile.exp:N0}\n修为 {profile.cultivationExperience:N0} · 破境石 {profile.breakthroughMaterial:N0}\n境界 {profile.realmId} {profile.realmStage} 阶{pending}\n灵砂 {profile.softCurrency:N0} · 仙晶 {profile.premiumCurrency:N0}";
                 }
                 case "InventoryPage":
                 {
@@ -193,10 +213,33 @@ namespace ImmortalLoot.UI
                 }
                 case "CultivationPage":
                 {
-                    var result = ImmortalLootApiClient.Parse<RealmBreakthroughDto>(await api.BreakthroughAsync("ui-realm-" + Guid.NewGuid().ToString("N")));
-                    return result.succeeded
-                        ? $"服务器突破成功：{result.realmId} {result.realmStage} 阶\n灵根：{(string.IsNullOrEmpty(result.spiritualRootId) ? "尚未觉醒" : result.spiritualRootId)}"
-                        : $"本次突破失败，境界保持 {result.realmId} {result.realmStage} 阶";
+                    if (string.IsNullOrEmpty(_cultivationIntentKey))
+                        _cultivationIntentKey = "ui-realm-" + Guid.NewGuid().ToString("N");
+                    RealmBreakthroughDto result;
+                    try
+                    {
+                        result = ImmortalLootApiClient.Parse<RealmBreakthroughDto>(await api.BreakthroughAsync(_cultivationIntentKey));
+                    }
+                    catch (Exception exception)
+                    {
+                        Debug.LogWarning("SERVER_BREAKTHROUGH_RESULT_UNKNOWN: " + exception);
+                        try { await _game.RefreshServerProfileAsync(); }
+                        catch (Exception refreshException) { Debug.LogWarning("SERVER_BREAKTHROUGH_RECONCILIATION_FAILED: " + refreshException); }
+                        return "突破结果尚待确认；再次点击会复用同一安全凭据，不会重复结算。";
+                    }
+                    try
+                    {
+                        var profile = await _game.RefreshServerProfileAsync();
+                        var message = FormatServerBreakthrough(result, profile);
+                        if (IsKnownBreakthroughStatus(result.status)) _cultivationIntentKey = string.Empty;
+                        return message;
+                    }
+                    catch (Exception exception)
+                    {
+                        Debug.LogWarning("SERVER_BREAKTHROUGH_PROFILE_REFRESH_FAILED: " + exception);
+                        return FormatServerBreakthrough(result, null) +
+                               "\n服务器已确认本次突破，但资料刷新失败；再次点击会安全复用同一凭据。";
+                    }
                 }
                 case "SpiritualRootPage":
                 {
@@ -247,6 +290,46 @@ namespace ImmortalLoot.UI
                     return text.TrimEnd();
                 }
                 default: return _UnsupportedOnlineAction(pageName);
+            }
+        }
+
+        private static string FormatServerBreakthrough(RealmBreakthroughDto result, PlayerProfileDto profile)
+        {
+            var currentLevel = profile?.level ?? 0;
+            var currentExperience = profile?.cultivationExperience ?? 0;
+            var currentMaterial = profile?.breakthroughMaterial ?? Math.Max(0, result.breakthroughMaterial);
+            switch (result.status ?? string.Empty)
+            {
+                case "AdvancedStage":
+                    return $"服务器境界突破至 {result.realmId} {result.realmStage} 阶\n消耗修为 {result.requiredExperience:N0} · 破境石 {result.materialSpent:N0}；剩余破境石 {currentMaterial:N0}";
+                case "TribulationRequired":
+                    return $"服务器渡劫已开启：目标 {result.targetRealmId}\n已预留破境石 {result.materialSpent:N0}，击败下一只 Boss 完成晋升";
+                case "TrialAlreadyPending":
+                    return $"服务器渡劫已在进行中：目标 {result.targetRealmId}\n击败下一只 Boss 完成晋升，本次未重复消耗资源";
+                case "Failed":
+                    return $"服务器突破失败，境界保持 {result.realmId} {result.realmStage} 阶\n损失破境石 {result.materialSpent:N0} · 剩余 {currentMaterial:N0}";
+                case "RequirementsNotMet":
+                    return $"服务器突破条件不足\n等级 {currentLevel}/{result.requiredLevel} · 修为 {currentExperience:N0}/{result.requiredExperience:N0} · 破境石 {currentMaterial:N0}/{result.requiredMaterial:N0}";
+                case "MaximumRealm":
+                    return "已达到服务器当前版本最高境界";
+                default:
+                    return "服务器返回了客户端尚未识别的突破状态；权威资料已刷新，本地未自行推断结算结果。";
+            }
+        }
+
+        private static bool IsKnownBreakthroughStatus(string status)
+        {
+            switch (status ?? string.Empty)
+            {
+                case "AdvancedStage":
+                case "TribulationRequired":
+                case "TrialAlreadyPending":
+                case "Failed":
+                case "RequirementsNotMet":
+                case "MaximumRealm":
+                    return true;
+                default:
+                    return false;
             }
         }
 

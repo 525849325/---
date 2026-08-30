@@ -230,23 +230,7 @@ namespace ImmortalLoot.UI
                 CurrentStageId = profile?.currentStageId,
                 Stage = CreateValidatedServerStageState(profile)
             };
-            progress.Realm.PlayerLevel = Math.Max(1, profile.level);
-            progress.Realm.Experience = Math.Max(0, profile.exp);
-            progress.Realm.CultivationExperience = Math.Max(0, profile.cultivationExperience);
-            progress.Realm.RealmId = string.IsNullOrWhiteSpace(profile.realmId) ? "realm_body_tempering" : profile.realmId;
-            progress.Realm.RealmStage = Math.Max(1, profile.realmStage);
-            if (profile.spiritualRoots != null)
-            {
-                foreach (var root in profile.spiritualRoots)
-                {
-                    if (root == null || string.IsNullOrWhiteSpace(root.rootId)) continue;
-                    progress.SpiritualRoots.Roots.Add(new SpiritualRootProgress
-                    {
-                        RootId = root.rootId,
-                        Level = Math.Max(0, root.level)
-                    });
-                }
-            }
+            ApplyServerProgressProfile(profile, progress);
             return new PlayerSaveSnapshot
             {
                 PlayerId = profile.playerId,
@@ -260,6 +244,55 @@ namespace ImmortalLoot.UI
                 StageElapsedSeconds = 0d,
                 InventoryJson = InventoryStateCodec.Serialize(new InventoryState { EquipmentCapacity = 120 }),
                 ProgressJson = PlayerProgressStateCodec.Serialize(progress)
+            };
+        }
+
+        private void ApplyServerProgressProfile(PlayerProfileDto profile, PlayerProgressState progress)
+        {
+            if (profile == null) throw new ArgumentNullException(nameof(profile));
+            if (progress == null) throw new ArgumentNullException(nameof(progress));
+            var realmId = string.IsNullOrWhiteSpace(profile.realmId) ? "realm_body_tempering" : profile.realmId;
+            if (!_catalog.Realms.TryGetValue(realmId, out var realm))
+                throw new InvalidOperationException($"Server profile referenced unknown realm '{realmId}'.");
+            if (profile.realmStage < 1 || profile.realmStage > realm.StageCount)
+                throw new InvalidOperationException($"Server profile referenced invalid stage {profile.realmStage} for realm '{realmId}'.");
+
+            progress.Realm.PlayerLevel = Math.Max(1, profile.level);
+            progress.Realm.Experience = Math.Max(0, profile.exp);
+            progress.Realm.CultivationExperience = Math.Max(0, profile.cultivationExperience);
+            progress.Realm.BreakthroughMaterial = Math.Max(0, profile.breakthroughMaterial);
+            progress.Realm.RealmId = realmId;
+            progress.Realm.RealmStage = profile.realmStage;
+            progress.Realm.PendingTribulation = MapServerPendingTribulation(profile.pendingTribulation);
+
+            progress.SpiritualRoots.Roots.Clear();
+            progress.SpiritualRoots.GrantRecords.Clear();
+            if (profile.spiritualRoots == null) return;
+            var seenRoots = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var root in profile.spiritualRoots)
+            {
+                if (root == null || string.IsNullOrWhiteSpace(root.rootId) || !seenRoots.Add(root.rootId) ||
+                    !_catalog.SpiritualRoots.TryGetValue(root.rootId, out var config)) continue;
+                progress.SpiritualRoots.Roots.Add(new SpiritualRootProgress
+                {
+                    RootId = root.rootId,
+                    Level = Math.Clamp(root.level, 0, config.MaxLevel)
+                });
+            }
+        }
+
+        private PendingTribulation MapServerPendingTribulation(PendingTribulationDto pending)
+        {
+            if (pending == null) return null;
+            if (string.IsNullOrWhiteSpace(pending.targetRealmId) ||
+                !_catalog.Realms.ContainsKey(pending.targetRealmId) ||
+                pending.reservedMaterial <= 0 || pending.requiredExperience <= 0)
+                throw new InvalidOperationException("Server profile contained invalid pending tribulation state.");
+            return new PendingTribulation
+            {
+                TargetRealmId = pending.targetRealmId,
+                ReservedMaterial = pending.reservedMaterial,
+                RequiredExp = pending.requiredExperience
             };
         }
 
@@ -528,17 +561,29 @@ namespace ImmortalLoot.UI
             StageConfig completedStage,
             BattleFinishDto finished)
         {
+            var refreshedProfile = await RefreshServerProfileAfterConfirmedBattleAsync();
             EquipmentItemDto row = null;
             if (!string.IsNullOrWhiteSpace(finished.equipmentInstanceId))
             {
-                var inventory = ImmortalLootApiClient.Parse<InventoryDto>(await _login.ApiClient.GetInventoryAsync());
-                if (inventory.equipment != null)
-                    foreach (var candidate in inventory.equipment)
-                        if (candidate.instanceId == finished.equipmentInstanceId) { row = candidate; break; }
-                var item = row == null || string.IsNullOrEmpty(row.instanceJson) ? null : JsonUtility.FromJson<ServerEquipmentDto>(row.instanceJson);
-                lootText.text = FormatServerLoot(item, row) + $"\n\n服务器奖励：经验 +{finished.rewardExp:N0} · 灵砂 +{finished.rewardSoftCurrency:N0}";
-                _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, completedStage.StageNumber, _power, row?.quality ?? string.Empty);
-                if (Enum.TryParse(row?.quality, true, out EquipmentQuality serverQuality)) _feedback.PlayLoot(serverQuality);
+                try
+                {
+                    var inventory = ImmortalLootApiClient.Parse<InventoryDto>(await _login.ApiClient.GetInventoryAsync());
+                    if (inventory.equipment != null)
+                        foreach (var candidate in inventory.equipment)
+                            if (candidate.instanceId == finished.equipmentInstanceId) { row = candidate; break; }
+                    var item = row == null || string.IsNullOrEmpty(row.instanceJson) ? null : JsonUtility.FromJson<ServerEquipmentDto>(row.instanceJson);
+                    if (lootText != null)
+                        lootText.text = FormatServerLoot(item, row) +
+                                        $"\n\n服务器奖励：经验 +{finished.rewardExp:N0} · 灵砂 +{finished.rewardSoftCurrency:N0} · 破境石 +{finished.rewardBreakthroughMaterial:N0}";
+                    _validationTelemetry.TrackOnce("first_equipment_drop", _pacing.ElapsedSeconds, completedStage.StageNumber, _power, row?.quality ?? string.Empty);
+                    if (Enum.TryParse(row?.quality, true, out EquipmentQuality serverQuality)) _feedback.PlayLoot(serverQuality);
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning("SERVER_INVENTORY_RECONCILIATION_FAILED: " + exception);
+                    if (lootText != null)
+                        lootText.text = $"服务器奖励已确认：经验 +{finished.rewardExp:N0} · 灵砂 +{finished.rewardSoftCurrency:N0} · 破境石 +{finished.rewardBreakthroughMaterial:N0}\n装备背包同步失败，将在后续资料同步时恢复显示。";
+                }
             }
             else if (guideText != null && !completedStage.IsBossStage)
             {
@@ -550,9 +595,36 @@ namespace ImmortalLoot.UI
             {
                 _guideStep = Math.Max(_guideStep, 4);
                 _validationTelemetry.TrackOnce("first_boss_defeated", _pacing.ElapsedSeconds, completedStage.StageNumber, _power, row?.quality ?? string.Empty);
-                if (guideText != null) guideText.text = "服务器 Boss 已击败：可领取挂机收益并准备境界突破";
             }
-            await RefreshServerProfile();
+            if (completedStage.IsBossStage && guideText != null)
+                guideText.text = FormatServerBossResolution(
+                    refreshedProfile, finished.rewardBreakthroughMaterial);
+        }
+
+        private async System.Threading.Tasks.Task<PlayerProfileDto> RefreshServerProfileAfterConfirmedBattleAsync()
+        {
+            try
+            {
+                return await RefreshServerProfileAsync();
+            }
+            catch (Exception firstFailure)
+            {
+                Debug.LogWarning("SERVER_PROFILE_RECONCILIATION_RETRY: " + firstFailure);
+                return await RefreshServerProfileAsync();
+            }
+        }
+
+        private string FormatServerBossResolution(
+            PlayerProfileDto profile,
+            long materialReward)
+        {
+            var rewardSummary = materialReward > 0 ? $" · 破境石 +{materialReward:N0}" : string.Empty;
+            if (profile.pendingTribulation != null)
+                return "服务器 Boss 已击败，但渡劫仍待服务器权威确认；未在客户端自行结算" + rewardSummary;
+            var realmName = _catalog.Realms.TryGetValue(profile.realmId, out var realm)
+                ? realm.Name
+                : profile.realmId;
+            return $"服务器 Boss 已击败：当前权威境界 {realmName} {profile.realmStage} 阶，暂无待处理渡劫{rewardSummary}";
         }
 
         private void ScheduleServerSettlementRetry(PendingServerBattleSettlement pendingSettlement, Exception exception)
@@ -773,7 +845,7 @@ namespace ImmortalLoot.UI
                 {
                     var serverPowerBefore = _power;
                     var result = ImmortalLootApiClient.Parse<EquipResultDto>(await _login.ApiClient.EquipAsync(_serverLatestInstanceId));
-                    await RefreshServerProfile();
+                    await RefreshServerProfileAsync();
                     _validationTelemetry.TrackOnce("first_equipment_equipped", _pacing.ElapsedSeconds, _stageNumber, _power, value: Math.Max(0, _power - serverPowerBefore));
                     _feedback.PlayEquip();
                     if (guideText != null) guideText.text = $"服务器装备成功：{result.slot}{(result.replaced ? "，已替换旧装备" : string.Empty)}";
@@ -848,9 +920,9 @@ namespace ImmortalLoot.UI
             _realmStage = Math.Max(1, realm.RealmStage);
             _guideStep = Math.Max(0, _progressState.GuideStep);
             _taskClaimed = _progressState.TaskClaimed;
-            var fireRootProgress = GetFireRootProgress();
-            _spiritualRootPoints = Math.Clamp(fireRootProgress.Level, 0, GetFireRootMaxLevel());
-            fireRootProgress.Level = _spiritualRootPoints;
+            var fireRootProgress = FindFireRootProgress();
+            _spiritualRootPoints = Math.Clamp(fireRootProgress?.Level ?? 0, 0, GetFireRootMaxLevel());
+            if (fireRootProgress != null) fireRootProgress.Level = _spiritualRootPoints;
             if (saved != null)
             {
                 _kills = Math.Max(0, saved.Kills);
@@ -939,8 +1011,14 @@ namespace ImmortalLoot.UI
             _progressState.Realm.PlayerLevel = Math.Max(1, _level);
             _progressState.Realm.Experience = Math.Max(0, _exp);
             _progressState.Realm.RealmStage = Math.Max(1, _realmStage);
-            _spiritualRootPoints = Math.Clamp(GetFireRootProgress().Level, 0, GetFireRootMaxLevel());
+            var fireRootProgress = _serverGameplay ? FindFireRootProgress() : GetFireRootProgress();
+            _spiritualRootPoints = Math.Clamp(fireRootProgress?.Level ?? 0, 0, GetFireRootMaxLevel());
             return _progressState;
+        }
+
+        private SpiritualRootProgress FindFireRootProgress()
+        {
+            return _progressState.SpiritualRoots.Roots.Find(value => value != null && value.RootId == "root_fire");
         }
 
         private SpiritualRootProgress GetFireRootProgress()
@@ -1332,41 +1410,65 @@ namespace ImmortalLoot.UI
             return text;
         }
 
-        private async System.Threading.Tasks.Task RefreshServerProfile()
+        public async System.Threading.Tasks.Task<PlayerProfileDto> RefreshServerProfileAsync()
         {
             var profile = ImmortalLootApiClient.Parse<PlayerProfileDto>(await _login.ApiClient.GetProfileAsync());
             ApplyRefreshedServerProfile(profile);
+            return profile;
         }
 
         private void ApplyRefreshedServerProfile(PlayerProfileDto profile)
         {
+            if (profile == null) throw new ArgumentNullException(nameof(profile));
+            var candidate = PlayerProgressStateCodec.Deserialize(PlayerProgressStateCodec.Serialize(_progressState));
             var stageState = CreateValidatedServerStageState(profile);
             var stageLoop = new VictoryDrivenStageLoop(_catalog, stageState, profile.currentStageId);
+            candidate.Stage = stageState;
+            candidate.CurrentStageId = profile.currentStageId;
+            ApplyServerProgressProfile(profile, candidate);
+
             _progressState.Stage = stageState;
             _progressState.CurrentStageId = profile.currentStageId;
+            CopyServerRealmState(candidate.Realm, _progressState.Realm);
+            CopyServerSpiritualRoots(candidate.SpiritualRoots, _progressState.SpiritualRoots);
             _stageLoop = stageLoop;
             _stageNumber = stageLoop.CurrentStageNumber;
             ApplyServerProfileDisplay(profile);
         }
 
+        private static void CopyServerRealmState(RealmProgressState source, RealmProgressState destination)
+        {
+            destination.PlayerLevel = source.PlayerLevel;
+            destination.Experience = source.Experience;
+            destination.CultivationExperience = source.CultivationExperience;
+            destination.BreakthroughMaterial = source.BreakthroughMaterial;
+            destination.RealmId = source.RealmId;
+            destination.RealmStage = source.RealmStage;
+            destination.PendingTribulation = source.PendingTribulation;
+        }
+
+        private static void CopyServerSpiritualRoots(SpiritualRootState source, SpiritualRootState destination)
+        {
+            destination.Roots.Clear();
+            foreach (var root in source.Roots)
+                destination.Roots.Add(new SpiritualRootProgress { RootId = root.RootId, Level = root.Level });
+            destination.GrantRecords.Clear();
+            foreach (var record in source.GrantRecords)
+                destination.GrantRecords.Add(record);
+        }
+
         private void ApplyServerProfileDisplay(PlayerProfileDto profile)
         {
             if (profile == null) throw new ArgumentNullException(nameof(profile));
-            _level = Math.Max(1, profile.level);
-            _exp = Math.Max(0, profile.exp);
-            _realmStage = Math.Max(1, profile.realmStage);
-            _progressState.Realm.PlayerLevel = _level;
-            _progressState.Realm.Experience = _exp;
-            _progressState.Realm.CultivationExperience = Math.Max(0, profile.cultivationExperience);
-            _progressState.Realm.RealmId = string.IsNullOrWhiteSpace(profile.realmId)
-                ? "realm_body_tempering"
-                : profile.realmId;
-            _progressState.Realm.RealmStage = _realmStage;
+            _level = _progressState.Realm.PlayerLevel;
+            _exp = _progressState.Realm.Experience;
+            _realmStage = _progressState.Realm.RealmStage;
+            _spiritualRootPoints = Math.Clamp(FindFireRootProgress()?.Level ?? 0, 0, GetFireRootMaxLevel());
             _power = Math.Max(0, profile.power);
             _softCurrency = Math.Max(0, profile.softCurrency);
             _premiumCurrency = Math.Max(0, profile.premiumCurrency);
             if (profileText != null) profileText.text = $"{profile.nickname}  Lv.{profile.level}\n战力 {profile.power:N0}";
-            if (currencyText != null) currencyText.text = $"灵砂 {profile.softCurrency:N0}    仙晶 {profile.premiumCurrency:N0}\n修为 {profile.cultivationExperience:N0}";
+            if (currencyText != null) currencyText.text = $"灵砂 {profile.softCurrency:N0}    仙晶 {profile.premiumCurrency:N0}\n修为 {profile.cultivationExperience:N0}    破境石 {profile.breakthroughMaterial:N0}";
         }
 
         private static string FormatServerLoot(ServerEquipmentDto item, EquipmentItemDto row)

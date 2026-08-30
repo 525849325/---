@@ -142,9 +142,38 @@ try {
     Assert-Contract (@($profile.clearedStageIds).Count -eq 0) 'Fresh HTTP profile unexpectedly contained cleared stages.'
     Assert-Contract (($profile.PSObject.Properties.Name -contains 'cultivationExperience') -and [long]$profile.cultivationExperience -eq 0) `
         'Fresh HTTP profile did not expose the independent cumulative cultivation experience field.'
+    Assert-Contract (($profile.PSObject.Properties.Name -contains 'breakthroughMaterial') -and [long]$profile.breakthroughMaterial -eq 0) `
+        'Fresh HTTP profile did not expose a zero breakthrough-material balance.'
+    Assert-Contract (($profile.PSObject.Properties.Name -contains 'pendingTribulation') -and $null -eq $profile.pendingTribulation) `
+        'Fresh HTTP profile unexpectedly contained a pending tribulation.'
 
     $inventory = Invoke-ContractRequest -Method GET -Path '/player/inventory' -Token $token
     Assert-Status $inventory 200 'Initial inventory'
+
+    $insufficientRealm = Invoke-ContractRequest -Method POST -Path '/realm/breakthrough' -Token $token -Body @{
+        idempotencyKey = 'http-realm-insufficient'
+    }
+    Assert-Status $insufficientRealm 409 'Insufficient realm breakthrough'
+
+    $profileAfterRejectedRealmResponse = Invoke-ContractRequest -Method GET -Path '/player/profile' -Token $token
+    Assert-Status $profileAfterRejectedRealmResponse 200 'Profile after rejected realm breakthrough'
+    $profileAfterRejectedRealm = Read-Json $profileAfterRejectedRealmResponse
+    Assert-Contract (
+        [int]$profileAfterRejectedRealm.level -eq [int]$profile.level -and
+        [long]$profileAfterRejectedRealm.exp -eq [long]$profile.exp -and
+        [long]$profileAfterRejectedRealm.cultivationExperience -eq [long]$profile.cultivationExperience -and
+        [string]$profileAfterRejectedRealm.realmId -eq [string]$profile.realmId -and
+        [int]$profileAfterRejectedRealm.realmStage -eq [int]$profile.realmStage -and
+        [string]$profileAfterRejectedRealm.currentStageId -eq [string]$profile.currentStageId) `
+        'Rejected realm breakthrough changed player progression.'
+    Assert-Contract (
+        ($profileAfterRejectedRealm.PSObject.Properties.Name -contains 'breakthroughMaterial') -and
+        [long]$profileAfterRejectedRealm.breakthroughMaterial -eq [long]$profile.breakthroughMaterial -and
+        ($profileAfterRejectedRealm.PSObject.Properties.Name -contains 'pendingTribulation') -and
+        $null -eq $profileAfterRejectedRealm.pendingTribulation -and
+        [long]$profileAfterRejectedRealm.softCurrency -eq [long]$profile.softCurrency -and
+        [long]$profileAfterRejectedRealm.premiumCurrency -eq [long]$profile.premiumCurrency) `
+        'Rejected realm breakthrough changed resources or created a pending tribulation.'
 
     $noncanonical = Invoke-ContractRequest -Method POST -Path '/battle/start' -Token $token -Body @{
         stageId = 'stage_1_01'

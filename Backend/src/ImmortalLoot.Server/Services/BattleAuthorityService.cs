@@ -6,9 +6,9 @@ using Microsoft.EntityFrameworkCore;
 namespace ImmortalLoot.Server.Services;
 
 public sealed record BattleStartResult(Guid SessionId, string StageId, string Status, DateTime StartedAtUtc);
-public sealed record BattleFinishResult(Guid SessionId, string Status, long RewardSoftCurrency, long RewardExp, string EquipmentInstanceId, bool Replayed);
+public sealed record BattleFinishResult(Guid SessionId, string Status, long RewardSoftCurrency, long RewardExp, long RewardBreakthroughMaterial, string EquipmentInstanceId, bool Replayed);
 
-public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock, CurrencyService currencies, TaskService tasks, ServerEquipmentDropService equipmentDrops, ServerGameConfigCatalog catalog)
+public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock, CurrencyService currencies, TaskService tasks, ServerEquipmentDropService equipmentDrops, RealmAuthorityService realms, ServerGameConfigCatalog catalog)
 {
     public async Task<BattleStartResult> StartAsync(Guid playerId, string stageId, string idempotencyKey, CancellationToken cancellationToken)
     {
@@ -98,12 +98,12 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
         if (priorGrant is not null)
         {
             await transaction.CommitAsync(cancellationToken);
-            return new BattleFinishResult(session.Id, session.Status, session.RewardSoftCurrency, session.RewardExp, session.RewardEquipmentInstanceId, true);
+            return new BattleFinishResult(session.Id, session.Status, session.RewardSoftCurrency, session.RewardExp, session.RewardBreakthroughMaterial, session.RewardEquipmentInstanceId, true);
         }
         if (session.Status == "Finished")
         {
             await transaction.CommitAsync(cancellationToken);
-            return new BattleFinishResult(session.Id, session.Status, session.RewardSoftCurrency, session.RewardExp, session.RewardEquipmentInstanceId, true);
+            return new BattleFinishResult(session.Id, session.Status, session.RewardSoftCurrency, session.RewardExp, session.RewardBreakthroughMaterial, session.RewardEquipmentInstanceId, true);
         }
         if (session.Status != "Started")
             throw new InvalidOperationException("Battle session is not active.");
@@ -127,14 +127,31 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
         var grantsBattleRewards = stageConfig.IsBossStage;
         var reward = grantsBattleRewards ? stageConfig.RewardSoftCurrency : 0;
         var expReward = grantsBattleRewards ? stageConfig.RewardExp : 0;
+        var breakthroughMaterialReward = grantsBattleRewards ? stageConfig.RewardBreakthroughMaterial : 0;
+        var tribulation = grantsBattleRewards
+            ? await realms.ResolvePendingAfterBossVictoryAsync(player, cancellationToken)
+            : null;
         if (reward > 0)
             await currencies.ChangeAsync(playerId, GameCurrency.SoftCurrency, reward, "Battle", session.Id.ToString("N"), cancellationToken);
         if (expReward > 0)
             PlayerExperienceProgression.Grant(player, expReward);
+        if (breakthroughMaterialReward > 0)
+        {
+            player.BreakthroughMaterial = checked(player.BreakthroughMaterial + breakthroughMaterialReward);
+            db.ItemLogs.Add(new ItemLog
+            {
+                PlayerId = playerId,
+                ItemId = "breakthrough_material",
+                Delta = checked((int)breakthroughMaterialReward),
+                Reason = "Battle",
+                ReferenceId = session.Id.ToString("N")
+            });
+        }
         session.Status = "Finished";
         session.FinishedAtUtc = clock.UtcNow;
         session.RewardSoftCurrency = reward;
         session.RewardExp = expReward;
+        session.RewardBreakthroughMaterial = breakthroughMaterialReward;
         ServerEquipmentDrop? equipment = grantsBattleRewards ? equipmentDrops.GenerateTracked(playerId, session.StageId) : null;
         session.RewardEquipmentInstanceId = equipment?.InstanceId ?? string.Empty;
         var stage = await db.PlayerStages.SingleOrDefaultAsync(value => value.PlayerId == playerId && value.StageId == session.StageId, cancellationToken);
@@ -143,7 +160,15 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
         if (!stage.Cleared) { stage.Cleared = true; stage.FirstClearTimeUtc = clock.UtcNow; }
         if (firstClear && stageConfig.FirstClearPremiumCurrency > 0)
             await currencies.ChangeAsync(playerId, GameCurrency.PremiumCurrency, stageConfig.FirstClearPremiumCurrency, "StageFirstClear", session.StageId, cancellationToken);
-        var payload = JsonSerializer.Serialize(new { softCurrency = reward, exp = expReward, firstClearPremiumCurrency = firstClear ? stageConfig.FirstClearPremiumCurrency : 0, equipment });
+        var payload = JsonSerializer.Serialize(new
+        {
+            softCurrency = reward,
+            exp = expReward,
+            breakthroughMaterial = breakthroughMaterialReward,
+            firstClearPremiumCurrency = firstClear ? stageConfig.FirstClearPremiumCurrency : 0,
+            equipment,
+            tribulation
+        });
         db.RewardGrants.Add(new RewardGrant { PlayerId = playerId, IdempotencyKey = finishIdempotencyKey, RewardType = "Battle", PayloadJson = payload });
         db.RewardLogs.Add(new RewardLog { PlayerId = playerId, IdempotencyKey = finishIdempotencyKey, RewardType = "Battle", PayloadJson = payload });
         db.BattleLogs.Add(new BattleLog { PlayerId = playerId, BattleSessionId = session.Id, StageId = session.StageId, Result = "Victory", DetailJson = payload });
@@ -151,7 +176,7 @@ public sealed class BattleAuthorityService(GameDbContext db, IServerClock clock,
         if (session.StageId.EndsWith("_10", StringComparison.Ordinal)) await tasks.RecordAsync(playerId, "BossVictory", 1, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new BattleFinishResult(session.Id, session.Status, reward, expReward, session.RewardEquipmentInstanceId, false);
+        return new BattleFinishResult(session.Id, session.Status, reward, expReward, breakthroughMaterialReward, session.RewardEquipmentInstanceId, false);
     }
 
     private static BattleStartResult MapIdempotentStart(BattleSession existing, string requestedStageId)

@@ -12,6 +12,14 @@ await using var db = new GameDbContext(options);
 await db.Database.EnsureCreatedAsync();
 Require(typeof(Player).GetProperty("CultivationExperience") is not null,
     "Player schema does not expose an independent cumulative cultivation experience pool");
+Require(typeof(Player).GetProperty("BreakthroughMaterial") is not null &&
+        typeof(Player).GetProperty("PendingTribulationToken") is not null &&
+        typeof(Player).GetProperty("PendingTribulationTargetRealmId") is not null &&
+        typeof(Player).GetProperty("PendingTribulationReservedMaterial") is not null &&
+        typeof(Player).GetProperty("PendingTribulationRequiredExp") is not null,
+    "Player schema does not expose authoritative breakthrough material and pending tribulation state");
+Require(typeof(BattleSession).GetProperty("RewardBreakthroughMaterial") is not null,
+    "Battle session schema cannot replay authoritative breakthrough-material rewards");
 
 var clock = new FixedClock();
 var catalog = ServerGameConfigCatalog.LoadDefault();
@@ -19,6 +27,11 @@ var legacyBattleFinishRequest = System.Text.Json.JsonSerializer.Deserialize<Batt
     "{\"SessionId\":\"00000000-0000-0000-0000-000000000000\",\"IdempotencyKey\":\"legacy-request\"}");
 Require(legacyBattleFinishRequest?.RewardWindowEligible is null, "legacy battle finish JSON no longer defaults the additive reward-window field");
 Require(catalog.Realms.Count == 10 && catalog.Stages.Count == 10 && catalog.SpiritualRoots.Count == 9 && catalog.CommercialProducts.Count == 6 && catalog.DropTables.Count == 4, "shared Unity JSON catalog did not load expected authoritative rows");
+Require(catalog.Stages.Single(value => value.Id == "stage_1_10").RewardBreakthroughMaterial == 100 &&
+        catalog.RealmFormula.MinorCostScale == 1.0 && catalog.RealmFormula.MinorExpScale == 1.0,
+    "server catalog did not load shared breakthrough-material and realm formula values");
+Require(catalog.Realms.Select(value => value.Order).SequenceEqual(Enumerable.Range(1, catalog.Realms.Count)),
+    "server realm catalog is not normalized to the configured progression order");
 Require(catalog.Tasks.Count == 6 && catalog.ActivityChests.Count == 5 && catalog.Afk.MaximumOfflineHours == 8, "shared task or AFK config did not load expected authoritative rows");
 var mockVerifier = new DevelopmentPaymentReceiptVerifier(catalog);
 var mockReceipt = await mockVerifier.VerifyAsync("mock", "mock-receipt:IL-DEMO:jade_60", CancellationToken.None);
@@ -38,6 +51,8 @@ var profile = await new PlayerQueryService(db, catalog).GetProfileAsync(firstLog
 Require(profile.Nickname == "云游客" && profile.Level == 1 && profile.RealmStage == 1, "default player profile was not persisted");
 Require(profile.Exp == 0 && profile.CultivationExperience == 0,
     "fresh profile did not expose independent level and cultivation experience pools");
+Require(profile.BreakthroughMaterial == 0 && profile.PendingTribulation is null,
+    "fresh profile did not expose an empty authoritative tribulation state");
 Require(profile.CurrentStageId == "stage_1_1" && profile.ClearedStageIds.Count == 0, "fresh profile did not expose the authoritative first stage");
 
 var account = new Account { ExternalAccountId = "verify", Provider = "test" };
@@ -49,7 +64,8 @@ db.PlayerStats.Add(new PlayerStats { PlayerId = player.Id });
 await db.SaveChangesAsync();
 
 var equipmentDrops = new ServerEquipmentDropService(db, clock, catalog);
-var service = new BattleAuthorityService(db, clock, currencies, tasks, equipmentDrops, catalog);
+var realms = new RealmAuthorityService(db, tasks, catalog, new FixedServerRandomSource());
+var service = new BattleAuthorityService(db, clock, currencies, tasks, equipmentDrops, realms, catalog);
 var noncanonicalState = await CaptureBattleMutationSnapshotAsync(db, player.Id);
 await RequireThrows<ArgumentException>(
     () => service.StartAsync(player.Id, "stage_1_01", "noncanonical-stage", CancellationToken.None),
@@ -319,34 +335,188 @@ Require(GetCultivationExperience(rankedPlayer) == cultivationExperienceBeforeAfk
     "AFK and Quick AFK did not grant cumulative cultivation experience exactly once");
 await RequireThrows<InvalidOperationException>(() => afk.ClaimQuickAsync(firstLogin.PlayerId, "quick-3", CancellationToken.None), "monthly Quick AFK daily allowance was not enforced");
 
+rankedPlayer.Level = 1;
 rankedPlayer.Exp = 1000;
-SetCultivationExperience(rankedPlayer, 99);
+rankedPlayer.CultivationExperience = 9;
+rankedPlayer.BreakthroughMaterial = 500;
 (await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == firstLogin.PlayerId)).SoftCurrency = 2000;
 rankedPlayer.RealmId = "realm_body_tempering";
 rankedPlayer.RealmStage = 1;
 await db.SaveChangesAsync();
-var realms = new RealmAuthorityService(db, currencies, tasks, catalog, new FixedServerRandomSource());
-var realmWalletBeforeRejection = (await db.PlayerCurrencies.AsNoTracking()
-    .SingleAsync(value => value.PlayerId == firstLogin.PlayerId)).SoftCurrency;
-var realmGrantsBeforeRejection = await db.RewardGrants.CountAsync(value => value.PlayerId == firstLogin.PlayerId);
-var realmLogsBeforeRejection = await db.RewardLogs.CountAsync(value => value.PlayerId == firstLogin.PlayerId);
+var realmRejectionBefore = await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId);
 await RequireThrows<InvalidOperationException>(
     () => realms.BreakthroughAsync(firstLogin.PlayerId, "realm-insufficient-cultivation", CancellationToken.None),
     "realm breakthrough consumed residual level experience instead of cumulative cultivation experience");
-Require(rankedPlayer.Exp == 1000 && GetCultivationExperience(rankedPlayer) == 99 && rankedPlayer.RealmStage == 1,
-    "rejected realm breakthrough mutated either experience pool or realm progress");
-Require((await db.PlayerCurrencies.AsNoTracking().SingleAsync(value => value.PlayerId == firstLogin.PlayerId)).SoftCurrency == realmWalletBeforeRejection &&
-        await db.RewardGrants.CountAsync(value => value.PlayerId == firstLogin.PlayerId) == realmGrantsBeforeRejection &&
-        await db.RewardLogs.CountAsync(value => value.PlayerId == firstLogin.PlayerId) == realmLogsBeforeRejection,
-    "rejected realm breakthrough mutated currency or idempotency logs");
-rankedPlayer.Exp = 7;
-SetCultivationExperience(rankedPlayer, 1000);
+Require(await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId) == realmRejectionBefore,
+    "cultivation-experience rejection mutated realm resources, progress, roots, tasks, currency, or logs");
+
+rankedPlayer.CultivationExperience = 100;
+rankedPlayer.BreakthroughMaterial = 49;
 await db.SaveChangesAsync();
+realmRejectionBefore = await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId);
+await RequireThrows<InvalidOperationException>(
+    () => realms.BreakthroughAsync(firstLogin.PlayerId, "realm-insufficient-material", CancellationToken.None),
+    "realm breakthrough allowed soft currency to substitute for breakthrough material");
+Require(await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId) == realmRejectionBefore,
+    "breakthrough-material rejection mutated authoritative state");
+
+rankedPlayer.RealmId = "realm_body_tempering";
+rankedPlayer.RealmStage = 10;
+rankedPlayer.Level = 10;
+rankedPlayer.CultivationExperience = 2000;
+rankedPlayer.BreakthroughMaterial = 3000;
+ClearPendingTribulation(rankedPlayer);
+rankedPlayer.PendingTribulationTargetRealmId = "realm_qi_coalescence";
+rankedPlayer.PendingTribulationReservedMaterial = 2000;
+rankedPlayer.PendingTribulationRequiredExp = 1200;
+await db.SaveChangesAsync();
+realmRejectionBefore = await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId);
+await RequireThrows<InvalidOperationException>(
+    () => realms.BreakthroughAsync(firstLogin.PlayerId, "corrupt-fields-only", CancellationToken.None),
+    "a partial pending tribulation was silently overwritten and charged again");
+Require(await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId) == realmRejectionBefore,
+    "partial pending detection mutated resources or authoritative state");
+
+var corruptPendingCases = new (string Name, Action<Player> Arrange)[]
+{
+    ("token-only", value => { ClearPendingTribulation(value); value.PendingTribulationToken = new string('a', 32); }),
+    ("wrong-target", value => { SetValidPendingTribulation(value); value.PendingTribulationTargetRealmId = "realm_spirit_foundation"; }),
+    ("wrong-cost", value => { SetValidPendingTribulation(value); value.PendingTribulationReservedMaterial = 1999; }),
+    ("wrong-exp", value => { SetValidPendingTribulation(value); value.PendingTribulationRequiredExp = 1199; }),
+    ("invalid-source", value => { SetValidPendingTribulation(value); value.RealmStage = 9; })
+};
+foreach (var corruptCase in corruptPendingCases)
+{
+    rankedPlayer.RealmId = "realm_body_tempering";
+    rankedPlayer.RealmStage = 10;
+    corruptCase.Arrange(rankedPlayer);
+    await db.SaveChangesAsync();
+    realmRejectionBefore = await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId);
+    Require(await realms.ResolvePendingAfterBossVictoryAsync(rankedPlayer, CancellationToken.None) is null,
+        $"corrupt pending case '{corruptCase.Name}' was treated as a valid tribulation");
+    Require(await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId) == realmRejectionBefore,
+        $"corrupt pending case '{corruptCase.Name}' mutated state or blocked safe Boss reward continuation");
+    Require((await new PlayerQueryService(db, catalog).GetProfileAsync(firstLogin.PlayerId, CancellationToken.None)).PendingTribulation is null,
+        $"corrupt pending case '{corruptCase.Name}' was exposed to the client as a valid tribulation");
+}
+ClearPendingTribulation(rankedPlayer);
+await db.SaveChangesAsync();
+
+rankedPlayer.RealmId = "realm_qi_coalescence";
+rankedPlayer.RealmStage = 1;
+rankedPlayer.Level = 9;
+rankedPlayer.CultivationExperience = 1000;
+rankedPlayer.BreakthroughMaterial = 1000;
+await db.SaveChangesAsync();
+realmRejectionBefore = await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId);
+await RequireThrows<InvalidOperationException>(
+    () => realms.BreakthroughAsync(firstLogin.PlayerId, "realm-insufficient-level", CancellationToken.None),
+    "realm breakthrough ignored the configured RequiredLevel");
+Require(await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId) == realmRejectionBefore,
+    "RequiredLevel rejection mutated authoritative state");
+
+rankedPlayer.RealmId = "realm_body_tempering";
+rankedPlayer.RealmStage = 1;
+rankedPlayer.Level = 1;
+rankedPlayer.Exp = 7;
+rankedPlayer.CultivationExperience = 100;
+rankedPlayer.BreakthroughMaterial = 500;
+await db.SaveChangesAsync();
+var realmWalletBeforeSuccess = (await db.PlayerCurrencies.AsNoTracking()
+    .SingleAsync(value => value.PlayerId == firstLogin.PlayerId)).SoftCurrency;
+var materialLogsBeforeSuccess = await db.ItemLogs.CountAsync(value => value.PlayerId == firstLogin.PlayerId && value.ItemId == "breakthrough_material");
 var realmResult = await realms.BreakthroughAsync(firstLogin.PlayerId, "realm-key", CancellationToken.None);
 var realmReplay = await realms.BreakthroughAsync(firstLogin.PlayerId, "realm-key", CancellationToken.None);
-Require(realmResult.Succeeded && !realmResult.Replayed && realmReplay.Replayed && realmResult.RealmStage == 2, "server realm breakthrough or replay is incorrect");
-Require(rankedPlayer.Exp == 7 && GetCultivationExperience(rankedPlayer) == 900,
-    "realm breakthrough did not consume only cumulative cultivation experience exactly once");
+Require(realmResult.Succeeded && realmResult.Status == RealmBreakthroughStatuses.AdvancedStage &&
+        !realmResult.Replayed && realmReplay.Replayed && realmResult.RealmStage == 2 &&
+        realmResult.RequiredExperience == 10 && realmResult.RequiredMaterial == 50 && realmResult.MaterialSpent == 50,
+    "server minor realm breakthrough did not use scaled shared-config requirements or replay exactly");
+Require(rankedPlayer.Exp == 7 && rankedPlayer.CultivationExperience == 90 && rankedPlayer.BreakthroughMaterial == 450,
+    "minor breakthrough did not consume only cumulative cultivation experience and breakthrough material once");
+Require((await db.PlayerCurrencies.AsNoTracking().SingleAsync(value => value.PlayerId == firstLogin.PlayerId)).SoftCurrency == realmWalletBeforeSuccess &&
+        await db.ItemLogs.CountAsync(value => value.PlayerId == firstLogin.PlayerId && value.ItemId == "breakthrough_material") == materialLogsBeforeSuccess + 1,
+    "minor breakthrough changed soft currency or wrote an incorrect material ledger");
+
+rankedPlayer.RealmStage = 1;
+rankedPlayer.CultivationExperience = 100;
+rankedPlayer.BreakthroughMaterial = 500;
+await db.SaveChangesAsync();
+var failingRealms = new RealmAuthorityService(db, tasks, catalog, new RejectingServerRandomSource());
+var failedMinor = await failingRealms.BreakthroughAsync(firstLogin.PlayerId, "realm-failure-key", CancellationToken.None);
+var failedMinorReplay = await failingRealms.BreakthroughAsync(firstLogin.PlayerId, "realm-failure-key", CancellationToken.None);
+Require(!failedMinor.Succeeded && failedMinor.Status == RealmBreakthroughStatuses.Failed && failedMinor.MaterialSpent == 13 &&
+        failedMinorReplay.Replayed && rankedPlayer.RealmStage == 1 && rankedPlayer.CultivationExperience == 100 && rankedPlayer.BreakthroughMaterial == 487,
+    "minor failure did not apply the configured 25% material loss exactly once");
+
+db.RewardGrants.Add(new RewardGrant
+{
+    PlayerId = firstLogin.PlayerId,
+    IdempotencyKey = "realm:legacy-result",
+    RewardType = "RealmBreakthrough",
+    PayloadJson = "{\"RealmId\":\"realm_body_tempering\",\"RealmStage\":2,\"Succeeded\":true,\"SpiritualRootId\":\"\",\"Replayed\":false}"
+});
+await db.SaveChangesAsync();
+var legacyRealmReplay = await realms.BreakthroughAsync(firstLogin.PlayerId, "legacy-result", CancellationToken.None);
+Require(legacyRealmReplay.Replayed && legacyRealmReplay.Succeeded && legacyRealmReplay.RealmStage == 2,
+    "additive realm result fields broke replay of a legacy five-field RewardGrant payload");
+
+rankedPlayer.RealmId = "realm_body_tempering";
+rankedPlayer.RealmStage = 10;
+rankedPlayer.Level = 9;
+rankedPlayer.Exp = 13;
+rankedPlayer.CultivationExperience = 2000;
+rankedPlayer.BreakthroughMaterial = 3000;
+await db.SaveChangesAsync();
+realmRejectionBefore = await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId);
+await RequireThrows<InvalidOperationException>(
+    () => realms.BreakthroughAsync(firstLogin.PlayerId, "tribulation-low-level", CancellationToken.None),
+    "major breakthrough ignored the target realm RequiredLevel");
+Require(await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId) == realmRejectionBefore,
+    "rejected low-level major breakthrough mutated authoritative state");
+
+rankedPlayer.Level = 10;
+rankedPlayer.CultivationExperience = 1199;
+await db.SaveChangesAsync();
+realmRejectionBefore = await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId);
+await RequireThrows<InvalidOperationException>(
+    () => realms.BreakthroughAsync(firstLogin.PlayerId, "tribulation-low-exp", CancellationToken.None),
+    "major breakthrough ignored the target realm cultivation requirement");
+Require(await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId) == realmRejectionBefore,
+    "rejected low-experience major breakthrough mutated authoritative state");
+
+rankedPlayer.CultivationExperience = 2000;
+rankedPlayer.BreakthroughMaterial = 1999;
+await db.SaveChangesAsync();
+realmRejectionBefore = await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId);
+await RequireThrows<InvalidOperationException>(
+    () => realms.BreakthroughAsync(firstLogin.PlayerId, "tribulation-low-material", CancellationToken.None),
+    "major breakthrough ignored the target realm material requirement");
+Require(await CaptureRealmMutationSnapshotAsync(db, firstLogin.PlayerId) == realmRejectionBefore,
+    "rejected low-material major breakthrough mutated authoritative state");
+
+rankedPlayer.BreakthroughMaterial = 3000;
+await db.SaveChangesAsync();
+var spiritualRootsBeforeTribulation = await db.PlayerSpiritualRoots.Where(value => value.PlayerId == firstLogin.PlayerId).SumAsync(value => value.Level);
+var tribulation = await realms.BreakthroughAsync(firstLogin.PlayerId, "tribulation-key", CancellationToken.None);
+var tribulationReplay = await realms.BreakthroughAsync(firstLogin.PlayerId, "tribulation-key", CancellationToken.None);
+Require(!tribulation.Succeeded && tribulation.Status == RealmBreakthroughStatuses.TribulationRequired &&
+        tribulation.TargetRealmId == "realm_qi_coalescence" && tribulation.RequiredLevel == 10 &&
+        tribulation.RequiredExperience == 1200 && tribulation.RequiredMaterial == 2000 &&
+        tribulation.MaterialSpent == 2000 && tribulation.BreakthroughMaterial == 1000 && tribulationReplay.Replayed,
+    "major breakthrough did not reserve target-realm resources or replay exactly");
+Require(rankedPlayer.RealmId == "realm_body_tempering" && rankedPlayer.RealmStage == 10 &&
+        rankedPlayer.CultivationExperience == 2000 && rankedPlayer.BreakthroughMaterial == 1000 &&
+        rankedPlayer.PendingTribulationToken.Length == 32 && rankedPlayer.PendingTribulationTargetRealmId == "realm_qi_coalescence" &&
+        rankedPlayer.PendingTribulationReservedMaterial == 2000 && rankedPlayer.PendingTribulationRequiredExp == 1200 &&
+        await db.PlayerSpiritualRoots.Where(value => value.PlayerId == firstLogin.PlayerId).SumAsync(value => value.Level) == spiritualRootsBeforeTribulation,
+    "major breakthrough advanced or granted a root before the authoritative Boss victory");
+var persistedPendingProfile = await new PlayerQueryService(db, catalog).GetProfileAsync(firstLogin.PlayerId, CancellationToken.None);
+Require(persistedPendingProfile.PendingTribulation is { TargetRealmId: "realm_qi_coalescence", ReservedMaterial: 2000, RequiredExperience: 1200 },
+    "pending tribulation was not persisted and exposed by the authoritative profile");
+var secondPending = await realms.BreakthroughAsync(firstLogin.PlayerId, "tribulation-second-key", CancellationToken.None);
+Require(secondPending.Status == RealmBreakthroughStatuses.TrialAlreadyPending &&
+        rankedPlayer.BreakthroughMaterial == 1000 && rankedPlayer.PendingTribulationTargetRealmId == "realm_qi_coalescence",
+    "a second breakthrough request replaced or charged an existing pending tribulation");
 
 BattleFinishResult? bossFinish = null;
 for (var stageNumber = 4; stageNumber <= 10; stageNumber++)
@@ -358,18 +528,31 @@ for (var stageNumber = 4; stageNumber <= 10; stageNumber++)
 }
 var finalBoss = bossFinish ?? throw new InvalidOperationException("boss battle was not executed");
 var bossEquipment = await db.PlayerEquipment.SingleAsync(value => value.InstanceId == finalBoss.EquipmentInstanceId);
-Require(finalBoss.RewardSoftCurrency == 25 && finalBoss.RewardExp == 250, "chapter boss rewards are incorrect");
-Require(GetCultivationExperience(rankedPlayer) == 1150,
-    "authoritative Boss reward did not add its experience to cumulative cultivation progress");
+Require(finalBoss.RewardSoftCurrency == 25 && finalBoss.RewardExp == 250 && finalBoss.RewardBreakthroughMaterial == 100,
+    "chapter boss rewards did not include the configured breakthrough material");
+Require(rankedPlayer.RealmId == "realm_qi_coalescence" && rankedPlayer.RealmStage == 1 &&
+        rankedPlayer.CultivationExperience == 1050 && rankedPlayer.BreakthroughMaterial == 1100 &&
+        rankedPlayer.PendingTribulationToken.Length == 0 && rankedPlayer.PendingTribulationTargetRealmId.Length == 0 &&
+        rankedPlayer.PendingTribulationReservedMaterial == 0 && rankedPlayer.PendingTribulationRequiredExp == 0,
+    "authoritative Boss victory did not atomically settle the pending tribulation and then grant Boss resources");
 var cultivationExperienceAfterBoss = GetCultivationExperience(rankedPlayer);
+var breakthroughMaterialAfterBoss = rankedPlayer.BreakthroughMaterial;
+var spiritualRootsAfterBoss = await db.PlayerSpiritualRoots.Where(value => value.PlayerId == firstLogin.PlayerId).SumAsync(value => value.Level);
 var finalBossReplay = await service.FinishAsync(
     firstLogin.PlayerId, finalBoss.SessionId, "chapter-finish-10", true, CancellationToken.None);
-Require(finalBossReplay.Replayed && GetCultivationExperience(rankedPlayer) == cultivationExperienceAfterBoss,
-    "Boss finish replay granted cumulative cultivation experience more than once");
+var finalBossAlternateReplay = await service.FinishAsync(
+    firstLogin.PlayerId, finalBoss.SessionId, "chapter-finish-10-alternate", true, CancellationToken.None);
+Require(finalBossReplay.Replayed && finalBossAlternateReplay.Replayed &&
+        GetCultivationExperience(rankedPlayer) == cultivationExperienceAfterBoss &&
+        rankedPlayer.BreakthroughMaterial == breakthroughMaterialAfterBoss &&
+        await db.PlayerSpiritualRoots.Where(value => value.PlayerId == firstLogin.PlayerId).SumAsync(value => value.Level) == spiritualRootsAfterBoss,
+    "Boss finish replay duplicated experience, breakthrough material, pending settlement, or spiritual-root growth");
 Require(new[] { "Rare", "Epic", "Legendary" }.Contains(bossEquipment.Quality), "boss did not improve equipment quality floor");
 Require(await db.PlayerStages.CountAsync(value => value.PlayerId == firstLogin.PlayerId && value.Cleared) == 10, "chapter 1-1 through 1-10 was not authoritatively cleared");
 var completedChapterProfile = await new PlayerQueryService(db, catalog).GetProfileAsync(firstLogin.PlayerId, CancellationToken.None);
-Require(completedChapterProfile.CurrentStageId == "stage_1_1" && completedChapterProfile.ClearedStageIds.Count == 10, "completed chapter profile did not cycle to the authoritative first stage");
+Require(completedChapterProfile.CurrentStageId == "stage_1_1" && completedChapterProfile.ClearedStageIds.Count == 10 &&
+        completedChapterProfile.PendingTribulation is null && completedChapterProfile.BreakthroughMaterial == 1100,
+    "completed chapter profile did not expose the settled realm/material state or cycle to the first stage");
 var wrappedStart = await service.StartAsync(firstLogin.PlayerId, "stage_1_1", "chapter-wrap-start", CancellationToken.None);
 Require(wrappedStart.StageId == "stage_1_1", "completed chapter did not authorize the wrapped first stage");
 var postWrapState = await CaptureBattleMutationSnapshotAsync(db, firstLogin.PlayerId);
@@ -379,19 +562,9 @@ await RequireThrows<InvalidOperationException>(
 Require(await CaptureBattleMutationSnapshotAsync(db, firstLogin.PlayerId) == postWrapState,
     "a rejected post-wrap stage mutated authoritative battle state");
 
-rankedPlayer.RealmId = "realm_body_tempering"; rankedPlayer.RealmStage = 10; rankedPlayer.Exp = 13;
-SetCultivationExperience(rankedPlayer, 1000);
-(await db.PlayerCurrencies.SingleAsync(value => value.PlayerId == firstLogin.PlayerId)).SoftCurrency = 2000;
-await db.SaveChangesAsync();
-var tribulation = await realms.BreakthroughAsync(firstLogin.PlayerId, "tribulation-key", CancellationToken.None);
-var tribulationReplay = await realms.BreakthroughAsync(firstLogin.PlayerId, "tribulation-key", CancellationToken.None);
-Require(tribulation.Succeeded && tribulation.RealmId == "realm_qi_coalescence" && tribulation.SpiritualRootId.StartsWith("root_"), "major realm breakthrough did not grant a spiritual root");
-Require(tribulationReplay.Replayed && await db.PlayerSpiritualRoots.Where(value => value.PlayerId == firstLogin.PlayerId).SumAsync(value => value.Level) == 1, "tribulation spiritual root was duplicated on replay");
-Require(rankedPlayer.Exp == 13 && GetCultivationExperience(rankedPlayer) == 900,
-    "major realm replay changed residual level experience or consumed cultivation experience twice");
 Require((await tasks.ListAsync(firstLogin.PlayerId, CancellationToken.None)).Tasks.Single(value => value.Id == "daily_tribulation_1").CanClaim, "successful major tribulation did not complete the daily task");
 var rootedProfile = await new PlayerQueryService(db, catalog).GetProfileAsync(firstLogin.PlayerId, CancellationToken.None);
-Require(rootedProfile.SpiritualRoots.Count == 9 && rootedProfile.SpiritualRoots.Sum(value => value.Level) == 1 && rootedProfile.SpiritualRoots.All(value => value.Level <= value.MaxLevel), "persisted spiritual roots were not returned in the authoritative profile");
+Require(rootedProfile.SpiritualRoots.Count == 9 && rootedProfile.SpiritualRoots.Sum(value => value.Level) == spiritualRootsBeforeTribulation + 1 && rootedProfile.SpiritualRoots.All(value => value.Level <= value.MaxLevel), "persisted spiritual roots were not returned in the authoritative profile");
 var finalTaskBoard = await tasks.ListAsync(firstLogin.PlayerId, CancellationToken.None);
 Require(finalTaskBoard.Tasks.Count == 6 && finalTaskBoard.Tasks.All(value => value.CanClaim || value.Claimed), "not every daily task was driven by its real authoritative gameplay event");
 
@@ -602,20 +775,46 @@ static async Task VerifyDatabaseSchemaUpgrade(IServerClock clock)
         upgradeDb.PlayerStats.Add(new PlayerStats { PlayerId = player.Id });
         upgradeDb.BattleSessions.AddRange(older, newer);
         await upgradeDb.SaveChangesAsync();
-        await upgradeDb.Database.ExecuteSqlRawAsync(
-            "ALTER TABLE \"Player\" DROP COLUMN \"CultivationExperience\";");
+        foreach (var statement in new[]
+                 {
+                     "ALTER TABLE \"Player\" DROP COLUMN \"CultivationExperience\";",
+                     "ALTER TABLE \"Player\" DROP COLUMN \"BreakthroughMaterial\";",
+                     "ALTER TABLE \"Player\" DROP COLUMN \"PendingTribulationToken\";",
+                     "ALTER TABLE \"Player\" DROP COLUMN \"PendingTribulationTargetRealmId\";",
+                     "ALTER TABLE \"Player\" DROP COLUMN \"PendingTribulationReservedMaterial\";",
+                     "ALTER TABLE \"Player\" DROP COLUMN \"PendingTribulationRequiredExp\";",
+                     "ALTER TABLE \"BattleSession\" DROP COLUMN \"RewardBreakthroughMaterial\";"
+                 })
+            await upgradeDb.Database.ExecuteSqlRawAsync(statement);
         upgradeDb.ChangeTracker.Clear();
 
         await GameDatabaseInitializer.InitializeAsync(upgradeDb, clock.UtcNow);
         var migratedPlayer = await upgradeDb.Players.AsNoTracking().SingleAsync(value => value.Id == player.Id);
-        Require(migratedPlayer.Exp == 37 && GetCultivationExperience(migratedPlayer) == 37,
-            "legacy Player experience was not backfilled into cumulative cultivation experience");
+        Require(migratedPlayer.Exp == 37 && GetCultivationExperience(migratedPlayer) == 37 &&
+                migratedPlayer.BreakthroughMaterial == 0 && migratedPlayer.PendingTribulationToken.Length == 0 &&
+                migratedPlayer.PendingTribulationTargetRealmId.Length == 0 &&
+                migratedPlayer.PendingTribulationReservedMaterial == 0 && migratedPlayer.PendingTribulationRequiredExp == 0 &&
+                await upgradeDb.BattleSessions.AllAsync(value => value.RewardBreakthroughMaterial == 0),
+            "legacy schema did not backfill cultivation experience or default new material/tribulation fields safely");
         await upgradeDb.Database.ExecuteSqlInterpolatedAsync(
-            $"UPDATE \"Player\" SET \"Exp\" = {91L}, \"CultivationExperience\" = {0L} WHERE \"Id\" = {player.Id};");
+            $"UPDATE \"Player\" SET \"Exp\" = {91L}, \"CultivationExperience\" = {0L}, \"BreakthroughMaterial\" = {777L}, \"PendingTribulationToken\" = {"persisted-token"}, \"PendingTribulationTargetRealmId\" = {"realm_qi_coalescence"}, \"PendingTribulationReservedMaterial\" = {321L}, \"PendingTribulationRequiredExp\" = {654L} WHERE \"Id\" = {player.Id};");
+        await upgradeDb.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE \"BattleSession\" SET \"RewardBreakthroughMaterial\" = {88L} WHERE \"Id\" = {newer.Id};");
         await GameDatabaseInitializer.InitializeAsync(upgradeDb, clock.UtcNow);
         var secondInitialization = await upgradeDb.Players.AsNoTracking().SingleAsync(value => value.Id == player.Id);
-        Require(secondInitialization.Exp == 91 && GetCultivationExperience(secondInitialization) == 0,
-            "database reinitialization repeated legacy cultivation backfill and overwrote current progress");
+        var secondInitializationSession = await upgradeDb.BattleSessions.AsNoTracking().SingleAsync(value => value.Id == newer.Id);
+        Require(secondInitialization.Exp == 91 && GetCultivationExperience(secondInitialization) == 0 &&
+                secondInitialization.BreakthroughMaterial == 777 &&
+                secondInitialization.PendingTribulationToken == "persisted-token" &&
+                secondInitialization.PendingTribulationTargetRealmId == "realm_qi_coalescence" &&
+                secondInitialization.PendingTribulationReservedMaterial == 321 &&
+                secondInitialization.PendingTribulationRequiredExp == 654 &&
+                secondInitializationSession.RewardBreakthroughMaterial == 88,
+            $"database reinitialization overwrote current cultivation, material, pending-tribulation, or battle-reward state: " +
+            $"exp={secondInitialization.Exp}, cultivation={secondInitialization.CultivationExperience}, material={secondInitialization.BreakthroughMaterial}, " +
+            $"token={secondInitialization.PendingTribulationToken}, target={secondInitialization.PendingTribulationTargetRealmId}, " +
+            $"reserved={secondInitialization.PendingTribulationReservedMaterial}, requiredExp={secondInitialization.PendingTribulationRequiredExp}, " +
+            $"battleMaterial={secondInitializationSession.RewardBreakthroughMaterial}");
         var upgradedSessions = await upgradeDb.BattleSessions.AsNoTracking()
             .Where(value => value.PlayerId == player.Id)
             .ToListAsync();
@@ -677,13 +876,65 @@ static async Task<BattleMutationSnapshot> CaptureBattleMutationSnapshotAsync(Gam
         wallet.PremiumCurrency);
 }
 
+static async Task<RealmMutationSnapshot> CaptureRealmMutationSnapshotAsync(GameDbContext db, Guid playerId)
+{
+    var player = await db.Players.AsNoTracking().SingleAsync(value => value.Id == playerId);
+    var wallet = await db.PlayerCurrencies.AsNoTracking().SingleAsync(value => value.PlayerId == playerId);
+    var rootLevel = await db.PlayerSpiritualRoots.AsNoTracking()
+        .Where(value => value.PlayerId == playerId)
+        .Select(value => (int?)value.Level)
+        .SumAsync() ?? 0;
+    var taskProgress = await db.PlayerTasks.AsNoTracking()
+        .Where(value => value.PlayerId == playerId)
+        .Select(value => (long?)value.Progress)
+        .SumAsync() ?? 0;
+    return new RealmMutationSnapshot(
+        player.Level,
+        player.Exp,
+        player.CultivationExperience,
+        player.BreakthroughMaterial,
+        player.RealmId,
+        player.RealmStage,
+        player.PendingTribulationToken,
+        player.PendingTribulationTargetRealmId,
+        player.PendingTribulationReservedMaterial,
+        player.PendingTribulationRequiredExp,
+        wallet.SoftCurrency,
+        wallet.PremiumCurrency,
+        await db.RewardGrants.CountAsync(value => value.PlayerId == playerId),
+        await db.RewardLogs.CountAsync(value => value.PlayerId == playerId),
+        await db.CurrencyLogs.CountAsync(value => value.PlayerId == playerId),
+        await db.ItemLogs.CountAsync(value => value.PlayerId == playerId),
+        await db.PlayerSpiritualRoots.CountAsync(value => value.PlayerId == playerId),
+        rootLevel,
+        await db.PlayerTasks.CountAsync(value => value.PlayerId == playerId),
+        taskProgress);
+}
+
 static BattleAuthorityService CreateBattleService(GameDbContext db, IServerClock clock, ServerGameConfigCatalog catalog)
 {
     var currencies = new CurrencyService(db);
     var rewards = new RewardService(db, currencies);
     var tasks = new TaskService(db, rewards, clock, catalog);
     var drops = new ServerEquipmentDropService(db, clock, catalog);
-    return new BattleAuthorityService(db, clock, currencies, tasks, drops, catalog);
+    var realms = new RealmAuthorityService(db, tasks, catalog, new FixedServerRandomSource());
+    return new BattleAuthorityService(db, clock, currencies, tasks, drops, realms, catalog);
+}
+
+static void ClearPendingTribulation(Player player)
+{
+    player.PendingTribulationToken = string.Empty;
+    player.PendingTribulationTargetRealmId = string.Empty;
+    player.PendingTribulationReservedMaterial = 0;
+    player.PendingTribulationRequiredExp = 0;
+}
+
+static void SetValidPendingTribulation(Player player)
+{
+    player.PendingTribulationToken = new string('a', 32);
+    player.PendingTribulationTargetRealmId = "realm_qi_coalescence";
+    player.PendingTribulationReservedMaterial = 2000;
+    player.PendingTribulationRequiredExp = 1200;
 }
 
 static void Require(bool condition, string message)
@@ -696,13 +947,6 @@ static long GetCultivationExperience(Player player)
     var property = typeof(Player).GetProperty("CultivationExperience")
         ?? throw new InvalidOperationException("Player cultivation experience property is missing.");
     return (long)(property.GetValue(player) ?? 0L);
-}
-
-static void SetCultivationExperience(Player player, long value)
-{
-    var property = typeof(Player).GetProperty("CultivationExperience")
-        ?? throw new InvalidOperationException("Player cultivation experience property is missing.");
-    property.SetValue(player, value);
 }
 
 static (int Level, long Exp) ApplyLevelExperience(int level, long experience, long reward)
@@ -729,6 +973,12 @@ sealed class FixedServerRandomSource : IServerRandomSource
     public int Next(int maxExclusive) => 0;
 }
 
+sealed class RejectingServerRandomSource : IServerRandomSource
+{
+    public bool Roll(double probability) => false;
+    public int Next(int maxExclusive) => 0;
+}
+
 sealed record BattleStartOutcome(BattleStartResult? Result, Exception? Error);
 
 sealed record BattleMutationSnapshot(
@@ -747,6 +997,28 @@ sealed record BattleMutationSnapshot(
     long CultivationExperience,
     long SoftCurrency,
     long PremiumCurrency);
+
+sealed record RealmMutationSnapshot(
+    int Level,
+    long Exp,
+    long CultivationExperience,
+    long BreakthroughMaterial,
+    string RealmId,
+    int RealmStage,
+    string PendingTribulationToken,
+    string PendingTribulationTargetRealmId,
+    long PendingTribulationReservedMaterial,
+    long PendingTribulationRequiredExp,
+    long SoftCurrency,
+    long PremiumCurrency,
+    int Grants,
+    int RewardLogs,
+    int CurrencyLogs,
+    int ItemLogs,
+    int SpiritualRoots,
+    int SpiritualRootLevel,
+    int Tasks,
+    long TaskProgress);
 
 sealed class FixedClock : IServerClock
 {

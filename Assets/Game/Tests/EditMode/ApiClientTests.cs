@@ -82,11 +82,29 @@ namespace ImmortalLoot.Tests
             Assert.That(parsed.effectiveSeconds, Is.EqualTo(600));
             Assert.That(parsed.equipmentRolls, Is.EqualTo(2));
             var profile = ImmortalLootApiClient.Parse<PlayerProfileDto>(new ApiResponse(200,
-                "{\"playerId\":\"p1\",\"nickname\":\"修士\",\"exp\":7,\"cultivationExperience\":345,\"currentStageId\":\"stage_1_3\",\"clearedStageIds\":[\"stage_1_1\",\"stage_1_2\"],\"spiritualRoots\":[]}"));
+                "{\"playerId\":\"p1\",\"nickname\":\"修士\",\"exp\":7,\"cultivationExperience\":345,\"breakthroughMaterial\":678,\"pendingTribulation\":{\"targetRealmId\":\"realm_qi_coalescence\",\"reservedMaterial\":2000,\"requiredExperience\":1200},\"currentStageId\":\"stage_1_3\",\"clearedStageIds\":[\"stage_1_1\",\"stage_1_2\"],\"spiritualRoots\":[]}"));
             Assert.That(profile.exp, Is.EqualTo(7));
             Assert.That(profile.cultivationExperience, Is.EqualTo(345));
+            Assert.That(profile.breakthroughMaterial, Is.EqualTo(678));
+            Assert.That(profile.pendingTribulation.targetRealmId, Is.EqualTo("realm_qi_coalescence"));
+            Assert.That(profile.pendingTribulation.reservedMaterial, Is.EqualTo(2000));
+            Assert.That(profile.pendingTribulation.requiredExperience, Is.EqualTo(1200));
             Assert.That(profile.currentStageId, Is.EqualTo("stage_1_3"));
             Assert.That(profile.clearedStageIds, Is.EqualTo(new[] { "stage_1_1", "stage_1_2" }));
+
+            var breakthrough = ImmortalLootApiClient.Parse<RealmBreakthroughDto>(new ApiResponse(200,
+                "{\"realmId\":\"realm_body_tempering\",\"realmStage\":10,\"succeeded\":false,\"replayed\":false,\"status\":\"TribulationRequired\",\"targetRealmId\":\"realm_qi_coalescence\",\"requiredLevel\":10,\"requiredExperience\":1200,\"requiredMaterial\":2000,\"materialSpent\":2000,\"breakthroughMaterial\":1000}"));
+            Assert.That(breakthrough.status, Is.EqualTo("TribulationRequired"));
+            Assert.That(breakthrough.targetRealmId, Is.EqualTo("realm_qi_coalescence"));
+            Assert.That(breakthrough.requiredLevel, Is.EqualTo(10));
+            Assert.That(breakthrough.requiredExperience, Is.EqualTo(1200));
+            Assert.That(breakthrough.requiredMaterial, Is.EqualTo(2000));
+            Assert.That(breakthrough.materialSpent, Is.EqualTo(2000));
+            Assert.That(breakthrough.breakthroughMaterial, Is.EqualTo(1000));
+
+            var finish = ImmortalLootApiClient.Parse<BattleFinishDto>(new ApiResponse(200,
+                "{\"sessionId\":\"11111111-1111-1111-1111-111111111111\",\"status\":\"Finished\",\"rewardSoftCurrency\":25,\"rewardExp\":250,\"rewardBreakthroughMaterial\":100,\"equipmentInstanceId\":\"equip-1\",\"replayed\":false}"));
+            Assert.That(finish.rewardBreakthroughMaterial, Is.EqualTo(100));
         }
 
         private sealed class FakeTransport : IApiTransport
