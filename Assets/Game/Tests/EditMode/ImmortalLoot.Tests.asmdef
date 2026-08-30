@@ -3,7 +3,8 @@
   "references": [
     "UnityEngine.TestRunner",
     "UnityEditor.TestRunner",
-    "ImmortalLoot.Runtime"
+    "ImmortalLoot.Runtime",
+    "ImmortalLoot.Editor"
   ],
   "includePlatforms": ["Editor"],
   "overrideReferences": true,

@@ -43,40 +43,57 @@ namespace ImmortalLoot.Editor
         }
 
         [MenuItem("ImmortalLoot/Build/Android Development APK")]
-        public static void BuildAndroidDevelopmentApk()
+        public static void BuildAndroidDevelopmentApk() => BuildAndroid(AndroidBuildFlavor.DevelopmentApk);
+
+        [MenuItem("ImmortalLoot/Build/Android Release Candidate APK")]
+        public static void BuildAndroidReleaseCandidateApk() => BuildAndroid(AndroidBuildFlavor.ReleaseCandidateApk);
+
+        [MenuItem("ImmortalLoot/Build/Android Release Candidate AAB")]
+        public static void BuildAndroidReleaseCandidateAab() => BuildAndroid(AndroidBuildFlavor.ReleaseCandidateAab);
+
+        private static void BuildAndroid(AndroidBuildFlavor flavor)
         {
             if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Android, BuildTarget.Android))
                 throw new InvalidOperationException("Android Build Support is not installed. Add android, android-sdk-ndk-tools, and android-open-jdk for Unity 6000.5.10f1.");
             var projectRoot = Directory.GetParent(Application.dataPath)?.FullName
                 ?? throw new InvalidOperationException("Unable to resolve the Unity project root.");
-            var output = Path.Combine(projectRoot, "Build", "Android", "ImmortalLoot-development.apk");
+            var spec = AndroidBuildSpec.Create(flavor, PlayerSettings.bundleVersion);
+            var output = Path.Combine(projectRoot, "Build", "Android", spec.OutputFileName);
             Directory.CreateDirectory(Path.GetDirectoryName(output));
-            var stagingOutput = Path.Combine(Path.GetTempPath(), "ImmortalLootBuild", "ImmortalLoot-development.apk");
+            var stagingOutput = Path.Combine(Path.GetTempPath(), "ImmortalLootBuild", spec.OutputFileName);
             Directory.CreateDirectory(Path.GetDirectoryName(stagingOutput));
+            if (File.Exists(stagingOutput)) File.Delete(stagingOutput);
             PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.immortalloot.prototype");
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARMv7 | AndroidArchitecture.ARM64;
             PlayerSettings.Android.applicationEntry = AndroidApplicationEntry.Activity;
-            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel25;
+            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26;
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
             PlayerSettings.allowedAutorotateToPortrait = true;
             PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
             PlayerSettings.allowedAutorotateToLandscapeLeft = false;
             PlayerSettings.allowedAutorotateToLandscapeRight = false;
             EnsureRuntimeShadersIncluded();
-            EditorUserBuildSettings.buildAppBundle = false;
-            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+            if (flavor != AndroidBuildFlavor.DevelopmentApk && !PlayerSettings.Android.useCustomKeystore)
+                Debug.LogWarning("RC uses Unity's default test signing because no custom Android keystore is configured. It is installable for validation but not store-ready.");
+            var previousAppBundle = EditorUserBuildSettings.buildAppBundle;
+            try
             {
-                scenes = new[] { "Assets/Game/Scenes/Main.unity" },
-                locationPathName = stagingOutput,
-                target = BuildTarget.Android,
-                options = BuildOptions.Development
-            });
-            if (report.summary.result != BuildResult.Succeeded)
-                throw new InvalidOperationException($"Android APK build failed: {report.summary.result}, {report.summary.totalErrors} errors.");
-            if (!File.Exists(stagingOutput))
-                throw new FileNotFoundException("Unity reported success but did not create the Android APK.", stagingOutput);
-            File.Copy(stagingOutput, output, true);
-            Debug.Log($"ImmortalLoot Android APK built: {report.summary.totalSize} bytes in {report.summary.totalTime}.");
+                EditorUserBuildSettings.buildAppBundle = spec.BuildAppBundle;
+                var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+                {
+                    scenes = new[] { "Assets/Game/Scenes/Main.unity" },
+                    locationPathName = stagingOutput,
+                    target = BuildTarget.Android,
+                    options = spec.Options
+                });
+                if (report.summary.result != BuildResult.Succeeded)
+                    throw new InvalidOperationException($"Android build failed: {report.summary.result}, {report.summary.totalErrors} errors.");
+                if (!File.Exists(stagingOutput))
+                    throw new FileNotFoundException("Unity reported success but did not create the Android artifact.", stagingOutput);
+                File.Copy(stagingOutput, output, true);
+                Debug.Log($"Android artifact built at '{output}': {report.summary.totalSize} bytes in {report.summary.totalTime}.");
+            }
+            finally { EditorUserBuildSettings.buildAppBundle = previousAppBundle; }
         }
 
         private static void EnsureRuntimeShadersIncluded()

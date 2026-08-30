@@ -8,7 +8,19 @@
 2. 打开 `Assets/Game/Scenes/Main.unity` 并进入 Play Mode。
 3. 若需要重建场景，执行菜单 `ImmortalLoot > Build Prototype Scene`。
 
-Player 构建入口位于 `ImmortalLoot > Build`：Windows、WebGL，以及安装 Android Build Support 后可用的 Android Development APK。Android 入口输出到 `Build/Android/ImmortalLoot-development.apk`，缺模块时会明确列出所需 Hub 模块。
+Player 构建入口位于 `ImmortalLoot > Build`：Windows、WebGL、Android Development APK，以及 Android Release Candidate APK/AAB。Android 产物使用版本化文件名输出到 `Build/Android/`；当前 `0.1.0` 对应：
+
+- `Taichu-Endless-Reincarnation-0.1.0-dev.apk`
+- `Taichu-Endless-Reincarnation-0.1.0-rc.apk`
+- `Taichu-Endless-Reincarnation-0.1.0-rc.aab`
+
+无人值守 RC APK 命令：
+
+```powershell
+& 'C:\Program Files\Unity\Hub\Editor\6000.5.10f1\Editor\Unity.exe' -batchmode -quit -projectPath . -executeMethod ImmortalLoot.Editor.PlayerBuildTools.BuildAndroidReleaseCandidateApk -logFile Logs/android-rc-build.log
+```
+
+未配置自定义 keystore 时，RC 仅使用 Unity 默认测试签名，适合安装验证但不能作为商店正式签名包；所需人工操作见 `Docs/HUMAN_ACTION_REQUIRED.md`。
 
 在线模式需先在另一个 PowerShell 启动开发服务器：
 

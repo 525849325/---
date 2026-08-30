@@ -1,0 +1,7 @@
+{
+  "name": "ImmortalLoot.Editor",
+  "rootNamespace": "ImmortalLoot.Editor",
+  "references": ["ImmortalLoot.Runtime"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}
