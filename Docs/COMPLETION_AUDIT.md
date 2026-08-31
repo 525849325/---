@@ -1,17 +1,17 @@
 # 《太初：无尽轮回》V0.1 完成度审计
 
-审计基线：最新已推送代码检查点 `5a61ddf`，日期 2026-08-30。只把与当前源码绑定的直接证据计为 RC 放行证据；旧 Unity 结果、旧 Android 产物和模拟器截图仅作历史参考。
+审计基线：当前代码检查点 `848365d`，日期 2026-08-31。只把与当前源码绑定的直接证据计为 RC 放行证据；旧 Unity 结果、旧 Android 产物和模拟器截图仅作历史参考。
 
 ## 当前完成度
 
-总体约 **89%**。核心离线循环、存档/离线收益、首 Boss、真实失败恢复、境界/渡劫、Development 在线合同及存档写入韧性已落地；首 Boss 后长期轮回节奏、产品页/商业意图/隐私、当前 Unity 回归、同源 Android 双产物、完整竖屏视觉和物理真机验收仍未闭合，GATE 4 为 **OPEN**。
+总体约 **89%**。核心离线循环、存档/离线收益、首 Boss、真实失败恢复、境界/渡劫、离线持久轮回及存档写入韧性已落地；产品页/商业意图/隐私、当前 Unity 回归、同源 Android 双产物、完整竖屏视觉和物理真机验收仍未闭合，GATE 4 为 **OPEN**。Development 在线跨轮回不在离线 RC 范围并已进入 V0.2。
 
 ## 当前直接证据
 
-- Runtime、Editor、EditMode、PlayMode 四程序集静态编译 PASS；静态枚举 EditMode 116、PlayMode 33。
+- Runtime、Editor、EditMode、PlayMode 四程序集静态编译 PASS；静态枚举 EditMode 124、PlayMode 33。
 - Domain smoke PASS，包含存档可恢复失败策略、等级/累计修为分池、突破成本、境界属性与 10,000 件装备。
-- CoreLoop 与 Balance smoke PASS；Backend Verification 与真实 Kestrel HTTP 46/46 PASS。
-- RealBattle 确认首 Boss 182.23 秒到达、193.43 秒击败，奖励窗口无积压；但 10 分钟 21 次、60 分钟 233 次 Boss 胜利且 0 败，因此长期节奏验收为 TESTING / PRODUCT FAIL。
+- CoreLoop、RealBattle 与 Balance smoke PASS；Backend Verification 与真实 Kestrel HTTP 46/46 PASS。
+- RealBattle 确认首 Boss 182.23/193.43 秒、第二 Boss 496.07/505.87 秒；10 分钟 2 胜无第三 Boss，60 分钟 11 胜6败且 pending 0；CoreLoop 验证跨过 120 分钟后仍继续推进。
 - `5a61ddf`：可恢复存档写入失败不再中断战斗；失败提示、后续重试恢复和意外异常逃逸均有静态编译及测试源码覆盖。
 - 当前安全扫描：高置信凭据 0、敏感签名扩展 0、受跟踪文件大于等于 50 MiB 为 0；当前无需 Git LFS。
 
@@ -27,8 +27,8 @@
 
 | ID | Priority | 状态 | 完成条件 |
 |---|---|---|---|
-| CORE-CYCLE-PACING-003 | P1 | RUNNING | 可持久化轮回/区域；每轮节奏门重置；敌人/奖励配置化递增；第二 Boss 约 8–10 分钟。 |
-| UI-PRODUCT-PAGES-002 | P1 | TODO | 九页显示真实只读玩家摘要，删除技术占位文案，截图导航无状态副作用。 |
+| CORE-CYCLE-PACING-003 | P1 | TESTING | `848365d` 静态/离线门已通过；待当前 Unity Test Runner 与物理真机 10/60 分钟手感。 |
+| UI-PRODUCT-PAGES-002 | P1 | RUNNING | 九页显示真实只读玩家摘要，删除技术占位文案，截图导航无状态副作用。 |
 | PRIVACY-CONSENT-001 / COMMERCIAL-INTENT-002 / TASK-DAILY-001 | P1 | TODO | 同意前不发送分析/登录；商品意图可测且无伪支付；任务语义与时间边界真实。 |
 | PACKAGE-LOCK-CONSISTENCY-001 / ANDROID-PROVENANCE-001 | P1 | TODO | 包版本一致；构建清旧产物并绑定 Git SHA，验证包名、版本、ABI、签名与 Manifest。 |
 | QUALITY-GATE-002 / REPO-SAFETY-001 | P1 | TODO | 外层强制完整无设备门禁；安全/大文件/Unity 必需文件检查持续执行。 |

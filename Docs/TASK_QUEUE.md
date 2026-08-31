@@ -19,9 +19,9 @@
 | SERVER-HTTP-CONTRACT-001 | P1 | SERVER-BATTLE-AUTH-001 | DONE | D/E | 真实 Kestrel HTTP 46/46 通过，含累计修为、破境石/pending 与拒绝零副作用 |
 | SERVER-REALM-XP-001 | P1 | SERVER-HTTP-CONTRACT-001 | DONE | D/E | 在线双经验池、旧 SQLite 迁移、奖励、突破与 profile/Unity 映射已闭合 |
 | SERVER-REALM-MATERIAL-002 | P1 | SERVER-REALM-XP-001 | DONE | D/E | 破境石、RequiredLevel、按阶成本、大境界 pending→Boss 原子结算、材料奖励与客户端防重已闭合 |
-| CORE-REALM-INTEGRATION-001 | P0 | CORE-STAGE-002,SAVE-AGGREGATE-001 | TESTING | B/D/E | 离线/在线境界闭环已实现，静态编译、smoke、Backend、HTTP 46/46 PASS；待当前 Unity 116/33 |
-| CORE-CYCLE-PACING-003 | P1 | CORE-STAGE-002,SAVE-WRITE-RESILIENCE-001 | RUNNING | A/B/D/E | 10 分钟 21 次、60 分钟 233 次 Boss 胜利且 0 败；实现可持久化轮回、每轮节奏门与敌人/奖励递增，第二 Boss 目标约 8–10 分钟 |
-| UI-PRODUCT-PAGES-002 | P1 | CORE-CYCLE-PACING-003 | TODO | C/E | 导航页改为当前只读玩家摘要，删除“占位/接口已就绪”等技术文案；截图用例验证页面与状态无副作用 |
+| CORE-REALM-INTEGRATION-001 | P0 | CORE-STAGE-002,SAVE-AGGREGATE-001 | TESTING | B/D/E | 离线/在线境界闭环已实现，静态编译、smoke、Backend、HTTP 46/46 PASS；待当前 Unity 124/33 |
+| CORE-CYCLE-PACING-003 | P1 | CORE-STAGE-002,SAVE-WRITE-RESILIENCE-001 | TESTING | A/B/D/E | `848365d`：持久轮回、节奏门重置、敌人/奖励递增已实现；RealBattle 10 分钟第二 Boss 496.07/505.87 秒、2 胜无第三，60 分钟 11 胜6败 pending 0，120 分钟后继续；待 Unity/真机 |
+| UI-PRODUCT-PAGES-002 | P1 | CORE-CYCLE-PACING-003 | RUNNING | C/E | 导航页改为当前只读玩家摘要，删除“占位/接口已就绪”等技术文案；测试验证页面与玩家状态无副作用 |
 | PRIVACY-CONSENT-001 | P1 | UI-PRODUCT-PAGES-002 | TODO | C/D/E | 增加明确接受/拒绝；分析默认关闭，Development 登录在同意前不发送数据，离线循环不受影响 |
 | COMMERCIAL-INTENT-002 | P1 | UI-PRODUCT-PAGES-002,PRIVACY-CONSENT-001 | TODO | C/D/E | 增加 2–3 个可选商品意图和 shop_opened/product_selected/purchase_intent/result 漏斗；不收费、不伪造奖励，Release 继续拒绝 Mock |
 | TASK-DAILY-001 | P1 | SAVE-AGGREGATE-001 | TODO | B/C/D | 将永久一次性“每日任务”改为真实 UTC 日任务，或在 RC 文案/合同中诚实降为一次性成长任务；必须有存档和时间边界测试 |
@@ -32,14 +32,14 @@
 | SETTINGS-UI-001 | P1 | SAVE-001 | DONE | C/D | 声音、震动、自动换装、保存、法律入口完成；真机触控待 QA-DEVICE |
 | FUNNEL-001 | P1 | CORE-001 | DONE | D/E | 无 PII 本地 JSONL 漏斗及首次大境界事件完成 |
 | FEEDBACK-001 | P1 | CORE-001 | TESTING | C | 五类程序化音效与品质/战力反馈已编译；待场景听感和真机音量 |
-| BALANCE-001 | P1 | CORE-CYCLE-PACING-003 | TESTING | A/B/E | 首 Boss 与三败退守已验证；长期成长阻力依赖 CORE-CYCLE-PACING-003 与真机 10/60 分钟 |
+| BALANCE-001 | P1 | CORE-CYCLE-PACING-003 | TESTING | A/B/E | 离线 RealBattle 10/60 分钟节奏、递增强度、失败恢复与 pending 归零 PASS；待当前 Unity/物理真机确认狂暴提示和手感 |
 | AUTO-EQUIP-001 | P1 | CORE-001 | DONE | B/C | 默认开启、可关闭，只在统一战力严格提升时换装 |
 | QA-UNITY-001 | P0 | CORE-STAGE-002,SAVE-AGGREGATE-001 | DONE | E | 历史检查点 `2bee3ac`：EditMode 109/109、PlayMode 26/26；不代表当前源码 |
-| QA-UNITY-POSTCHANGE-002 | P0 | CORE-CYCLE-PACING-003,UI-PRODUCT-PAGES-002,PRIVACY-CONSENT-001,COMMERCIAL-INTENT-002,TASK-DAILY-001 | BLOCKED | E | 目标项目无可复用授权 Editor 会话；会话可用后跑当前完整 EditMode/PlayMode、Console 与回归，不要求重复激活 |
+| QA-UNITY-POSTCHANGE-002 | P0 | CORE-CYCLE-PACING-003,UI-PRODUCT-PAGES-002,PRIVACY-CONSENT-001,COMMERCIAL-INTENT-002,TASK-DAILY-001 | BLOCKED | E | 目标项目无可复用授权 Editor 会话；会话可用后跑当前预计 EditMode 124 / PlayMode 33、Console 与回归，不要求重复激活 |
 | BUILD-ANDROID-002 | P0 | QA-UNITY-001 | DONE | E | 历史 `2bee3ac` APK/AAB 曾通过静态产物门禁；当前已 STALE |
 | BUILD-ANDROID-003 | P0 | QA-UNITY-POSTCHANGE-002,ANDROID-PROVENANCE-001 | BLOCKED | E | 当前 Unity 全绿后重建同源 APK/AAB，并执行溯源、签名、ABI、Manifest 门禁 |
 | QA-UI-PORTRAIT-001 | P0 | QA-UNITY-POSTCHANGE-002 | BLOCKED | C/E | 生成真正 1080×1920 九页截图，检查字体、遮挡、占位文案与触控目标 |
 | QA-DEVICE-001 | P0 | BUILD-ANDROID-003,QA-UI-PORTRAIT-001 | BLOCKED | E | 脚本/清单已就绪；当前 0 台已授权物理设备，待同源 APK 后执行安装、10/60 分钟、触控、后台/锁屏、性能与日志验收 |
 | RC-QUALITY-001 | P0 | CORE-CYCLE-PACING-003,UI-PRODUCT-PAGES-002,PRIVACY-CONSENT-001,COMMERCIAL-INTENT-002,TASK-DAILY-001,QUALITY-GATE-002,BUILD-ANDROID-003,QA-UI-PORTRAIT-001,QA-DEVICE-001 | TESTING | Direction/E | GATE 4 OPEN；不得以旧 Unity 结果、旧 APK/AAB、模拟器或静态 smoke 放行当前源码 |
 
-当前自动选择：`CORE-CYCLE-PACING-003` 为依赖已满足的最高优先级可执行任务；Unity 目标会话出现后，P0 `QA-UNITY-POSTCHANGE-002` 立即抢占。
+当前自动选择：`UI-PRODUCT-PAGES-002` 为依赖已满足的最高优先级可执行任务；Unity 目标会话出现后，P0 `QA-UNITY-POSTCHANGE-002` 立即抢占。

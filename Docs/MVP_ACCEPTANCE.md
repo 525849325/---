@@ -1,6 +1,6 @@
 # 《太初：无尽轮回》V0.1 MVP 验收矩阵
 
-审计日期：2026-08-30。最新已推送代码检查点：`5a61ddf`。状态只接受与当前源码绑定的直接证据；更早测试、构建和截图不自动继承为 PASS。
+审计日期：2026-08-31。当前代码检查点：`848365d`。状态只接受与当前源码绑定的直接证据；更早测试、构建和截图不自动继承为 PASS。
 
 状态：`PASS` 当前源码已有直接证据；`TESTING` 已实现但运行/产品验收未闭合；`BLOCKED` 依赖外部环境；`PARTIAL` 最小能力存在但发布边界未完成。
 
@@ -11,10 +11,10 @@
 | 启动后进入离线自动战斗 | TESTING | 静态编译与 smoke PASS；待当前 PlayMode/设备运行。 |
 | 20–60 秒首件装备、比较/换装、战力增长 | TESTING | Domain/Core/RealBattle 证据存在；待当前 Unity 场景与真机触控复验。 |
 | 2–4 分钟首 Boss、奖励窗口 | TESTING | 首 Boss 182.23 秒到达、193.43 秒击败；待当前 Unity/设备。 |
-| 首 Boss 后更高区域与 8–10 分钟成长阻力 | TESTING | 当前缺陷为 stage 1 回环且节奏门永久开启；10 分钟 21 次、60 分钟 233 次 Boss 胜利且 0 败。`CORE-CYCLE-PACING-003` RUNNING。 |
+| 首 Boss 后更高区域与 8–10 分钟成长阻力 | TESTING | `848365d` 已实现持久轮回、节奏门重置和敌人/奖励递增；RealBattle 第二 Boss 496.07/505.87 秒，10 分钟 2 胜无第三，60 分钟 11 胜6败 pending 0，120 分钟后继续；待当前 Unity/真机。 |
 | 保存、重进与离线收益 | TESTING | 聚合存档、原子写入、损坏隔离、离线单次领取与迁移已有离线证据；`5a61ddf` 证明可恢复写入失败不杀死循环；待当前 Unity 重进。 |
-| 境界、破境石、渡劫、灵根与统一战力 | TESTING | 离线及 Development 在线材料/pending→Boss 合同已闭合，HTTP 46/46；待 Unity 116/33。 |
-| 产品页可理解且无技术占位 | PARTIAL | 主战斗页可用；其他导航仍包含“占位/接口已就绪”等技术文案，`UI-PRODUCT-PAGES-002` TODO。 |
+| 境界、破境石、渡劫、灵根与统一战力 | TESTING | 离线及 Development 在线材料/pending→Boss 合同已闭合，HTTP 46/46；待 Unity 124/33。 |
+| 产品页可理解且无技术占位 | PARTIAL | 主战斗页可用；其他导航仍包含“占位/接口已就绪”等技术文案，`UI-PRODUCT-PAGES-002` RUNNING。 |
 
 ## 商业验证与合规
 
@@ -31,8 +31,9 @@
 |---|---|---|
 | 后端权威战斗与真实 HTTP 合同 | PASS | Backend Verification 与真实 Kestrel HTTP 46/46 PASS。 |
 | Development 在线境界语义 | PASS | 双经验池、破境石、RequiredLevel、按阶成本、pending→Boss、灵根、任务、旧库升级与客户端防重已闭合。 |
+| Development 在线跨轮回 | PARTIAL | 当前仍固定 cycle 1，服务端未权威持久化/结算跨轮回状态；Release 离线 RC 隐藏入口，后续见 Y-015 / V0.2。 |
 | 存档写入临时失败恢复 | PASS | `5a61ddf`：预期 I/O/权限失败降级，循环继续，后续保存重试并清除警告；编程错误不被吞掉。 |
-| 当前 Unity EditMode | BLOCKED | 预计 116 项；尚未运行。`2bee3ac` 的 109/109 仅为历史证据。 |
+| 当前 Unity EditMode | BLOCKED | 预计 124 项；尚未运行。`2bee3ac` 的 109/109 仅为历史证据。 |
 | 当前 Unity PlayMode | BLOCKED | 预计 33 项；尚未运行。`2bee3ac` 的 26/26 仅为历史证据。 |
 | Android APK/AAB | BLOCKED | 旧 `2bee3ac` 产物 STALE；需构建前清旧、绑定最终 Git SHA 并验证包信息/ABI/签名/Manifest。 |
 | 1080×1920 九页视觉 | BLOCKED | 当前没有完整真实截图证据；结构审计不等于视觉 PASS。 |

@@ -1,6 +1,6 @@
 # 《太初：无尽轮回》V0.1 14 日冲刺
 
-> 当前执行状态（2026-08-30）：约 89%，处于 GATE 4。最新已推送代码检查点 `5a61ddf` 的程序集、离线 smoke、Backend 与 HTTP 46/46 PASS，存档可恢复写入失败已不再中断战斗；当前 EditMode 116、PlayMode 33 尚未运行。RealBattle 暴露首 Boss 后无强度递进和 Boss spam，`CORE-CYCLE-PACING-003` 为当前 RUNNING P1。`2bee3ac` 的 109/109、26/26 与 APK/AAB 只作历史证据；当前同源双产物、竖屏视觉和 QA-DEVICE-001 仍 BLOCKED。
+> 当前执行状态（2026-08-31）：约 89%，处于 GATE 4。当前代码检查点 `848365d` 的四程序集静态编译、Domain/CoreLoop/RealBattle/Balance、Backend 与 HTTP 46/46 PASS；离线持久轮回、每轮节奏门及敌人/奖励递增已实现，10 分钟 2 胜无第三 Boss、60 分钟 11 胜6败且 pending 0，120 分钟后仍继续推进。`CORE-CYCLE-PACING-003` 因当前 Unity/真机未验保持 TESTING；当前最高优先级可执行 P1 为 `UI-PRODUCT-PAGES-002` RUNNING。EditMode 124、PlayMode 33 尚未运行；Development 在线无权威跨轮回合同。`2bee3ac` 的 109/109、26/26 与 APK/AAB 只作历史证据；当前同源双产物、竖屏视觉和 QA-DEVICE-001 仍 BLOCKED。
 
 基于现有领域实现，目标可压缩为 10–12 个开发日，Day 13–14 作为真机、修复与发布缓冲。
 
