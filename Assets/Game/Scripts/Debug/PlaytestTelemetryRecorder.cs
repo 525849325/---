@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using ImmortalLoot.Settings;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -13,16 +14,43 @@ namespace ImmortalLoot.Debugging
         private int _frames;
         private float _frameSeconds;
         private string _path;
+        private GameSettingsService _settings;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Install()
         {
-            if (!Debug.isDebugBuild || Application.isBatchMode && DevelopmentPlaytestOptions.Speed <= 1f || FindAnyObjectByType<PlaytestTelemetryRecorder>() != null) return;
+            EnsureInstalled();
+        }
+
+        public static bool ShouldInstall(bool isDebugBuild, bool isBatchMode, float speed, PrivacyConsentState consent)
+        {
+            return isDebugBuild && consent == PrivacyConsentState.Accepted && (!isBatchMode || speed > 1f);
+        }
+
+        public static void EnsureInstalled()
+        {
+            if (Debug.isDebugBuild && DevelopmentPlaytestOptions.PrivacyAcceptedForQa)
+                GameSettingsService.GrantPrivacyForQaSession();
+            var settings = GameSettingsService.CreateRuntime();
+            if (!ShouldInstall(Debug.isDebugBuild, Application.isBatchMode, DevelopmentPlaytestOptions.Speed, settings.PrivacyConsent) ||
+                FindAnyObjectByType<PlaytestTelemetryRecorder>() != null) return;
             DontDestroyOnLoad(new GameObject("PlaytestTelemetryRecorder").AddComponent<PlaytestTelemetryRecorder>().gameObject);
+        }
+
+        public static void StopAfterWithdrawal()
+        {
+            var recorder = FindAnyObjectByType<PlaytestTelemetryRecorder>();
+            if (recorder != null) Destroy(recorder.gameObject);
         }
 
         private void Awake()
         {
+            _settings = GameSettingsService.CreateRuntime();
+            if (!_settings.AnalyticsEnabled)
+            {
+                Destroy(gameObject);
+                return;
+            }
             _path = Path.Combine(Application.persistentDataPath, "immortal-loot-playtest.jsonl");
             _nextSample = SampleIntervalSeconds / DevelopmentPlaytestOptions.Speed;
             Write("session_start");
@@ -30,6 +58,11 @@ namespace ImmortalLoot.Debugging
 
         private void Update()
         {
+            if (_settings == null || !_settings.AnalyticsEnabled)
+            {
+                Destroy(gameObject);
+                return;
+            }
             var delta = Time.unscaledDeltaTime;
             _elapsed += delta; _frameSeconds += delta; _frames++;
             if (_elapsed < _nextSample) return;
@@ -41,6 +74,7 @@ namespace ImmortalLoot.Debugging
 
         private void Write(string eventName)
         {
+            if (_settings == null || !_settings.AnalyticsEnabled) return;
             try
             {
                 var fps = _frameSeconds > 0f ? _frames / _frameSeconds : 0f;

@@ -17,6 +17,8 @@ using ImmortalLoot.Config;
 using ImmortalLoot.Realm;
 using ImmortalLoot.SpiritualRoot;
 using ImmortalLoot.Analytics;
+using ImmortalLoot.Debugging;
+using ImmortalLoot.Settings;
 using System.IO;
 
 namespace ImmortalLoot.Tests.PlayMode
@@ -27,6 +29,7 @@ namespace ImmortalLoot.Tests.PlayMode
         private System.IDisposable _saveOverride;
         private RecordingValidationSink _validationSink;
         private System.IDisposable _validationOverride;
+        private System.IDisposable _settingsOverride;
 
         [OneTimeSetUp]
         public void UseTemporarySaveRepository()
@@ -36,6 +39,9 @@ namespace ImmortalLoot.Tests.PlayMode
             _saveOverride = JsonPlayerSaveRepository.OverrideDefaultPathForTests(Path.Combine(_saveDirectory, "save.json"));
             _validationSink = new RecordingValidationSink();
             _validationOverride = PrototypeGameController.OverrideValidationSinkForTests(_validationSink);
+            var settingsStore = new TestGameSettingsStore();
+            new GameSettingsService(settingsStore).AcceptPrivacy();
+            _settingsOverride = GameSettingsService.OverrideRuntimeStoreForTests(settingsStore);
         }
 
         [OneTimeTearDown]
@@ -43,6 +49,9 @@ namespace ImmortalLoot.Tests.PlayMode
         {
             foreach (var controller in Object.FindObjectsByType<PrototypeGameController>(FindObjectsInactive.Include))
                 Object.DestroyImmediate(controller.gameObject);
+            foreach (var recorder in Object.FindObjectsByType<PlaytestTelemetryRecorder>(FindObjectsInactive.Include))
+                Object.DestroyImmediate(recorder.gameObject);
+            _settingsOverride?.Dispose();
             _validationOverride?.Dispose();
             _saveOverride?.Dispose();
             if (!string.IsNullOrEmpty(_saveDirectory) && Directory.Exists(_saveDirectory))
@@ -178,10 +187,15 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(controller.ExecutePageAction("SpiritualRootPage"), Does.Contain("火灵根 +1"));
 
             GameObject.Find("Nav_TaskPage").GetComponent<Button>().onClick.Invoke();
+            var softCurrencyBeforeTask = controller.SoftCurrencyForTests;
             GameObject.Find("Action_TaskPage").GetComponent<Button>().onClick.Invoke();
-            Assert.That(GameObject.Find("TaskPageContent").GetComponent<Text>().text, Does.Contain("活跃度 20"));
+            Assert.That(GameObject.Find("TaskPageContent").GetComponent<Text>().text, Does.Contain("完成成长试炼"));
+            Assert.That(GameObject.Find("TaskPageContent").GetComponent<Text>().text, Does.Contain("灵砂 +100"));
+            Assert.That(controller.SoftCurrencyForTests, Is.EqualTo(softCurrencyBeforeTask + 100));
             GameObject.Find("Action_TaskPage").GetComponent<Button>().onClick.Invoke();
-            Assert.That(GameObject.Find("TaskPageContent").GetComponent<Text>().text, Does.Contain("已领取"));
+            Assert.That(GameObject.Find("TaskPageContent").GetComponent<Text>().text, Does.Contain("奖励已领取"));
+            Assert.That(controller.SoftCurrencyForTests, Is.EqualTo(softCurrencyBeforeTask + 100),
+                "The one-time growth trial must not grant a second reward.");
 
             GameObject.Find("Nav_ShopPage").GetComponent<Button>().onClick.Invoke();
             var currencyBeforeShop = GameObject.Find("Currencies").GetComponent<Text>().text;
@@ -211,6 +225,8 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(GameObject.Find("Setting_Save"), Is.Not.Null);
             Assert.That(GameObject.Find("Setting_Legal"), Is.Not.Null);
             Assert.That(GameObject.Find("Setting_AutoEquip"), Is.Not.Null);
+            Assert.That(GameObject.Find("Setting_PrivacyAccept"), Is.Not.Null);
+            Assert.That(GameObject.Find("Setting_PrivacyDecline"), Is.Not.Null);
             GameObject.Find("Setting_Save").GetComponent<Button>().onClick.Invoke();
             Assert.That(GameObject.Find("DebugPageContent").GetComponent<Text>().text, Does.Contain("进度已安全保存"));
             GameObject.Find("Setting_Legal").GetComponent<Button>().onClick.Invoke();
@@ -733,12 +749,16 @@ namespace ImmortalLoot.Tests.PlayMode
             var timeout = 2f;
             while (timeout > 0f && transport.FinishRewardWindowEligibility.Count < 1) { timeout -= Time.deltaTime; yield return null; }
 
+            timeout = 2f;
+            var bossLoot = GameObject.Find("Loot").GetComponent<Text>();
+            while (timeout > 0f && !bossLoot.text.Contains("装备背包同步失败")) { timeout -= Time.deltaTime; yield return null; }
+
             Assert.That(transport.FinishRewardWindowEligibility[0], Is.True, "An authenticated Boss must always use the rewarded finish path.");
             Assert.That(controller.PendingRewardWindowsForTests, Is.Zero);
             Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"));
             Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_10"));
             Assert.That(controller.ServerLatestInstanceIdForTests, Is.EqualTo("equip-online"));
-            Assert.That(GameObject.Find("Loot").GetComponent<Text>().text, Does.Contain("装备背包同步失败"));
+            Assert.That(bossLoot.text, Does.Contain("装备背包同步失败"));
             Assert.That(controller.ProgressForTests.Realm.RealmId, Is.EqualTo("realm_qi_coalescence"));
             Assert.That(controller.ProgressForTests.Realm.RealmStage, Is.EqualTo(1));
             Assert.That(controller.ProgressForTests.Realm.CultivationExperience, Is.EqualTo(1050));
@@ -779,6 +799,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 client, CreateServerProfile(), CreateServerInventory());
 
             var controller = Object.FindAnyObjectByType<PrototypeGameController>();
+            var progressBeforeRefresh = PlayerProgressStateCodec.Serialize(controller.ProgressForTests);
             var refresh = controller.RefreshServerProfileAsync();
             while (!refresh.IsCompleted) yield return null;
             Assert.That(refresh.Exception, Is.Not.Null);
@@ -786,7 +807,8 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(controller.ProgressForTests.Realm.RealmStage, Is.EqualTo(1));
             Assert.That(controller.ProgressForTests.Realm.BreakthroughMaterial, Is.Zero);
             Assert.That(controller.ProgressForTests.Realm.PendingTribulation, Is.Null);
-            Assert.That(controller.ProgressForTests.SpiritualRoots.Roots, Is.Empty);
+            Assert.That(PlayerProgressStateCodec.Serialize(controller.ProgressForTests), Is.EqualTo(progressBeforeRefresh),
+                "An invalid profile refresh must leave the entire authoritative mirror unchanged.");
             DeleteLocalSave();
         }
 
@@ -1258,8 +1280,11 @@ namespace ImmortalLoot.Tests.PlayMode
                     EquipmentCapacity = 120,
                     PendingEquipment = pending
                 }),
-                ProgressJson = PlayerProgressStateCodec.Serialize(
-                    new PlayerProgressState { CurrentStageId = "stage_1_10" })
+                ProgressJson = PlayerProgressStateCodec.Serialize(new PlayerProgressState
+                {
+                    CurrentStageId = "stage_1_10",
+                    Stage = new ImmortalLoot.Stage.StageProgressState { CycleIndex = 1, CycleElapsedSeconds = 180d }
+                })
             });
             PrototypeGameController.PauseNextBattleForTests();
             SceneManager.LoadScene("Main");

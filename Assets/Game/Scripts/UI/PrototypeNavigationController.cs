@@ -151,9 +151,13 @@ namespace ImmortalLoot.UI
                 case "CharacterPage":
                 {
                     var profile = ImmortalLootApiClient.Parse<PlayerProfileDto>(await api.GetProfileAsync());
-                    var pending = profile.pendingTribulation == null
+                    var pendingState = profile.pendingTribulation;
+                    var pending = pendingState == null || pendingState.IsEmpty
                         ? string.Empty
-                        : $"\n渡劫待完成：击败下一只 Boss 晋升 {profile.pendingTribulation.targetRealmId}";
+                        : string.IsNullOrWhiteSpace(pendingState.targetRealmId) ||
+                          pendingState.reservedMaterial <= 0 || pendingState.requiredExperience <= 0
+                            ? "\n渡劫状态异常：等待服务器资料修复，本地不会自行结算"
+                            : $"\n渡劫待完成：击败下一只 Boss 晋升 {pendingState.targetRealmId}";
                     return $"{profile.nickname} · Lv.{profile.level}\n战力 {profile.power:N0} · 经验 {profile.exp:N0}\n修为 {profile.cultivationExperience:N0} · 破境石 {profile.breakthroughMaterial:N0}\n境界 {profile.realmId} {profile.realmStage} 阶{pending}\n灵砂 {profile.softCurrency:N0} · 仙晶 {profile.premiumCurrency:N0}";
                 }
                 case "InventoryPage":

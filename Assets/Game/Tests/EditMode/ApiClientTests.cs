@@ -36,6 +36,38 @@ namespace ImmortalLoot.Tests
         }
 
         [Test]
+        public void PendingTribulationDto_DistinguishesEmptyRoundTripFromPartialCorruption()
+        {
+            Assert.That(new PendingTribulationDto().IsEmpty, Is.True);
+            Assert.That(new PendingTribulationDto
+            {
+                targetRealmId = "realm_qi_coalescence",
+                reservedMaterial = 0,
+                requiredExperience = 0
+            }.IsEmpty, Is.False, "A partial server state must not be normalized away as an absent trial.");
+        }
+
+        [Test]
+        public async Task ConsentGate_BlocksTransportBeforeLoginAndAfterWithdrawal()
+        {
+            var allowed = false;
+            var transport = new FakeTransport();
+            var client = new ImmortalLootApiClient(transport, () => allowed);
+
+            Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.LoginAsync("private-install", "云游客"));
+            Assert.That(transport.Requests, Is.Empty);
+
+            allowed = true;
+            await client.LoginAsync("private-install", "云游客");
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+
+            allowed = false;
+            Assert.ThrowsAsync<InvalidOperationException>(async () => await client.GetProfileAsync());
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+        }
+
+        [Test]
         public async Task BattleFinish_AdditiveRewardWindowFieldIsExplicitOnlyOnNewOverload()
         {
             var transport = new FakeTransport();

@@ -26,6 +26,27 @@ namespace ImmortalLoot.Tests
         }
 
         [Test]
+        public void TrackOnce_DoesNotWriteOrConsumeEventBeforeConsent()
+        {
+            var allowed = false;
+            var sink = new MemorySink();
+            var tracker = new ValidationFunnelTracker(
+                sink,
+                "consent-session",
+                () => new DateTime(2026, 8, 31, 1, 2, 3, DateTimeKind.Utc),
+                () => allowed);
+
+            tracker.TrackOnce("session_started");
+            Assert.That(sink.Events, Is.Empty);
+
+            allowed = true;
+            tracker.TrackOnce("session_started");
+            tracker.TrackOnce("session_started");
+            Assert.That(sink.Events, Has.Count.EqualTo(1),
+                "An event rejected before consent must remain eligible after consent, then retain normal deduplication.");
+        }
+
+        [Test]
         public void JsonlSink_WritesMachineReadableEventWithoutPlayerIdentity()
         {
             var path = Path.Combine(Path.GetTempPath(), "immortal-validation-" + Guid.NewGuid().ToString("N") + ".jsonl");

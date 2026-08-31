@@ -50,19 +50,26 @@ namespace ImmortalLoot.Analytics
     {
         private readonly IValidationEventSink _sink;
         private readonly Func<DateTime> _utcNow;
+        private readonly Func<bool> _isCollectionAllowed;
         private readonly HashSet<string> _recorded = new HashSet<string>(StringComparer.Ordinal);
         private readonly string _sessionId;
 
-        public ValidationFunnelTracker(IValidationEventSink sink, string sessionId = null, Func<DateTime> utcNow = null)
+        public ValidationFunnelTracker(
+            IValidationEventSink sink,
+            string sessionId = null,
+            Func<DateTime> utcNow = null,
+            Func<bool> isCollectionAllowed = null)
         {
             _sink = sink ?? throw new ArgumentNullException(nameof(sink));
             _sessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : sessionId;
             _utcNow = utcNow ?? (() => DateTime.UtcNow);
+            _isCollectionAllowed = isCollectionAllowed ?? (() => true);
         }
 
         public void TrackOnce(string eventName, double elapsedSeconds = 0d, int stage = 0, long power = 0, string itemQuality = "", long value = 0)
         {
             if (string.IsNullOrWhiteSpace(eventName)) throw new ArgumentException("Event name is required.", nameof(eventName));
+            if (!_isCollectionAllowed()) return;
             if (!_recorded.Add(eventName)) return;
             _sink.Write(new ValidationEvent
             {

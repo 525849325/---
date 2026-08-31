@@ -17,13 +17,15 @@ namespace ImmortalLoot.UI
             if (source == null || _content == null) return;
             _initialized = true;
             _game = game;
-            _content.rectTransform.sizeDelta = new Vector2(700f, 610f);
-            _content.rectTransform.anchoredPosition = new Vector2(0f, 105f);
-            Configure(source, "Setting_Sound", "声音", new Vector2(-190f, -300f), ToggleSound);
-            Configure(Clone(source), "Setting_Vibration", "震动", new Vector2(190f, -300f), ToggleVibration);
-            Configure(Clone(source), "Setting_Save", "立即保存", new Vector2(-190f, -410f), SaveNow);
-            Configure(Clone(source), "Setting_Legal", "隐私与协议", new Vector2(190f, -410f), ShowLegal);
-            Configure(Clone(source), "Setting_AutoEquip", "自动换装", new Vector2(0f, -520f), ToggleAutoEquip);
+            _content.rectTransform.sizeDelta = new Vector2(700f, 560f);
+            _content.rectTransform.anchoredPosition = new Vector2(0f, 155f);
+            Configure(source, "Setting_Sound", "声音", new Vector2(-190f, -240f), ToggleSound);
+            Configure(Clone(source), "Setting_Vibration", "震动", new Vector2(190f, -240f), ToggleVibration);
+            Configure(Clone(source), "Setting_Save", "立即保存", new Vector2(-190f, -340f), SaveNow);
+            Configure(Clone(source), "Setting_Legal", "隐私与协议", new Vector2(190f, -340f), ShowLegal);
+            Configure(Clone(source), "Setting_AutoEquip", "自动换装", new Vector2(0f, -440f), ToggleAutoEquip);
+            Configure(Clone(source), "Setting_PrivacyAccept", "允许验证", new Vector2(-190f, -540f), AcceptPrivacy);
+            Configure(Clone(source), "Setting_PrivacyDecline", "仅离线", new Vector2(190f, -540f), DeclinePrivacy);
             _content.text = _game.SettingsSummary();
         }
 
@@ -46,6 +48,8 @@ namespace ImmortalLoot.UI
         private void SaveNow() => _content.text = _game.SaveNowFromSettings();
         private void ShowLegal() => _content.text = _game.LegalNotice();
         private void ToggleAutoEquip() => _content.text = _game.ToggleAutoEquipSetting();
+        private void AcceptPrivacy() => _content.text = _game.AcceptPrivacySetting();
+        private void DeclinePrivacy() => _content.text = _game.DeclinePrivacySetting();
 
         private static GameObject FindIncludingInactive(string name)
         {

@@ -7,6 +7,7 @@ namespace ImmortalLoot.Debugging
     {
         public static float Speed { get; }
         public static bool AutoQuit { get; }
+        public static bool PrivacyAcceptedForQa { get; }
 
         static DevelopmentPlaytestOptions()
         {
@@ -18,6 +19,7 @@ namespace ImmortalLoot.Debugging
                     float.TryParse(argument.Substring("-playtestSpeed=".Length), System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture, out var speed)) Speed = Mathf.Clamp(speed, 1f, 240f);
                 else if (string.Equals(argument, "-playtestAutoQuit", StringComparison.OrdinalIgnoreCase)) AutoQuit = true;
+                else if (string.Equals(argument, "-playtestPrivacyAccepted", StringComparison.OrdinalIgnoreCase)) PrivacyAcceptedForQa = true;
             }
         }
     }

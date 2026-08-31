@@ -126,7 +126,12 @@ namespace ImmortalLoot.UI
             _battlePausedForTests = _pauseNextBattleForTests;
             _pauseNextBattleForTests = false;
 #endif
-            _settings = new GameSettingsService(new PlayerPrefsSettingsStore());
+            _settings = GameSettingsService.CreateRuntime();
+            if (Debug.isDebugBuild && DevelopmentPlaytestOptions.PrivacyAcceptedForQa)
+            {
+                GameSettingsService.GrantPrivacyForQaSession();
+                PlaytestTelemetryRecorder.EnsureInstalled();
+            }
             _settings.ApplySound();
             PrototypeVisualTheme.Apply(FindAnyObjectByType<Canvas>());
             _catalog = new JsonConfigRepository(new ResourcesConfigSource()).LoadAll();
@@ -135,7 +140,9 @@ namespace ImmortalLoot.UI
 #if UNITY_INCLUDE_TESTS
             validationSink = _validationSinkOverride ?? validationSink;
 #endif
-            _validationTelemetry = new ValidationFunnelTracker(validationSink);
+            _validationTelemetry = new ValidationFunnelTracker(
+                validationSink,
+                isCollectionAllowed: () => _settings != null && _settings.AnalyticsEnabled);
             _feedback = gameObject.GetComponent<PrototypeCombatFeedback>() ?? gameObject.AddComponent<PrototypeCombatFeedback>();
             _feedback.Initialize();
             _saveRepository =
@@ -294,6 +301,7 @@ namespace ImmortalLoot.UI
         private PendingTribulation MapServerPendingTribulation(PendingTribulationDto pending)
         {
             if (pending == null) return null;
+            if (pending.IsEmpty) return null;
             if (string.IsNullOrWhiteSpace(pending.targetRealmId) ||
                 !_catalog.Realms.ContainsKey(pending.targetRealmId) ||
                 pending.reservedMaterial <= 0 || pending.requiredExperience <= 0)
@@ -346,11 +354,14 @@ namespace ImmortalLoot.UI
             return state;
         }
 
-        public bool TryEnterOfflineGameplay() => TryEnterGameplay(serverGameplay: false);
+        public bool TryEnterOfflineGameplay()
+        {
+            return _settings != null && _settings.PrivacyConsentDecided && TryEnterGameplay(serverGameplay: false);
+        }
 
         public bool TryEnterServerGameplay()
         {
-            if (_login == null || !_login.HasPreparedServerSession) return false;
+            if (_settings == null || !_settings.PrivacyAccepted || _login == null || !_login.HasPreparedServerSession) return false;
             return TryEnterGameplay(serverGameplay: true);
         }
 
@@ -632,7 +643,7 @@ namespace ImmortalLoot.UI
             long materialReward)
         {
             var rewardSummary = materialReward > 0 ? $" · 破境石 +{materialReward:N0}" : string.Empty;
-            if (profile.pendingTribulation != null)
+            if (_progressState.Realm.PendingTribulation != null)
                 return "服务器 Boss 已击败，但渡劫仍待服务器权威确认；未在客户端自行结算" + rewardSummary;
             var realmName = _catalog.Realms.TryGetValue(profile.realmId, out var realm)
                 ? realm.Name
@@ -1421,7 +1432,12 @@ namespace ImmortalLoot.UI
         public string SettingsSummary()
         {
             var warning = string.IsNullOrEmpty(_saveWriteWarning) ? string.Empty : "\n\n⚠ " + _saveWriteWarning;
-            return $"设置\n\n声音：{(_settings.SoundEnabled ? "开启" : "关闭")}\n震动：{(_settings.VibrationEnabled ? "开启" : "关闭")}\n自动换装：{(_settings.AutoEquipEnabled ? "开启（仅提升战力）" : "关闭")}\n进度会在暂停、退出和关键成长节点自动保存。{warning}";
+            var privacy = _settings.PrivacyConsent == PrivacyConsentState.Accepted
+                ? "允许本地验证（仅 Development 构建可登录）"
+                : _settings.PrivacyConsent == PrivacyConsentState.Declined
+                    ? "仅离线（验证与网络关闭）"
+                    : "尚未选择";
+            return $"设置\n\n声音：{(_settings.SoundEnabled ? "开启" : "关闭")}\n震动：{(_settings.VibrationEnabled ? "开启" : "关闭")}\n自动换装：{(_settings.AutoEquipEnabled ? "开启（仅提升战力）" : "关闭")}\n隐私选择：{privacy}\n进度会在暂停、退出和关键成长节点自动保存。{warning}";
         }
 
         public string ToggleSoundSetting()
@@ -1451,8 +1467,39 @@ namespace ImmortalLoot.UI
                 : SettingsSummary();
         }
 
+        public string AcceptPrivacySetting()
+        {
+            if (_login != null) _login.AcceptPrivacyChoice();
+            else
+            {
+                _settings.AcceptPrivacy();
+                PlaytestTelemetryRecorder.EnsureInstalled();
+            }
+            return SettingsSummary() + "\n\n后续才会开始记录无直接身份字段的本地验证事件；仅在支持的 Development 构建中开放本地服务器登录。";
+        }
+
+        public string DeclinePrivacySetting()
+        {
+            var wasServerGameplay = ServerGameplayActive;
+            if (_login != null) _login.DeclinePrivacyChoice();
+            else
+            {
+                _settings.DeclinePrivacy();
+                AnonymousInstallIdProvider.CreateRuntime().Clear();
+                PlaytestTelemetryRecorder.StopAfterWithdrawal();
+            }
+            if (wasServerGameplay) StartCoroutine(ReturnToLoginAfterPrivacyWithdrawal());
+            return SettingsSummary() + "\n\n已停止后续验证与网络请求，并清除本机匿名安装 ID；离线存档不受影响。";
+        }
+
+        private IEnumerator ReturnToLoginAfterPrivacyWithdrawal()
+        {
+            yield return null;
+            UnityEngine.SceneManagement.SceneManager.LoadScene("Main");
+        }
+
         public string LegalNotice() =>
-            "隐私政策与用户协议\n\n本候选版保存本地游戏进度与不含个人身份的验证事件。Development 构建中，只有玩家主动选择本地服务器登录时，才会发送应用随机生成的匿名安装 ID；不会读取设备唯一标识。\n不读取通讯录、定位、相册或广告标识。\n正式外测前须由发行主体补充主体名称、联系邮箱和最终法律文本。";
+            "隐私政策与用户协议\n\n本候选版始终可仅离线游玩并保存本地进度。只有明确选择允许后，才会记录不含玩家 ID、昵称、Token 或设备 ID 的本地验证事件；Development 构建才会开放 127.0.0.1 登录，并发送应用随机生成的匿名安装 ID。拒绝或撤回会停止后续记录与请求、清除本机安装 ID，不会影响离线存档；已发送到 Development 服务的数据不会被伪装成远程删除。\n不读取设备唯一标识、通讯录、定位、相册或广告标识。正式外测前须由发行主体补充主体名称、联系邮箱和最终法律文本。";
 
         private string BuildName() => _buildIndex == 0 ? "火修燃烧" : _buildIndex == 1 ? "雷修暴击" : "血修吸血";
 

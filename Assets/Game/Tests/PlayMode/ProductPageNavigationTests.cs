@@ -3,7 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using ImmortalLoot.Analytics;
+using ImmortalLoot.Debugging;
 using ImmortalLoot.Player;
+using ImmortalLoot.Settings;
 using ImmortalLoot.UI;
 using NUnit.Framework;
 using UnityEngine;
@@ -42,6 +44,9 @@ namespace ImmortalLoot.Tests.PlayMode
             var validationSink = new RecordingValidationSink();
             var saveOverride = JsonPlayerSaveRepository.OverrideDefaultPathForTests(savePath);
             var validationOverride = PrototypeGameController.OverrideValidationSinkForTests(validationSink);
+            var settingsStore = new TestGameSettingsStore();
+            new GameSettingsService(settingsStore).AcceptPrivacy();
+            var settingsOverride = GameSettingsService.OverrideRuntimeStoreForTests(settingsStore);
             try
             {
                 PrototypeGameController.PauseNextBattleForTests();
@@ -97,6 +102,9 @@ namespace ImmortalLoot.Tests.PlayMode
             {
                 var activeController = UnityEngine.Object.FindAnyObjectByType<PrototypeGameController>();
                 if (activeController != null) UnityEngine.Object.DestroyImmediate(activeController.gameObject);
+                foreach (var recorder in UnityEngine.Object.FindObjectsByType<PlaytestTelemetryRecorder>(FindObjectsInactive.Include))
+                    UnityEngine.Object.DestroyImmediate(recorder.gameObject);
+                settingsOverride.Dispose();
                 validationOverride.Dispose();
                 saveOverride.Dispose();
                 if (Directory.Exists(saveDirectory)) Directory.Delete(saveDirectory, recursive: true);

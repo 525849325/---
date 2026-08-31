@@ -71,7 +71,14 @@ namespace ImmortalLoot.Network
     [Serializable] public sealed class RankingEntryDto { public int rank; public string playerId; public string nickname; public long score; }
     [Serializable] public sealed class RankingPageDto { public int type; public string periodKey; public int page; public int pageSize; public int total; public RankingEntryDto[] entries; public RankingEntryDto self; }
     [Serializable] public sealed class SpiritualRootProfileDto { public string rootId; public string name; public string element; public int level; public int maxLevel; }
-    [Serializable] public sealed class PendingTribulationDto { public string targetRealmId; public long reservedMaterial; public long requiredExperience; }
+    [Serializable]
+    public sealed class PendingTribulationDto
+    {
+        public string targetRealmId;
+        public long reservedMaterial;
+        public long requiredExperience;
+        public bool IsEmpty => string.IsNullOrWhiteSpace(targetRealmId) && reservedMaterial == 0 && requiredExperience == 0;
+    }
     [Serializable] public sealed class PlayerProfileDto { public string playerId; public string nickname; public int level; public long exp; public long cultivationExperience; public string realmId; public int realmStage; public long breakthroughMaterial; public PendingTribulationDto pendingTribulation; public long power; public long softCurrency; public long premiumCurrency; public string currentStageId; public string[] clearedStageIds; public SpiritualRootProfileDto[] spiritualRoots; }
     [Serializable] public sealed class InventoryItemDto { public string itemId; public int count; public string category; }
     [Serializable] public sealed class EquipmentItemDto { public string instanceId; public string baseId; public string slot; public int level; public string quality; public bool isLocked; public bool isEquipped; public string instanceJson; }
@@ -94,8 +101,13 @@ namespace ImmortalLoot.Network
     public sealed class ImmortalLootApiClient
     {
         private readonly IApiTransport _transport;
+        private readonly Func<bool> _isRequestAllowed;
         public string AccessToken { get; private set; } = string.Empty;
-        public ImmortalLootApiClient(IApiTransport transport) => _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+        public ImmortalLootApiClient(IApiTransport transport, Func<bool> isRequestAllowed = null)
+        {
+            _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+            _isRequestAllowed = isRequestAllowed ?? (() => true);
+        }
 
         public async Task<LoginDto> LoginAsync(string externalAccountId, string nickname)
         {
@@ -133,6 +145,7 @@ namespace ImmortalLoot.Network
 
         private Task<ApiResponse> Send(string method, string path, object body, bool authenticated = true)
         {
+            if (!_isRequestAllowed()) throw new InvalidOperationException("Privacy consent does not allow network requests.");
             if (authenticated && AccessToken.Length == 0) throw new InvalidOperationException("Login is required.");
             var json = body == null ? string.Empty : JsonUtility.ToJson(body);
             return _transport.SendAsync(new ApiRequest(method, path, json, authenticated ? AccessToken : string.Empty));
