@@ -5,7 +5,7 @@
 | ID | Priority | Dependencies | Status | Owner / Workstream | Result / 下一验收证据 |
 |---|---|---|---|---|---|
 | GITHUB-SYNC-001 | P0 | — | DONE | Direction/E | `origin/main` 与 GitHub `525849325/---` 已建立并持续 Push；远端主分支含 Unity 必需目录与 Docs |
-| GITHUB-SYNC-002 | P1 | GITHUB-SYNC-001 | BLOCKED | Direction/E | 运行时代码 `main=9071636`，状态文档提交前相对 `origin/main=0ffbe55` ahead 6；本轮完成状态 Commit 后立即有界 Push 并以远端 SHA/树验证，网络阻塞不停止其他 Workstream |
+| GITHUB-SYNC-002 | P1 | GITHUB-SYNC-001 | DONE | Direction/E | Push PASS；GitHub 默认分支 `main`，远程 SHA 与本地一致；GitHub API 直接确认 `Assets`、`Packages`、`ProjectSettings`、`Docs/DAILY_REPORT.md` 存在 |
 | AUDIT-001 | P0 | — | DONE | Direction | 项目审计、冲刺、Backlog、任务/RED/日报机制已建立 |
 | CORE-001 | P0 | AUDIT-001 | DONE | A/B/C | 自动战斗、掉落、Boss、换装战力和核心循环基线完成 |
 | CORE-STAGE-002 | P0 | CORE-001 | DONE | A/B/E | 胜利推进、失败重试、首 Boss 回环与奖励窗口离线/Unity/后端基线完成 |
@@ -43,4 +43,4 @@
 | QA-DEVICE-001 | P0 | BUILD-ANDROID-003,QA-UI-PORTRAIT-001 | BLOCKED | E | 脚本与 `9071636` 同源 APK 已就绪；只读 ADB 发现 0 台已授权物理设备，未执行安装/卸载；设备出现后执行 10/60 分钟、触控、后台/锁屏、性能与日志验收，非 RED |
 | RC-QUALITY-001 | P0 | CORE-CYCLE-PACING-003,UI-PRODUCT-PAGES-002,PRIVACY-CONSENT-001,COMMERCIAL-INTENT-002,TASK-DAILY-001,QUALITY-GATE-002,BUILD-ANDROID-003,QA-UI-PORTRAIT-001,QA-DEVICE-001 | TESTING | Direction/E | GATE 4 OPEN；当前 Unity 与内部 QA 双产物已过，仍不得以 Debug 签名、模拟器或静态 smoke 代替 9:16 视觉和物理真机放行 |
 
-当前自动选择：本轮先完成 `GITHUB-SYNC-002` Push/远端验证；随后 `COMMERCIAL-INTENT-002` 为依赖已满足的最高优先级可执行任务。`QA-DEVICE-001` 在物理设备出现时立即抢占；0 台设备不升级 RED，也不阻塞其他 Workstream。
+当前自动选择：`COMMERCIAL-INTENT-002` 为依赖已满足的最高优先级可执行任务。`QA-DEVICE-001` 在物理设备出现时立即抢占；0 台设备不升级 RED，也不阻塞其他 Workstream。

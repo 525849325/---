@@ -19,5 +19,5 @@
 
 - **TASK：** GITHUB-SYNC-001
 - **问题：** 初始本地配置无法唯一确定已创建仓库 URL。
-- **结果：** 用户提供 `https://github.com/525849325/---`；`origin` 已配置为该仓库。
+- **结果：** 用户提供 `https://github.com/525849325/---`；`origin` 已配置，默认分支 `main` 已 Push，并以远程 SHA 与 GitHub API 直接验证 Unity 必要目录和日报。
 - **状态：** RESOLVED（2026-08-30）。

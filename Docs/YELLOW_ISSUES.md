@@ -15,4 +15,4 @@
 | Y-013 | Development 在线境界失败政策 | `ca495ef` 已完成破境石、RequiredLevel、按阶损失与 pending→Boss 胜利结算；服务器尚未持久化 300 秒小突破失败冷却，也未定义 Boss 失败/显式放弃的 75% 退款结算入口 | V0.1 默认离线循环且在线入口仅 Development 可见；当前 major pending 在 Boss 失败后保留供重试，不伪造退款或取消 | 对外启用在线入口前确定失败/放弃产品政策并实现 cooldown、退款、并发回归 |
 | Y-014 | 损坏在线 pending 恢复 | `ca495ef` 已将状态分为 Empty/Valid/Corrupt，Corrupt 不会覆盖/二次扣料，也不阻断 Boss 普通结算，但目前只能隔离、不能自动判定是否应退款 | Profile 只暴露 Valid；Corrupt 的突破请求无副作用拒绝，避免猜测性清除或增发资源 | 对外在线运营前增加受审计的客服/管理员恢复流程，不阻塞离线 RC |
 | Y-015 | Development 在线跨轮回 | `848365d` 的持久轮回与递增结算仅在离线 RC 路径生效；Development 在线仍固定 cycle 1，服务端未权威持久化轮回序号、轮回计时或按完成轮回结算奖励 | Release 离线 RC 隐藏服务器入口并保持完整本地循环；不伪装在线跨轮回已支持，也不阻塞商业验证包 | 对外开放在线入口前，在服务端持久化当前轮回/开始时间并以已完成轮回权威结算、补迁移与并发回归 |
-| Y-016 | GitHub 里程碑同步 | 状态文档提交前运行时代码 `main=9071636`，本地跟踪 `origin/main=0ffbe55`，ahead 6；历史失败为 `github.com:443` 间歇 TCP 超时 | 本地 Git 检查点完整；本轮完成状态 Commit 后执行有界 Push 与远端 SHA/树验证，其他 Workstream 不停止 | 若本轮网络恢复则关闭；仅在演变为明确权限/账号操作时升级 RED |
+| Y-016 | GitHub 里程碑同步（RESOLVED） | 历史失败为 `github.com:443` 间歇 TCP 超时；本轮网络恢复 | Push 成功，远程 `main` SHA 与本地一致；GitHub API 直接确认 Unity 必要目录与日报存在 | 继续在重要里程碑 Commit + Push；仅在演变为明确权限/账号操作时升级 RED |

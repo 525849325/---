@@ -4,20 +4,20 @@
 
 | 状态 | 当前值 |
 |---|---|
-| 版本 | V0.1 RC-candidate；当前运行时代码检查点 `9071636`；Android RC 与该检查点同源；状态文档提交与 GitHub 同步正在执行 |
+| 版本 | V0.1 RC-candidate；当前运行时代码检查点 `9071636`；Android RC 与该检查点同源；GitHub `main` 同步与远程必要目录验证 PASS |
 | 总体完成度 | 约 94%｜核心离线循环、存档/离线收益、境界、持久轮回、12 个产品页、一次性成长试炼和明确隐私同意已实现并通过当前 Unity 回归；剩余核心证据为 9:16 视觉与物理真机 |
 | 当前 Gate | GATE 4｜RC Device Acceptance（OPEN） |
 | 当前 Task | `QA-DEVICE-001`｜BLOCKED（0 台已授权物理设备）；自动队列转入不依赖设备的 `COMMERCIAL-INTENT-002` |
 | Build | PASS（内部 QA RC）｜APK 与 AAB 均由 `9071636` 构建成功并通过独立产物检查；使用 Android Debug 证书，不是商店上传包 |
 | Tests | PASS｜EditMode 132/132、PlayMode 36/36；四程序集、Domain/CoreLoop/RealBattle/Balance、Backend 与真实 HTTP 46/46 均通过 |
 | P0 / P1 | P0 OPEN：9:16 视觉、物理真机；P1 OPEN：商业意图、包锁、自动化溯源/质量/仓库安全；P1 DONE：隐私同意、当前 Unity 回归、当前 Android 双产物 |
-| Blocked | `QA-UI-PORTRAIT-001` 缺真实 1080×1920 十二页证据；`QA-DEVICE-001` 当前 0 台已授权 Android 物理设备；GitHub 同步本轮继续重试 |
+| Blocked | `QA-UI-PORTRAIT-001` 缺真实 1080×1920 十二页证据；`QA-DEVICE-001` 当前 0 台已授权 Android 物理设备 |
 | RED | 无 OPEN RED；`RED-001` 已以 Unity 6000.5 版本化 Licensing IPC 恢复并关闭，不需要用户重复激活 |
 | 最大风险 | 尚无物理真机 10/60 分钟、后台/锁屏、触控与性能证据；当前双产物仅用 Debug 证书，不能直接提交应用商店 |
-| Next | Commit 状态文档并 Push/远端验证；随后自动执行 `COMMERCIAL-INTENT-002`，设备可用时立即抢占 `QA-DEVICE-001` |
+| Next | 自动执行 `COMMERCIAL-INTENT-002`；设备可用时立即抢占 `QA-DEVICE-001` |
 | 是否需要老板决策 | 否 |
 
-当前分支：`main`；远端：GitHub `525849325/---`。运行时代码检查点为 `9071636`，本轮状态文档完成后执行有界 Push，并以远端 `main` SHA 与远程树为准更新同步结论。
+当前分支：`main`；远端：GitHub `525849325/---`；默认分支：`main`。Push 后已从远程重新读取 SHA，并通过 GitHub API 直接确认 `Assets`、`Packages`、`ProjectSettings` 与 `Docs/DAILY_REPORT.md` 存在；本地 `main` 与远端 `main` 保持一致。
 
 ## TODAY
 
@@ -29,6 +29,7 @@
 - 由 `9071636` 重建 APK 与 AAB，Unity 均返回 0；APK 的 aapt/apksigner 及 AAB 的 bundletool/Manifest/签名检查均完成。
 - 真机验收脚本已准备并执行只读设备发现：0 台已授权设备，因此未安装、卸载或清除任何设备数据；该任务保持 BLOCKED，非 RED。
 - Unity 自动写入的 `ps4Passcode` 已从工作树清除，临时授权管道与盘符均已退出。
+- GitHub Push 成功；远端默认分支为 `main`，远程 SHA 与本地一致，Unity 必要目录与最新日报均由 GitHub API 直接验证存在。
 
 ## BUILD
 
@@ -67,5 +68,4 @@
 
 ## NEXT
 
-- 完成本轮重要状态 Commit、GitHub Push 与远端 `main` 树验证。
 - 自动转入 `COMMERCIAL-INTENT-002`；物理设备出现时，P0 `QA-DEVICE-001` 立即抢占。

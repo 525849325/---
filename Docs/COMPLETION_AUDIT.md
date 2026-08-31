@@ -35,7 +35,7 @@
 | TASK-DAILY-001 | P1 | DONE | 一次性成长试炼与重载防重复通过当前 Unity 回归。 |
 | PRIVACY-CONSENT-001 | P1 | DONE | 明确接受/拒绝/撤回、同意前不发送数据和异步竞态均通过当前 Unity 回归。 |
 | COMMERCIAL-INTENT-002 | P1 | TODO | 商品意图可测且无伪支付，补 shop_opened/product_selected/purchase_intent/result 漏斗。 |
-| GITHUB-SYNC-002 | P1 | BLOCKED | 状态文档提交前运行时代码相对 `origin/main=0ffbe55` ahead 6；本轮继续有界 Push/远端验证。 |
+| GITHUB-SYNC-002 | P1 | DONE | Push PASS；远程 `main` SHA 与本地一致，GitHub API 直接确认 Unity 必要目录与日报存在。 |
 | PACKAGE-LOCK-CONSISTENCY-001 / ANDROID-PROVENANCE-001 | P1 | TODO / TESTING | 人工产物门已过；仍需包版本一致、构建清旧与自动 Git SHA sidecar。 |
 | QUALITY-GATE-002 / REPO-SAFETY-001 | P1 | TODO | 外层强制完整无设备门禁；安全/大文件/Unity 必需文件检查持续执行。 |
 | CORE-REALM-INTEGRATION-001 | P0 | DONE | 当前 Unity 132/36 与 HTTP 46/46 全绿。 |
