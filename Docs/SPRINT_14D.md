@@ -1,6 +1,6 @@
 # 《太初：无尽轮回》V0.1 14 日冲刺
 
-> 当前执行状态（2026-08-31）：约 90%，处于 GATE 4。本地检查点 `1370ee6` 的四程序集静态编译、Domain/CoreLoop/RealBattle/Balance PASS；离线轮回节奏已实现，12/12 产品页为真实只读摘要且占位扫描 0。`CORE-CYCLE-PACING-003`、`UI-PRODUCT-PAGES-002` 与一次性成长试炼 `TASK-DAILY-001` 因当前 Unity/真机未验保持 TESTING；当前最高优先级可执行 P1 为 `PRIVACY-CONSENT-001` RUNNING。EditMode 125、PlayMode 34 尚未运行；Development 在线无权威跨轮回合同。`origin/main` 最后本地快照 `0ffbe55`，三次本地提交因 GitHub 443 间歇 TCP 超时待同步，但其他 Workstream 继续。`2bee3ac` 的 109/109、26/26 与 APK/AAB 只作历史证据；当前同源双产物、竖屏视觉和 QA-DEVICE-001 仍 BLOCKED。
+> 当前执行状态（2026-08-31）：约 94%，处于 GATE 4。运行时代码检查点 `9071636` 已完成持久轮回、12/12 真实只读产品页、一次性成长试炼与明确隐私同意；Unity 6000.5 版本化 Licensing IPC 已恢复，EditMode 132/132、PlayMode 36/36 全绿。与 `9071636` 同源的 APK/AAB 已构建并通过 SHA-256、包名、版本、ABI、Manifest、bundletool 与 Debug 签名检查，可用于内部 QA，但不是商店上传包。`CORE-CYCLE-PACING-003`、`UI-PRODUCT-PAGES-002` 仅因物理手感/9:16 视觉保持 TESTING；`QA-DEVICE-001` 当前发现 0 台已授权物理设备而 BLOCKED、非 RED。当前自动队列转入 `COMMERCIAL-INTENT-002`；GATE 4 仍缺剩余 Release-scope P1、竖屏视觉、物理真机和最终签名。
 
 基于现有领域实现，目标可压缩为 10–12 个开发日，Day 13–14 作为真机、修复与发布缓冲。
 

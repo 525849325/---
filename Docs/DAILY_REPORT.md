@@ -4,72 +4,68 @@
 
 | 状态 | 当前值 |
 |---|---|
-| 版本 | V0.1 RC-candidate；当前本地代码检查点 `1370ee6`；`origin/main` 最后本地快照 `0ffbe55`；最近一次 Android 打包基线 `2bee3ac` 已过期 |
-| 总体完成度 | 约 90%｜核心离线循环、存档/离线收益、境界、离线轮回节奏及 12 个只读产品页已实现；隐私同意、当前 Unity/Android/竖屏/真机证据仍未闭合 |
+| 版本 | V0.1 RC-candidate；当前运行时代码检查点 `9071636`；Android RC 与该检查点同源；状态文档提交与 GitHub 同步正在执行 |
+| 总体完成度 | 约 94%｜核心离线循环、存档/离线收益、境界、持久轮回、12 个产品页、一次性成长试炼和明确隐私同意已实现并通过当前 Unity 回归；剩余核心证据为 9:16 视觉与物理真机 |
 | 当前 Gate | GATE 4｜RC Device Acceptance（OPEN） |
-| 当前 Task | `PRIVACY-CONSENT-001`｜RUNNING；在分析与 Development 登录前增加明确同意门，离线循环不受影响 |
-| Build | STALE / REBUILD REQUIRED｜旧 APK/AAB 只对应 `2bee3ac`，不代表 `1370ee6` 或后续检查点 |
-| Tests | 四程序集静态编译、Domain/CoreLoop/RealBattle/Balance PASS；产品页占位扫描 0，静态语义枚举 EditMode 125 / PlayMode 34；Unity Test Runner NOT RUN |
-| P0 / P1 | OPEN P0：当前 Unity 运行时、Android 重建、9:16 视觉、物理真机；TESTING P1：轮回节奏、产品页、一次性成长试炼；RUNNING P1：隐私同意 |
-| Blocked | 目标项目没有可复用的已授权 Editor 会话；QA-DEVICE-001 为 0 台已授权物理设备；GitHub 443 间歇 TCP 超时导致 3 个本地提交待 Push |
-| RED | 无 OPEN RED；许可证有效，不要求重复激活 |
-| 最大风险 | 当前源码尚无同源 Unity Test Runner、Android 双产物、9:16 视觉与物理真机证据；本地里程碑尚未因网络超时同步 GitHub，但不存在认证/权限错误 |
-| Next | 完成隐私同意门；随后处理商业意图、Android 溯源、质量门禁与包锁一致性，并在网络恢复后自动 Push/验证远端 |
+| 当前 Task | `QA-DEVICE-001`｜BLOCKED（0 台已授权物理设备）；自动队列转入不依赖设备的 `COMMERCIAL-INTENT-002` |
+| Build | PASS（内部 QA RC）｜APK 与 AAB 均由 `9071636` 构建成功并通过独立产物检查；使用 Android Debug 证书，不是商店上传包 |
+| Tests | PASS｜EditMode 132/132、PlayMode 36/36；四程序集、Domain/CoreLoop/RealBattle/Balance、Backend 与真实 HTTP 46/46 均通过 |
+| P0 / P1 | P0 OPEN：9:16 视觉、物理真机；P1 OPEN：商业意图、包锁、自动化溯源/质量/仓库安全；P1 DONE：隐私同意、当前 Unity 回归、当前 Android 双产物 |
+| Blocked | `QA-UI-PORTRAIT-001` 缺真实 1080×1920 十二页证据；`QA-DEVICE-001` 当前 0 台已授权 Android 物理设备；GitHub 同步本轮继续重试 |
+| RED | 无 OPEN RED；`RED-001` 已以 Unity 6000.5 版本化 Licensing IPC 恢复并关闭，不需要用户重复激活 |
+| 最大风险 | 尚无物理真机 10/60 分钟、后台/锁屏、触控与性能证据；当前双产物仅用 Debug 证书，不能直接提交应用商店 |
+| Next | Commit 状态文档并 Push/远端验证；随后自动执行 `COMMERCIAL-INTENT-002`，设备可用时立即抢占 `QA-DEVICE-001` |
 | 是否需要老板决策 | 否 |
 
-当前分支：`main`；远端：GitHub `525849325/---`。本地 `main=1370ee6`；本地跟踪的 `origin/main=0ffbe55`；待同步提交为 `848365d`、`2a40b29`、`1370ee6`。当前失败是 `github.com:443` 间歇 TCP 超时，不是认证或仓库权限问题。
+当前分支：`main`；远端：GitHub `525849325/---`。运行时代码检查点为 `9071636`，本轮状态文档完成后执行有界 Push，并以远端 `main` SHA 与远程树为准更新同步结论。
 
 ## TODAY
 
-- `848365d` 已实现可持久化轮回、每轮独立 Boss 节奏门、敌人 25%/轮与奖励 10%/轮递增（第 10 轮封顶），且首通记录跨轮回保留，不重复发首通奖励。
-- RealBattle 10 分钟：第二 Boss 496.07 秒到达、505.87 秒击败，共 2 胜且第三 Boss 未进入；60 分钟：11 胜、6 败、奖励 pending 0，无停滞。
-- CoreLoop 验证总游玩时间跨过 120 分钟后，当前轮回计时、Boss 门与奖励节奏仍继续推进，不会因验证时长上限永久卡住。
-- `1370ee6` 已将 12/12 导航页替换为真实只读玩家摘要；占位扫描 0，离线导航测试源码证明不会发奖励、写存档或写漏斗。
-- 离线商店与“一次性成长试炼”文案、Development 在线假状态边界已分别通过两路独立审查，结论均为 APPROVE。
-- Runtime、Editor、EditMode、PlayMode 四程序集静态编译及 Domain/CoreLoop/RealBattle/Balance smoke PASS；当前静态语义枚举为 EditMode 125、PlayMode 34，Unity Test Runner 尚未运行。
-- `UI-PRODUCT-PAGES-002` 与诚实降级为一次性成长试炼的 `TASK-DAILY-001` 进入 TESTING；`PRIVACY-CONSENT-001` 已切换为当前最高优先级可执行 P1 RUNNING。
-- `GITHUB-SYNC-002` 记录为 P1 BLOCKED/YELLOW：三次本地提交尚未 Push，项目继续推进且不升级 RED。
-- Development 在线模式仍固定 cycle 1，服务端未权威持久化/结算跨轮回状态；该缺口已记录为 Yellow/V0.2，Release 离线 RC 继续隐藏在线入口。
-- Unity Personal 许可证与 Hub 人工启动仍为有效事实；目标项目会话没有新增可复用证据，因此不重复已失败的 IPC/direct/GUI 命令。
+- 重新诊断 `RED-001`：Unity Personal entitlement 有效。真正差异是 Unity 6000.5.10f1 batchmode 需要 Editor 随附的 Licensing Client 1.18.3 与版本化命名管道；通用 Hub Licensing Client 1.17.4/默认独立启动上下文不能稳定满足该协议。
+- 建立可复现安全路径：启动 Editor 随附 Licensing Client 的 `Unity-LicenseClient-Admin-6000.5.10` 管道，并给 Editor 传入对应 `-licensingIpc`；日志确认 Personal、headless 与 Android entitlement 均已授予。
+- Android 工具拒绝包含非 ASCII 字符的工程路径；构建期间临时映射 `R:` 作为 ASCII 路径。构建完成后已确认无 batchmode Unity 进程并删除映射，未影响用户现有 Hub/Editor 会话。
+- `PRIVACY-CONSENT-001` 在 `bbcf142` / `9071636` 闭合：明确接受、拒绝和撤回；同意前分析与 Development 登录 fail-closed；撤回后旧异步响应无法恢复联网；离线循环始终可用。
+- 当前 Unity Test Runner：EditMode 132/132、PlayMode 36/36，均 0 failed、0 skipped；测试启动未使用会提前退出 Runner 的 `-quit` 参数。
+- 由 `9071636` 重建 APK 与 AAB，Unity 均返回 0；APK 的 aapt/apksigner 及 AAB 的 bundletool/Manifest/签名检查均完成。
+- 真机验收脚本已准备并执行只读设备发现：0 台已授权设备，因此未安装、卸载或清除任何设备数据；该任务保持 BLOCKED，非 RED。
+- Unity 自动写入的 `ps4Passcode` 已从工作树清除，临时授权管道与盘符均已退出。
 
 ## BUILD
 
-- 历史 APK（`2bee3ac`）：26,638,811 bytes；SHA-256 `F5AEBAD45417D2422C12A340CCF2A3C41E6B6E3EE540D23CA126BC471900168C`。
-- 历史 AAB（`2bee3ac`）：26,645,279 bytes；SHA-256 `E4633FC0B81A4B8DE3535EE442AD95DFC354285E49CDCB48D076306BCE55EE30`。
-- 两者均早于 `1370ee6` 并保持 STALE；`ANDROID-PROVENANCE-001` 将补 Git SHA sidecar、构建前旧产物清理及 APK/AAB 强制校验。
+- APK：26,706,335 bytes；SHA-256 `E212458D26F1A48133A5A720BC268473F90EC479FB3A4A207AD80C459E556920`。
+- AAB：26,712,788 bytes；SHA-256 `78B2683E127F70A98B93F80691BB76D03886C3F62D08E8600B0633B29C8769C3`。
+- 两者：包名 `com.immortalloot.prototype`，版本 `0.1.0` / code 1，min SDK 26，target/compile SDK 36，竖屏，ARMv7 + ARM64，IL2CPP。
+- APK v2 签名通过；AAB bundletool validate 通过且单一 `base` module。两者使用 Android Debug 证书（SHA-256 `E9E9CE8F59D0C3C1FB64BFAED1E5D703BE2A55D19CFEC0A29694483EE662C206`），只用于内部安装/验收；商店上传前必须换 upload/release keystore 后重建复验。
 
 ## TEST
 
-- Runtime、Editor、EditMode、PlayMode 四程序集静态编译 PASS。
-- Domain smoke PASS；包含存档可恢复失败策略、等级/累计修为分池、突破成本、境界属性和 10,000 件装备。
-- CoreLoop PASS：10 分钟两次 Boss，第二 Boss 约 8 分钟；60 分钟 12 次 Boss；跨过 120 分钟验证时长后轮回与奖励仍继续。
-- RealBattle PASS：首 Boss 182.23 秒到达、193.43 秒击败；第二 Boss 496.07 秒到达、505.87 秒击败；10 分钟 2 胜且无第三 Boss，60 分钟 11 胜、6 败、pending 0、无停滞。
-- Balance smoke PASS；离线长周期证据已满足静态产品门，但 `BALANCE-001` 仍待当前 Unity/真机手感而保持 TESTING。
-- Backend Verification PASS；真实 Kestrel HTTP 46/46 PASS。
-- 产品页静态验收 PASS：12/12 页真实只读摘要、占位扫描 0；离线导航无奖励/存档/漏斗副作用测试源码已编译。
-- 当前 Unity Editor Test Runner：NOT RUN / UNVERIFIED；预计 EditMode 125、PlayMode 34。历史 109/26 仅适用于 `2bee3ac`。
+- Unity EditMode：132/132 PASS，0 failed，0 skipped。
+- Unity PlayMode：36/36 PASS，0 failed，0 skipped。
+- 四程序集静态编译 PASS；Domain、CoreLoop、RealBattle、Balance smoke PASS。
+- RealBattle：首 Boss 182.23/193.43 秒，第二 Boss 496.07/505.87 秒；10 分钟 2 胜无第三 Boss，60 分钟 11 胜6败、pending 0。
+- Backend Verification 与真实 Kestrel HTTP 46/46 PASS。
+- Android APK 元数据/ABI/签名 PASS；AAB bundletool/Manifest/ABI/签名检查 PASS。
+- 物理真机：NOT RUN；当前设备发现为 0 台，禁止以静态、模拟器或脚本就绪代替真机通过。
 
 ## PROGRESS
 
-- `848365d` 已闭合首 Boss 后的离线持久轮回、节奏重置、递增强度与奖励合同；因当前 Unity/真机未验，`CORE-CYCLE-PACING-003` 保持 TESTING。
-- `1370ee6` 已闭合产品页静态内容与只读副作用门；`UI-PRODUCT-PAGES-002` 保持 TESTING，等待当前 Unity/视觉验收。
-- 一次性成长试炼已使用诚实语义并覆盖重载防重复，`TASK-DAILY-001` 保持 TESTING；GATE 4 仍 OPEN，当前最高优先级可执行工作为隐私同意门。
-- Unity/Android/竖屏/真机证据继续保持阻塞，但不会阻止其他 P1 开发。
+- `CORE-REALM-INTEGRATION-001`、`TASK-DAILY-001`、`PRIVACY-CONSENT-001`、`QA-UNITY-POSTCHANGE-002` 已具当前 Unity 直接证据，可转 DONE。
+- `BUILD-ANDROID-003` 的内部 QA RC 双产物已完成；自动 Git SHA sidecar、强制清旧产物和 release/upload keystore 分别留在 `ANDROID-PROVENANCE-001` 与 Yellow，不伪装为商店就绪。
+- `CORE-CYCLE-PACING-003` 与 `UI-PRODUCT-PAGES-002` 继续 TESTING，只等待物理手感/9:16 视觉证据。
+- GATE 4 仍 OPEN；无 OPEN RED，也无需要老板立即决定的事项。
 
 ## RED
 
 - 无 OPEN RED。
-- RED-001 许可证问题维持 RESOLVED；当前是目标项目会话绑定/自动化环境阻塞，不是许可证失效。
+- `RED-001`：RESOLVED。许可证、Personal seat、headless 与 Android entitlement 均有效；根因与恢复方式已记录在 `RED_ALERTS.md`。
 
 ## BLOCKED
 
-- `QA-UNITY-POSTCHANGE-002`：授权主 Editor 仍属于另一项目；目标项目无 EditorInstance，不重复相同失败路径。
-- `BUILD-ANDROID-003`：等待当前 Unity 125/34 全绿及 Release-scope P1 收口后重建 APK/AAB。
-- `QA-UI-PORTRAIT-001`：等待当前场景运行后生成 1080×1920 十二页证据。
-- `QA-DEVICE-001`：物理机门禁脚本已就绪；当前 0 台已授权 Android 物理设备，且必须先有同源 APK。
-- `GITHUB-SYNC-002`：本地 `main=1370ee6`，`origin/main=0ffbe55`；`github.com:443` 间歇 TCP 超时，三次本地提交待网络恢复后 Push 与远端验证。
+- `QA-UI-PORTRAIT-001`：需要当前 12 页真实 1080×1920 截图并检查字体、遮挡、技术文案和触控目标。
+- `QA-DEVICE-001`：脚本与当前同源 APK 已就绪；当前 0 台已授权物理设备。设备出现后执行安装、10/60 分钟、触控、后台/锁屏、性能和日志验收。
+- 商店签名：当前 APK/AAB 使用 Debug 证书；这是发布账号/密钥阶段事项，不阻塞内部商业验证安装。
 
 ## NEXT
 
-- `PRIVACY-CONSENT-001`：增加明确接受/拒绝；同意前不发送分析或 Development 登录数据，离线循环始终可用。
-- 完成后自动选择剩余最高优先级 P1；目标项目 Unity 会话可用时，`QA-UNITY-POSTCHANGE-002` 立即抢占。
+- 完成本轮重要状态 Commit、GitHub Push 与远端 `main` 树验证。
+- 自动转入 `COMMERCIAL-INTENT-002`；物理设备出现时，P0 `QA-DEVICE-001` 立即抢占。
