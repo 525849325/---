@@ -1195,6 +1195,104 @@ namespace ImmortalLoot.UI
 
         private sealed class UtcClock : IServerClock { public DateTime UtcNow => DateTime.UtcNow; }
 
+        public string GetPageSummary(string pageName)
+        {
+            if (!_gameplayActive) return "进入青崖历练后即可查看当前修行状态。";
+            var realmName = _catalog.Realms.TryGetValue(_progressState.Realm.RealmId, out var realm)
+                ? realm.Name
+                : _progressState.Realm.RealmId;
+            if (_serverGameplay)
+            {
+                switch (pageName)
+                {
+                    case "EquipmentPage":
+                        return "在线装备由服务器权威保存\n点击“执行 / 刷新”读取并强化服务器装备；本地装备不参与在线结算。";
+                    case "InventoryPage":
+                        return "在线背包由服务器权威保存\n点击“执行 / 刷新”读取最新装备与材料；本地存档保持隔离。";
+                    case "CultivationPage":
+                        return $"在线修炼由服务器权威结算\n境界 {realmName} {_realmStage} 阶 · 修为 {_progressState.Realm.CultivationExperience:N0} · 破境石 {_progressState.Realm.BreakthroughMaterial:N0}\n点击“执行 / 刷新”提交突破；本地功法不参与在线结算。";
+                    case "ShopPage":
+                        return "在线商店由服务器权威定价与发放\n点击“执行 / 刷新”读取可用商品；支付与奖励只在服务器和平台回执确认后结算。";
+                    case "MailPage":
+                        return "在线飞简由服务器权威保存\n点击“执行 / 刷新”读取并领取尚未领取的附件。";
+                    case "TaskPage":
+                        return "在线任务与活跃度由服务器权威保存\n点击“执行 / 刷新”读取并领取当前服务器任务。";
+                    case "StagePage":
+                        return $"服务器权威关卡 · 1-{_stageLoop.CurrentStageNumber} {_stageLoop.CurrentStage.Name}\n推进与奖励由服务器结算；在线跨轮回成长尚未开放。";
+                    case "ActivityPage":
+                        return "在线挂机收益由服务器权威结算\n点击“执行 / 刷新”读取并领取；本地轮回倍率不会用于在线结算。";
+                }
+            }
+            switch (pageName)
+            {
+                case "CharacterPage":
+                    return $"角色状态 · {_level} 级\n战力 {_power:N0} · 经验 {_exp:N0}/{_level * 50L:N0}\n境界 {realmName} {_realmStage} 阶 · 修为 {_progressState.Realm.CultivationExperience:N0} · 破境石 {_progressState.Realm.BreakthroughMaterial:N0}";
+                case "EquipmentPage":
+                    var latestEquipment = _latestLoot == null
+                        ? "当前没有待处理的新装备"
+                        : $"最新装备 [{_latestLoot.Quality}] {_latestLoot.DisplayName} Lv.{_latestLoot.Level}";
+                    return $"装备 {_inventory.State.Equipment.Count}/{_inventory.State.EquipmentCapacity} · 已穿戴 {_loadout.Equipped.Count}/10\n{latestEquipment}\n战力 {_power:N0}";
+                case "InventoryPage":
+                    var pendingEquipment = _inventory.State.PendingEquipment == null ? "无" : "1 件待领取";
+                    return $"背包装备 {_inventory.State.Equipment.Count}/{_inventory.State.EquipmentCapacity}\n材料 {_inventory.State.Materials.Count} 类 · 消耗品 {_inventory.State.Consumables.Count} 类\n待领取：{pendingEquipment} · 灵砂 {_softCurrency:N0}";
+                case "CultivationPage":
+                    return $"境界 {realmName} {_realmStage} 阶\n修为 {_progressState.Realm.CultivationExperience:N0} · 破境石 {_progressState.Realm.BreakthroughMaterial:N0}\n主修 {PrimaryMethodName()} · 辅修 {AuxiliaryMethodName()}";
+                case "SpiritualRootPage":
+                    return GetSpiritualRootSummary();
+                case "StagePage":
+                    return $"第 {_stageLoop.CurrentCycleIndex} 轮 · 1-{_stageLoop.CurrentStageNumber} {_stageLoop.CurrentStage.Name}\n本轮计时 {_pacing.CycleElapsedSeconds / 60d:0.0} 分钟 · 本关失败 {_stageLoop.DefeatsOnCurrentStage} 次\n首轮已通关 {_progressState.Stage.ClearedStageIds.Count}/10";
+                case "ShopPage":
+                    if (!CommercialUnlocked) return "云游商店 · 尚未解锁\n完成首件装备并理解战力成长后开放。\n当前仅离线预览，不执行支付、不发放商品奖励。";
+                    var productCount = _commercialProducts?.Count ?? 0;
+                    return $"云游商店 · 已解锁\n当前展示 {productCount} 项验证商品，仅供离线预览。\n当前不执行支付、不发放商品奖励；真实购买尚未开放。\n仙晶 {_premiumCurrency:N0}";
+                case "RankingPage":
+                    return $"本次修行战力 {_power:N0}\n境界 {realmName} {_realmStage} 阶 · 推进第 {_stageLoop.CurrentCycleIndex} 轮 1-{_stageLoop.CurrentStageNumber}\n正式排行只采用服务器权威数据。";
+                case "MailPage":
+                    return _mailClaimed
+                        ? "飞简状态 · 补偿附件已领取\n重复查看不会再次发放。"
+                        : "飞简状态 · 1 封补偿邮件待领取\n附件：仙晶 10";
+                case "TaskPage":
+                    return _taskClaimed
+                        ? "成长试炼 · 已完成\n一次性灵砂奖励已领取，本版本不会按日期重复发放。"
+                        : $"成长试炼 · 待完成\n完成首次登录 / 推图可领取一次性灵砂奖励。\n当前推进第 {_stageLoop.CurrentCycleIndex} 轮 1-{_stageLoop.CurrentStageNumber}";
+                case "ActivityPage":
+                    var rewardMultiplier = _serverGameplay
+                        ? 1f
+                        : _cycleScalingPolicy.RewardMultiplier(_stageLoop.CurrentCycleIndex);
+                    return $"挂机修行 · 第 {_stageLoop.CurrentCycleIndex} 轮\n当前关卡收益倍率 {_stageLoop.CurrentStage.AfkRewardRate * rewardMultiplier:0.##} 倍\n离线收益会在再次进入游戏时按时长结算。";
+                case "DebugPage":
+                    return SettingsSummary();
+                case "BattlePage":
+                    return $"战斗进行中 · 第 {_stageLoop.CurrentCycleIndex} 轮 1-{_stageLoop.CurrentStageNumber}\n已击败 {_kills} 只妖兽 · 战力 {_power:N0}";
+                default:
+                    return "当前页面没有可显示的修行状态。";
+            }
+        }
+
+        private string GetSpiritualRootSummary()
+        {
+            var totalLevel = 0;
+            var totalMaximum = 0;
+            var strongestName = "尚未觉醒";
+            var strongestLevel = 0;
+            var strongestMaximum = 0;
+            foreach (var config in _catalog.SpiritualRoots.Values)
+            {
+                var progress = _progressState.SpiritualRoots.Roots.Find(value => value.RootId == config.Id);
+                var level = Math.Clamp(progress?.Level ?? 0, 0, config.MaxLevel);
+                totalLevel += level;
+                totalMaximum += config.MaxLevel;
+                if (level <= strongestLevel) continue;
+                strongestName = config.Name;
+                strongestLevel = level;
+                strongestMaximum = config.MaxLevel;
+            }
+            var strongest = strongestLevel > 0
+                ? $"当前最高 {strongestName} {strongestLevel}/{strongestMaximum}"
+                : "尚未获得渡劫灵根成长";
+            return $"九系灵根 · 总成长 {totalLevel}/{totalMaximum}\n{strongest}\n击败渡劫 Boss 后随机成长一系。";
+        }
+
         public string ExecutePageAction(string pageName)
         {
             if (!_gameplayActive) return "请先进入游戏，再执行修炼与背包操作。";
@@ -1244,11 +1342,11 @@ namespace ImmortalLoot.UI
                     _mailClaimed = true; _premiumCurrency += 10; RefreshProgressDisplay();
                     return "邮件附件领取成功：仙晶 +10";
                 case "TaskPage":
-                    if (_taskClaimed) return "今日 20 活跃宝箱已领取。";
+                    if (_taskClaimed) return "成长试炼奖励已领取，本版本不会按日期重复发放。";
                     _taskClaimed = true; _softCurrency += 100; RefreshProgressDisplay();
                     SaveProgress();
-                    return "完成登录/推图任务：活跃度 20\n宝箱灵砂 +100";
-                case "ActivityPage": return "灵潮涌动生效中\n服务器挂机收益 ×2";
+                    return "完成成长试炼：首次登录 / 推图\n灵砂 +100";
+                case "ActivityPage": return "挂机收益会在再次进入游戏时，按离线时长与当前关卡倍率结算。";
                 case "DebugPage":
                     return SettingsSummary();
                 default: return "功能已就绪。";

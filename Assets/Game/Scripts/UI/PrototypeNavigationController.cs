@@ -339,6 +339,8 @@ namespace ImmortalLoot.UI
         {
             foreach (var pair in _pages) pair.Value.SetActive(pair.Key == pageName);
             if (_header != null) _header.text = DisplayName(pageName);
+            var content = GameObject.Find(pageName + "Content")?.GetComponent<Text>();
+            if (content != null && _game != null) content.text = _game.GetPageSummary(pageName);
         }
 
         private static string DisplayName(string pageName)
@@ -355,8 +357,8 @@ namespace ImmortalLoot.UI
                 case "ShopPage": return "云游商铺";
                 case "RankingPage": return "三榜争锋";
                 case "MailPage": return "飞简邮件";
-                case "TaskPage": return "每日修行";
-                case "ActivityPage": return "限时活动";
+                case "TaskPage": return "成长试炼";
+                case "ActivityPage": return "挂机收益";
                 case "DebugPage": return "设置";
                 default: return pageName;
             }

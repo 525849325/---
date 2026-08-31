@@ -282,6 +282,18 @@ namespace ImmortalLoot.Tests.PlayMode
 
             Assert.That(controller.GameplayActive, Is.True);
             Assert.That(controller.ServerGameplayActive, Is.True);
+            foreach (var pageName in new[] { "EquipmentPage", "InventoryPage", "CultivationPage", "ShopPage", "MailPage", "TaskPage", "StagePage", "ActivityPage" })
+            {
+                var summary = controller.GetPageSummary(pageName);
+                Assert.That(summary, Does.Contain("服务器权威"), pageName + " must not present local placeholder state as authoritative online data.");
+            }
+            Assert.That(controller.GetPageSummary("StagePage"), Does.Not.Contain("本轮计时"));
+            Assert.That(controller.GetPageSummary("ActivityPage"), Does.Not.Contain("第 1 轮"));
+            Assert.That(controller.GetPageSummary("ActivityPage"), Does.Contain("不会用于在线结算"));
+            Assert.That(controller.GetPageSummary("TaskPage"), Does.Not.Contain("每日活跃"));
+            Assert.That(controller.GetPageSummary("ShopPage"), Does.Not.Contain("离线预览"));
+            Assert.That(controller.GetPageSummary("ShopPage"), Does.Not.Contain("不执行支付"));
+            Assert.That(controller.GetPageSummary("ShopPage"), Does.Not.Contain("不发放"));
             Assert.That(File.ReadAllBytes(JsonPlayerSaveRepository.DefaultPath), Is.EqualTo(saveBeforeServerEntry),
                 "Server entry must leave the complete offline save byte-for-byte unchanged.");
 

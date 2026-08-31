@@ -68,8 +68,8 @@ namespace ImmortalLoot.Editor
             string[] summaries = {
                 "基础属性、统一战力与 Build 汇总", "十槽装备、随机词条、锁定与属性差异", "装备 / 材料 / 消耗品 · 筛选与一键分解",
                 "境界突破、渡劫、主修与两项辅助功法", "金木水火土风雷阴阳 · 渡劫随机成长", "1-1 ～ 1-10 Boss · 连续推关",
-                "普通 / 每日 / 礼包 / 境界商品 · 服务器定价", "战力榜 · 境界榜 · 推图榜", "系统邮件 · 附件 · 到期时间",
-                "登录 / 推图 / Boss / 强化 / 分解 / 渡劫\n活跃宝箱 20 / 40 / 60 / 80 / 100", "太初开服周 · 双倍挂机时间窗", "开发环境专用：资源、境界、装备、离线与 Mock 支付"
+                "验证商品只读预览 · 当前不支付 / 不发放", "战力榜 · 境界榜 · 推图榜", "系统邮件 · 附件 · 到期时间",
+                "一次性成长试炼 · 首次登录 / 推图后领取灵砂", "挂机收益 · 离线时长与当前关卡倍率", "开发环境专用：资源、境界、装备、离线与 Mock 支付"
             };
             for (var i = 0; i < pages.Length; i++) CreatePage(canvas.transform, pages[i], summaries[i]);
 
@@ -158,7 +158,7 @@ namespace ImmortalLoot.Editor
             panel.gameObject.tag = "Finish";
             panel.rectTransform.sizeDelta = new Vector2(820, 1180);
             panel.rectTransform.anchoredPosition = new Vector2(-70, -20);
-            var text = CreateText(panel.transform, name + "Content", summary + "\n\n领域逻辑与服务器接口已就绪\n此处为 MVP 统一占位页面", 34, Vector2.zero, new Vector2(700, 900));
+            var text = CreateText(panel.transform, name + "Content", summary, 34, Vector2.zero, new Vector2(700, 900));
             text.alignment = TextAnchor.UpperLeft;
             CreateButton(panel.transform, "Action_" + name, "执行 / 刷新", new Vector2(0, -470), 360, 90);
             panel.gameObject.SetActive(false);
