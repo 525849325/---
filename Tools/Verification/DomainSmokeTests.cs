@@ -47,7 +47,11 @@ internal static class DomainSmokeTests
     private static void VerifyValidationTelemetry()
     {
         var sink = new MemoryValidationSink();
-        var tracker = new ValidationFunnelTracker(sink, "verification-session", () => new DateTime(2026, 8, 30, 0, 0, 0, DateTimeKind.Utc));
+        var tracker = new ValidationFunnelTracker(
+            sink,
+            "verification-session",
+            () => new DateTime(2026, 8, 30, 0, 0, 0, DateTimeKind.Utc),
+            () => true);
         tracker.TrackOnce("first_equipment_drop", 42.5, 3, 120, "Rare", 18);
         tracker.TrackOnce("first_equipment_drop", 99, 9, 999, "Mythic", 800);
         Require(sink.Events.Count == 1, "funnel milestone must be emitted once per session");

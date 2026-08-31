@@ -19,6 +19,10 @@ namespace ImmortalLoot.UI
         private Button _privacyAcceptButton;
         private Button _privacyDeclineButton;
         private Button _privacyLegalButton;
+#if UNITY_INCLUDE_TESTS
+        private static Func<string, IApiTransport> _transportFactoryOverride;
+        private static bool? _developmentServerSupportedOverride;
+#endif
         public ImmortalLootApiClient ApiClient { get; private set; }
         public bool IsServerAuthenticated => _state == LoginState.ActiveServer && ApiClient != null && ApiClient.AccessToken.Length > 0;
         public bool HasPreparedServerSession => _state == LoginState.PreparedServer && ApiClient != null && ApiClient.AccessToken.Length > 0;
@@ -55,6 +59,7 @@ namespace ImmortalLoot.UI
         public void CancelPreparedServerEntry()
         {
             if (_state != LoginState.PreparedServer) return;
+            _loginGeneration++;
             ApiClient = null;
             ServerProfile = null;
             ServerInventory = null;
@@ -88,8 +93,9 @@ namespace ImmortalLoot.UI
             if (serverLoginButton == null) return;
             CreatePrivacyControls();
             RefreshServerLoginButton();
-            if (DevelopmentServerSupported) serverLoginButton.onClick.AddListener(LoginToServer);
-            else if (feedbackText != null) feedbackText.text = "点击进入游戏，载入本机离线修炼进度。";
+            serverLoginButton.onClick.AddListener(LoginToServer);
+            if (!DevelopmentServerSupported && feedbackText != null)
+                feedbackText.text = "点击进入游戏，载入本机离线修炼进度。";
         }
 
         private async void LoginToServer()
@@ -107,18 +113,21 @@ namespace ImmortalLoot.UI
             try
             {
                 var client = new ImmortalLootApiClient(
-                    new UnityWebRequestTransport(serverBaseUrl),
-                    () => DevelopmentServerSupported && _settings != null && _settings.PrivacyAccepted);
-                if (!CanStartServerLogin()) throw new InvalidOperationException("Privacy consent changed before login started.");
+                    CreateTransport(),
+                    () => IsServerSessionAllowed(generation));
+                if (!CanContinueServerLogin(generation))
+                    throw new InvalidOperationException("Privacy consent changed before login started.");
                 var installId = AnonymousInstallIdProvider.CreateRuntime().GetOrCreate();
                 var result = await client.LoginAsync(installId, "云游客");
+                if (!CanContinueServerLogin(generation)) return;
                 var profileTask = client.GetProfileAsync();
                 var inventoryTask = client.GetInventoryAsync();
                 await Task.WhenAll(profileTask, inventoryTask);
+                if (!CanContinueServerLogin(generation)) return;
                 var profile = ImmortalLootApiClient.Parse<PlayerProfileDto>(profileTask.Result);
                 var inventory = ImmortalLootApiClient.Parse<InventoryDto>(inventoryTask.Result);
                 ValidateServerSnapshot(profile, inventory);
-                if (this == null || generation != _loginGeneration || _state != LoginState.Authenticating) return;
+                if (!CanContinueServerLogin(generation)) return;
                 ApiClient = client;
                 ServerProfile = profile;
                 ServerInventory = inventory;
@@ -189,6 +198,17 @@ namespace ImmortalLoot.UI
                    _settings != null && _settings.PrivacyAccepted;
         }
 
+        private bool CanContinueServerLogin(int generation)
+        {
+            return _state == LoginState.Authenticating && IsServerSessionAllowed(generation);
+        }
+
+        private bool IsServerSessionAllowed(int generation)
+        {
+            return this != null && generation == _loginGeneration && DevelopmentServerSupported &&
+                   _settings != null && _settings.PrivacyAccepted;
+        }
+
         private void CreatePrivacyControls()
         {
             _privacyAcceptButton = CreatePrivacyButton("PrivacyAcceptButton", "允许验证", new Vector2(-160f, -70f), AcceptPrivacyChoice);
@@ -224,10 +244,27 @@ namespace ImmortalLoot.UI
         private void RefreshPrivacyControls()
         {
             if (_settings == null) return;
-            var undecided = _settings.PrivacyConsent == PrivacyConsentState.Unknown;
-            if (_privacyAcceptButton != null) _privacyAcceptButton.gameObject.SetActive(undecided);
-            if (_privacyDeclineButton != null) _privacyDeclineButton.gameObject.SetActive(undecided);
-            if (_privacyLegalButton != null) _privacyLegalButton.gameObject.SetActive(undecided);
+            var consent = _settings.PrivacyConsent;
+            var undecided = consent == PrivacyConsentState.Unknown;
+            if (_privacyAcceptButton != null)
+            {
+                _privacyAcceptButton.gameObject.SetActive(consent != PrivacyConsentState.Accepted);
+                _privacyAcceptButton.interactable = true;
+                var label = _privacyAcceptButton.GetComponentInChildren<Text>(true);
+                if (label != null) label.text = "允许验证";
+            }
+            if (_privacyDeclineButton != null)
+            {
+                _privacyDeclineButton.gameObject.SetActive(consent != PrivacyConsentState.Declined);
+                _privacyDeclineButton.interactable = true;
+                var label = _privacyDeclineButton.GetComponentInChildren<Text>(true);
+                if (label != null) label.text = consent == PrivacyConsentState.Accepted ? "撤回并仅离线" : "仅离线游玩";
+            }
+            if (_privacyLegalButton != null)
+            {
+                _privacyLegalButton.gameObject.SetActive(true);
+                _privacyLegalButton.interactable = true;
+            }
             if (feedbackText == null) return;
             if (undecided)
                 feedbackText.text = "请选择：允许本地验证数据与 Development 登录，或仅离线游玩。离线核心内容不要求同意。";
@@ -245,6 +282,62 @@ namespace ImmortalLoot.UI
             feedbackText.text = "隐私摘要：仅离线游玩始终可用。明确允许后才记录无直接身份字段的本地验证事件，并开放 127.0.0.1 Development 登录；不读取设备唯一标识、通讯录、定位、相册或广告标识。可在设置中随时撤回。";
         }
 
+        private IApiTransport CreateTransport()
+        {
+#if UNITY_INCLUDE_TESTS
+            if (_transportFactoryOverride != null)
+                return _transportFactoryOverride(serverBaseUrl) ?? throw new InvalidOperationException("The test transport factory returned null.");
+#endif
+            return new UnityWebRequestTransport(serverBaseUrl);
+        }
+
+#if UNITY_INCLUDE_TESTS
+        public static IDisposable OverrideTransportForTests(Func<string, IApiTransport> factory)
+        {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            var previous = _transportFactoryOverride;
+            _transportFactoryOverride = factory;
+            return new TransportFactoryOverrideScope(previous);
+        }
+
+        public static IDisposable OverrideDevelopmentServerSupportForTests(bool supported)
+        {
+            var previous = _developmentServerSupportedOverride;
+            _developmentServerSupportedOverride = supported;
+            return new DevelopmentServerSupportOverrideScope(previous);
+        }
+
+        private sealed class TransportFactoryOverrideScope : IDisposable
+        {
+            private readonly Func<string, IApiTransport> _previous;
+            private bool _disposed;
+
+            public TransportFactoryOverrideScope(Func<string, IApiTransport> previous) => _previous = previous;
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _transportFactoryOverride = _previous;
+                _disposed = true;
+            }
+        }
+
+        private sealed class DevelopmentServerSupportOverrideScope : IDisposable
+        {
+            private readonly bool? _previous;
+            private bool _disposed;
+
+            public DevelopmentServerSupportOverrideScope(bool? previous) => _previous = previous;
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _developmentServerSupportedOverride = _previous;
+                _disposed = true;
+            }
+        }
+#endif
+
         private static GameObject FindIncludingInactive(string name)
         {
             foreach (var transform in FindObjectsByType<Transform>(FindObjectsInactive.Include))
@@ -256,6 +349,10 @@ namespace ImmortalLoot.UI
         {
             get
             {
+#if UNITY_INCLUDE_TESTS
+                if (_developmentServerSupportedOverride.HasValue)
+                    return _developmentServerSupportedOverride.Value;
+#endif
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
                 return Debug.isDebugBuild;
 #else

@@ -105,7 +105,7 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(controller.PacingElapsedSecondsForTests, Is.GreaterThan(pacingBeforeWait),
                 "The same production entry button must activate gameplay.");
 
-            var lateClient = new ImmortalLootApiClient(new ServerLoopTransport());
+            var lateClient = new ImmortalLootApiClient(new ServerLoopTransport(), () => true);
             var lateLogin = lateClient.LoginAsync("late-server-after-offline", "迟到认证");
             while (!lateLogin.IsCompleted) yield return null;
             Assert.That(lateLogin.Exception, Is.Null);
@@ -253,7 +253,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 "Opening the login page must not read, rewrite or quarantine a corrupt offline save.");
             Assert.That(Directory.GetFiles(saveDirectory, saveName + ".corrupt-*"), Is.EquivalentTo(quarantineBeforeEntry));
 
-            var client = new ImmortalLootApiClient(new ServerLoopTransport());
+            var client = new ImmortalLootApiClient(new ServerLoopTransport(), () => true);
             var loginTask = client.LoginAsync("server-entry-with-corrupt-offline-save", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
@@ -289,7 +289,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 "The login screen must not load the offline snapshot before the player chooses offline mode.");
 
             var transport = new ServerLoopTransport();
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             var loginTask = client.LoginAsync("server-entry-no-local-afk", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
@@ -367,7 +367,7 @@ namespace ImmortalLoot.Tests.PlayMode
             SceneManager.LoadScene("Main");
             yield return null;
             var transport = new ServerLoopTransport(requiredStartStageId: "stage_1_1");
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             var loginTask = client.LoginAsync("fresh-server-ignores-local", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
@@ -433,7 +433,7 @@ namespace ImmortalLoot.Tests.PlayMode
             SceneManager.LoadScene("Main");
             yield return null;
 
-            var client = new ImmortalLootApiClient(new ServerLoopTransport());
+            var client = new ImmortalLootApiClient(new ServerLoopTransport(), () => true);
             var loginTask = client.LoginAsync("invalid-server-profile", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
@@ -476,7 +476,7 @@ namespace ImmortalLoot.Tests.PlayMode
             SceneManager.LoadScene("Main");
             yield return null;
             var transport = new ServerLoopTransport(requiredStartStageId: "stage_1_7");
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             var loginTask = client.LoginAsync("existing-server-progress", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
@@ -522,7 +522,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 authoritativeProfileCurrentStageId: "stage_1_3",
                 authoritativeProfileClearedStageIds: ClearedStages(2),
                 authoritativeProfile: authoritativeProfile);
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             var loginTask = client.LoginAsync("server-profile-reconciliation", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
@@ -587,7 +587,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 materialSpent = 2000,
                 breakthroughMaterial = 1000
             });
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             var loginTask = client.LoginAsync("server-realm-action", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
@@ -631,7 +631,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 realmStage = 2,
                 status = "AdvancedStage"
             }, failFirstBreakthroughResponse: true);
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             var loginTask = client.LoginAsync("server-realm-retry", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Object.FindAnyObjectByType<PrototypeLoginController>().UseAuthenticatedClientForTests(
@@ -661,7 +661,7 @@ namespace ImmortalLoot.Tests.PlayMode
             SceneManager.LoadScene("Main");
             yield return null;
             var transport = new ServerLoopTransport();
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             var loginTask = client.LoginAsync("playmode-server", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
@@ -736,7 +736,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 new SpiritualRootProfileDto { rootId = "root_fire", level = 1, maxLevel = 10 }
             };
             var transport = new ServerLoopTransport(authoritativeProfile: resolvedProfile, failInventory: true);
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             var loginTask = client.LoginAsync("playmode-server-boss", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
@@ -791,7 +791,7 @@ namespace ImmortalLoot.Tests.PlayMode
                 requiredExperience = 1200
             };
             var transport = new ServerLoopTransport(authoritativeProfile: invalidProfile);
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             var loginTask = client.LoginAsync("server-invalid-profile", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
@@ -820,7 +820,7 @@ namespace ImmortalLoot.Tests.PlayMode
             SceneManager.LoadScene("Main");
             yield return null;
             var transport = new ServerLoopTransport(failBattleFinish: true);
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             var loginTask = client.LoginAsync("playmode-server-failure", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);
@@ -854,7 +854,7 @@ namespace ImmortalLoot.Tests.PlayMode
             SceneManager.LoadScene("Main");
             yield return null;
             var transport = new ServerLoopTransport(loseFirstFinishResponseAfterCommit: true);
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             var loginTask = client.LoginAsync("playmode-server-response-loss", "在线修士");
             while (!loginTask.IsCompleted) yield return null;
             Assert.That(loginTask.Exception, Is.Null);

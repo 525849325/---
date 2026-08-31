@@ -127,11 +127,6 @@ namespace ImmortalLoot.UI
             _pauseNextBattleForTests = false;
 #endif
             _settings = GameSettingsService.CreateRuntime();
-            if (Debug.isDebugBuild && DevelopmentPlaytestOptions.PrivacyAcceptedForQa)
-            {
-                GameSettingsService.GrantPrivacyForQaSession();
-                PlaytestTelemetryRecorder.EnsureInstalled();
-            }
             _settings.ApplySound();
             PrototypeVisualTheme.Apply(FindAnyObjectByType<Canvas>());
             _catalog = new JsonConfigRepository(new ResourcesConfigSource()).LoadAll();

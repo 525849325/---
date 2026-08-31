@@ -63,7 +63,7 @@ namespace ImmortalLoot.Analytics
             _sink = sink ?? throw new ArgumentNullException(nameof(sink));
             _sessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : sessionId;
             _utcNow = utcNow ?? (() => DateTime.UtcNow);
-            _isCollectionAllowed = isCollectionAllowed ?? (() => true);
+            _isCollectionAllowed = isCollectionAllowed ?? (() => false);
         }
 
         public void TrackOnce(string eventName, double elapsedSeconds = 0d, int stage = 0, long power = 0, string itemQuality = "", long value = 0)

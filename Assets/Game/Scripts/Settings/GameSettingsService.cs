@@ -31,16 +31,13 @@ namespace ImmortalLoot.Settings
         private const string PrivacyConsentKey = "settings.privacyConsent.v1";
         private const string AutoEquipKey = "settings.autoEquip";
         private readonly IGameSettingsStore _store;
-        private static bool _qaPrivacyAcceptedForCurrentProcess;
 #if UNITY_INCLUDE_TESTS
         private static IGameSettingsStore _runtimeStoreOverride;
 #endif
 
         public bool SoundEnabled { get; private set; }
         public bool VibrationEnabled { get; private set; }
-        public PrivacyConsentState PrivacyConsent => _qaPrivacyAcceptedForCurrentProcess
-            ? PrivacyConsentState.Accepted
-            : ReadPrivacyConsent();
+        public PrivacyConsentState PrivacyConsent => ReadPrivacyConsent();
         public bool PrivacyConsentDecided => PrivacyConsent != PrivacyConsentState.Unknown;
         public bool PrivacyAccepted => PrivacyConsent == PrivacyConsentState.Accepted;
         public bool AnalyticsEnabled => PrivacyAccepted;
@@ -61,11 +58,6 @@ namespace ImmortalLoot.Settings
 #else
             return new GameSettingsService(new PlayerPrefsSettingsStore());
 #endif
-        }
-
-        internal static void GrantPrivacyForQaSession()
-        {
-            _qaPrivacyAcceptedForCurrentProcess = true;
         }
 
         public bool ToggleSound()
@@ -89,13 +81,11 @@ namespace ImmortalLoot.Settings
 
         public void DeclinePrivacy()
         {
-            _qaPrivacyAcceptedForCurrentProcess = false;
             PersistConsent(PrivacyConsentState.Declined);
         }
 
         public void ResetPrivacyConsent()
         {
-            _qaPrivacyAcceptedForCurrentProcess = false;
             PersistConsent(PrivacyConsentState.Unknown);
         }
 

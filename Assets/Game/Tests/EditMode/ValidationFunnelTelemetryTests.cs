@@ -13,7 +13,11 @@ namespace ImmortalLoot.Tests
         public void TrackOnce_WritesStructuredCorrelatedEventOnlyOnce()
         {
             var sink = new MemorySink();
-            var tracker = new ValidationFunnelTracker(sink, "session-1", () => new DateTime(2026, 8, 30, 1, 2, 3, DateTimeKind.Utc));
+            var tracker = new ValidationFunnelTracker(
+                sink,
+                "session-1",
+                () => new DateTime(2026, 8, 30, 1, 2, 3, DateTimeKind.Utc),
+                () => true);
 
             tracker.TrackOnce("first_equipment_drop", 42.5f, 3, 120, "Rare", 18);
             tracker.TrackOnce("first_equipment_drop", 43f, 4, 130, "Epic", 20);
@@ -44,6 +48,17 @@ namespace ImmortalLoot.Tests
             tracker.TrackOnce("session_started");
             Assert.That(sink.Events, Has.Count.EqualTo(1),
                 "An event rejected before consent must remain eligible after consent, then retain normal deduplication.");
+        }
+
+        [Test]
+        public void MissingConsentGate_FailsClosedWithoutWriting()
+        {
+            var sink = new MemorySink();
+            var tracker = new ValidationFunnelTracker(sink);
+
+            tracker.TrackOnce("session_started");
+
+            Assert.That(sink.Events, Is.Empty);
         }
 
         [Test]

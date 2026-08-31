@@ -29,8 +29,6 @@ namespace ImmortalLoot.Debugging
 
         public static void EnsureInstalled()
         {
-            if (Debug.isDebugBuild && DevelopmentPlaytestOptions.PrivacyAcceptedForQa)
-                GameSettingsService.GrantPrivacyForQaSession();
             var settings = GameSettingsService.CreateRuntime();
             if (!ShouldInstall(Debug.isDebugBuild, Application.isBatchMode, DevelopmentPlaytestOptions.Speed, settings.PrivacyConsent) ||
                 FindAnyObjectByType<PlaytestTelemetryRecorder>() != null) return;
@@ -39,8 +37,8 @@ namespace ImmortalLoot.Debugging
 
         public static void StopAfterWithdrawal()
         {
-            var recorder = FindAnyObjectByType<PlaytestTelemetryRecorder>();
-            if (recorder != null) Destroy(recorder.gameObject);
+            foreach (var recorder in FindObjectsByType<PlaytestTelemetryRecorder>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                Destroy(recorder.gameObject);
         }
 
         private void Awake()

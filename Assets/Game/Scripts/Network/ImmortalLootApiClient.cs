@@ -106,7 +106,7 @@ namespace ImmortalLoot.Network
         public ImmortalLootApiClient(IApiTransport transport, Func<bool> isRequestAllowed = null)
         {
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
-            _isRequestAllowed = isRequestAllowed ?? (() => true);
+            _isRequestAllowed = isRequestAllowed ?? (() => false);
         }
 
         public async Task<LoginDto> LoginAsync(string externalAccountId, string nickname)

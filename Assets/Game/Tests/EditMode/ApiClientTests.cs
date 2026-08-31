@@ -12,7 +12,7 @@ namespace ImmortalLoot.Tests
         public async Task ApiClient_UsesBearerAndNeverSendsPlayerIdPriceOrReward()
         {
             var transport = new FakeTransport();
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             await client.LoginAsync("device-1", "云游客");
             await client.StartBattleAsync("stage_1_1", "start-key");
             await client.BuyAsync("shop_spirit_dust", 1, "buy-key");
@@ -31,8 +31,19 @@ namespace ImmortalLoot.Tests
         [Test]
         public void AuthenticatedRequest_RequiresLogin()
         {
-            var client = new ImmortalLootApiClient(new FakeTransport());
+            var client = new ImmortalLootApiClient(new FakeTransport(), () => true);
             Assert.That(() => client.GetProfileAsync(), Throws.InvalidOperationException);
+        }
+
+        [Test]
+        public void MissingConsentGate_FailsClosedBeforeTransport()
+        {
+            var transport = new FakeTransport();
+            var client = new ImmortalLootApiClient(transport);
+
+            Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.LoginAsync("private-install", "云游客"));
+            Assert.That(transport.Requests, Is.Empty);
         }
 
         [Test]
@@ -71,7 +82,7 @@ namespace ImmortalLoot.Tests
         public async Task BattleFinish_AdditiveRewardWindowFieldIsExplicitOnlyOnNewOverload()
         {
             var transport = new FakeTransport();
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             await client.LoginAsync("finish-contract", "修士");
             var sessionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
@@ -88,7 +99,7 @@ namespace ImmortalLoot.Tests
         public async Task LiveOpsRequests_UseAuthenticatedAuthorityRoutes_AndDtosParse()
         {
             var transport = new FakeTransport();
-            var client = new ImmortalLootApiClient(transport);
+            var client = new ImmortalLootApiClient(transport, () => true);
             await client.LoginAsync("device-2", "修士");
             await client.GetTasksAsync();
             await client.ClaimTaskAsync("daily_login");
