@@ -1,6 +1,6 @@
 # 《太初：无尽轮回》V0.1 项目审计
 
-> 当前状态补充（2026-08-31）：本文主体是启动审计快照，以下旧表格不代表当前完成状态；最新权威状态见 `DAILY_REPORT.md` 与 `TASK_QUEUE.md`。当前代码检查点 `848365d` 已实现离线持久轮回、每轮节奏门和敌人/奖励递增，四程序集静态编译、Domain/CoreLoop/RealBattle/Balance、Backend 与 HTTP 46/46 PASS；RealBattle 10 分钟为 2 胜无第三 Boss，60 分钟为 11 胜6败且 pending 0，120 分钟后仍继续推进。`CORE-CYCLE-PACING-003` 因当前 Unity/真机未验保持 TESTING，`UI-PRODUCT-PAGES-002` 为 P1 RUNNING。当前 Unity EditMode 124 与 PlayMode 33 尚未运行；Development 在线仍为 cycle 1 且没有权威跨轮回合同。`2bee3ac` 的 109/109、26/26 和 APK/AAB 仅为历史证据且产物已过期。GATE 4 仍缺 Release-scope P1、当前 Unity、同源双产物、完整竖屏视觉与物理真机验收。
+> 当前状态补充（2026-08-31）：本文主体是启动审计快照，以下旧表格不代表当前完成状态；最新权威状态见 `DAILY_REPORT.md` 与 `TASK_QUEUE.md`。当前本地代码检查点 `1370ee6` 的四程序集静态编译、Domain/CoreLoop/RealBattle/Balance PASS；`848365d` 已实现离线持久轮回，`1370ee6` 已将 12/12 产品页替换为真实只读摘要，占位扫描 0，离线导航无奖励/存档/漏斗副作用。`CORE-CYCLE-PACING-003`、`UI-PRODUCT-PAGES-002` 与一次性成长试炼 `TASK-DAILY-001` 因当前 Unity/真机未验保持 TESTING；`PRIVACY-CONSENT-001` 为 P1 RUNNING。当前 Unity EditMode 125 与 PlayMode 34 尚未运行；Development 在线仍为 cycle 1 且没有权威跨轮回合同。`origin/main` 的最后本地快照为 `0ffbe55`，`848365d`、`2a40b29`、`1370ee6` 因 GitHub 443 间歇 TCP 超时待 Push，并非认证/权限问题。`2bee3ac` 的 109/109、26/26 和 APK/AAB 仅为历史证据且产物已过期。GATE 4 仍缺 Release-scope P1、当前 Unity、同源双产物、完整竖屏视觉与物理真机验收。
 
 审计日期：2026-08-30  
 审计基线：安全检查点 `ced7a07` 之后的当前工作区。状态只依据当前源码与本轮重新运行的测试/构建结果；旧报告中的历史 PASS 不自动继承。
@@ -34,11 +34,11 @@
 | 数值/战力 | READY | 统一属性与战力计算存在并测试单调性。 |
 | 关卡 | READY | 1-1～1-10 配置链、Boss 关与服务存在。 |
 | 地图 | MISSING | 独立地图系统不存在；V0.1 用关卡进度条即可，不新增大地图。 |
-| 境界 | TESTING | 当前已接入离线真实突破/Boss/渡劫/灵根/统一战力及在线破境石、RequiredLevel、pending→Boss/Profile 镜像；待当前 Unity 124/33 实跑。 |
+| 境界 | TESTING | 当前已接入离线真实突破/Boss/渡劫/灵根/统一战力及在线破境石、RequiredLevel、pending→Boss/Profile 镜像；待当前 Unity 125/34 实跑。 |
 | 技能 | REFACTOR | 主动/被动/CD/AOE/DOT 等战斗支持存在；缺少可理解的玩家反馈。 |
 | 本地存档 | REFACTOR | 原子写入、版本、SHA-256 仓库存在且单测覆盖，但主场景未调用。 |
 | 离线收益 | REFACTOR | 计算/领取与后端接口存在；离线本地闭环及回归测试未接入主场景。 |
-| UI/UX | REBUILD | 单场景 UGUI 可操作，但大量页面写明“占位交互”，缺少商业产品层级、装备卡片与战斗表现。保留领域调用，重做信息架构和关键页面。 |
+| UI/UX | TESTING | `1370ee6` 已将 12/12 页面改为真实只读玩家摘要，占位扫描 0，离线导航无奖励/存档/漏斗副作用；待当前 Unity 9:16 视觉、字体与触控验收。 |
 | 音频 | TESTING | 无外部音频资产；已实现五类运行时程序化短音效，待真机听感与音量验收。 |
 | 商店 | REFACTOR | 商品、货币、限购与页面入口存在；本地模式行为为硬编码。 |
 | 商业化 | REFACTOR | 商品结构、权益服务、订单流程与 Mock Provider 存在；需延后曝光并统一接口。 |
@@ -46,7 +46,7 @@
 | 广告 | MISSING | V0.1 可不接真实广告，但应保留无广告假入口或明确不启用。 |
 | Analytics | MISSING | 只有本地 playtest JSONL；缺少事件接口和关键漏斗定义。 |
 | 设置 | MISSING | 未发现音量、震动、隐私或存档操作页面。 |
-| 测试 | TESTING | 当前源码预计 EditMode 124、PlayMode 33；静态程序集、Domain/CoreLoop/RealBattle/Balance、Backend 与 HTTP 46/46 PASS，Unity Test Runner 因目标项目会话绑定阻塞尚未运行。 |
+| 测试 | TESTING | 当前源码预计 EditMode 125、PlayMode 34；静态程序集、Domain/CoreLoop/RealBattle/Balance、Backend 与 HTTP 46/46 PASS，Unity Test Runner 因目标项目会话绑定阻塞尚未运行。 |
 | Build Pipeline | TESTING | RC APK/AAB 方法存在；`2bee3ac` 历史双产物通过但已过期。当前还需补 Git SHA 绑定、旧产物清理与完整产物门禁后重建。 |
 
 ## 3. 修旧与重写比较
