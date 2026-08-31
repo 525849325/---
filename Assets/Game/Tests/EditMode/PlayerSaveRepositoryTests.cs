@@ -76,7 +76,12 @@ namespace ImmortalLoot.Tests
                         ReservedMaterial = 77, RequiredExp = 88
                     }
                 },
-                Stage = new StageProgressState { ClearedStageIds = new System.Collections.Generic.List<string> { "stage_1_1", "stage_1_2" } },
+                Stage = new StageProgressState
+                {
+                    CycleIndex = 2,
+                    CycleElapsedSeconds = 137.5d,
+                    ClearedStageIds = new System.Collections.Generic.List<string> { "stage_1_1", "stage_1_2" }
+                },
                 Cultivation = new CultivationMethodState
                 {
                     LearnedMethodIds = new System.Collections.Generic.List<string> { "method_cinder_scripture", "method_ember_breath" },
@@ -113,6 +118,8 @@ namespace ImmortalLoot.Tests
             Assert.That(restored.Realm.PendingTribulation.ReservedMaterial, Is.EqualTo(77));
             Assert.That(restored.Realm.PendingTribulation.RequiredExp, Is.EqualTo(88));
             Assert.That(restored.Stage.ClearedStageIds, Is.EquivalentTo(new[] { "stage_1_1", "stage_1_2" }));
+            Assert.That(restored.Stage.CycleIndex, Is.EqualTo(2));
+            Assert.That(restored.Stage.CycleElapsedSeconds, Is.EqualTo(137.5d));
             Assert.That(restored.Cultivation.LearnedMethodIds, Is.EquivalentTo(new[] { "method_cinder_scripture", "method_ember_breath" }));
             Assert.That(restored.Cultivation.PrimaryMethodId, Is.EqualTo("method_cinder_scripture"));
             Assert.That(restored.Cultivation.AuxiliaryMethodIds[0], Is.EqualTo("method_ember_breath"));
@@ -139,6 +146,30 @@ namespace ImmortalLoot.Tests
         }
 
         [Test]
+        public void Save_LegacyV3AggregateSeedsFirstCycleClockWithoutChangingCurrentStage()
+        {
+            var directory = Path.Combine(Path.GetTempPath(), "immortal-loot-test-" + Guid.NewGuid().ToString("N"));
+            var path = Path.Combine(directory, "save.json");
+            try
+            {
+                var repository = new JsonPlayerSaveRepository(path);
+                repository.Save(new PlayerSaveSnapshot
+                {
+                    StageElapsedSeconds = 900d,
+                    ProgressJson = "{\"CurrentStageId\":\"stage_1_7\",\"Stage\":{\"ClearedStageIds\":[\"stage_1_1\"]}}"
+                });
+
+                var loaded = repository.Load();
+                var progress = PlayerProgressStateCodec.Deserialize(loaded.ProgressJson);
+
+                Assert.That(progress.CurrentStageId, Is.EqualTo("stage_1_7"));
+                Assert.That(progress.Stage.CycleIndex, Is.EqualTo(1));
+                Assert.That(progress.Stage.CycleElapsedSeconds, Is.EqualTo(180d));
+            }
+            finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+        }
+
+        [Test]
         public void ProgressState_EmptyOrPartialJsonReturnsUsableDefaults()
         {
             var empty = PlayerProgressStateCodec.Deserialize(string.Empty);
@@ -154,6 +185,8 @@ namespace ImmortalLoot.Tests
                 Assert.That(state.Realm, Is.Not.Null);
                 Assert.That(state.Realm.PendingTribulation, Is.Null);
                 Assert.That(state.Stage?.ClearedStageIds, Is.Not.Null);
+                Assert.That(state.Stage.CycleIndex, Is.EqualTo(1));
+                Assert.That(state.Stage.CycleElapsedSeconds, Is.Zero);
                 Assert.That(state.Cultivation?.LearnedMethodIds, Is.Not.Null);
                 Assert.That(state.Cultivation?.AuxiliaryMethodIds, Has.Length.EqualTo(2));
                 Assert.That(state.SpiritualRoots?.Roots, Is.Not.Null);

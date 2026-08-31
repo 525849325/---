@@ -11,19 +11,28 @@ namespace ImmortalLoot.Stage
         public string NextStageId { get; }
         public bool Advanced { get; }
         public bool CompletedChapter { get; }
+        public int CompletedCycleIndex { get; }
+        public int NextCycleIndex { get; }
+        public bool StartedNewCycle { get; }
 
         public VictoryDrivenStageTransition(
             StageClearResult clearResult,
             string completedStageId,
             string nextStageId,
             bool advanced,
-            bool completedChapter)
+            bool completedChapter,
+            int completedCycleIndex,
+            int nextCycleIndex,
+            bool startedNewCycle)
         {
             ClearResult = clearResult;
             CompletedStageId = completedStageId;
             NextStageId = nextStageId;
             Advanced = advanced;
             CompletedChapter = completedChapter;
+            CompletedCycleIndex = completedCycleIndex;
+            NextCycleIndex = nextCycleIndex;
+            StartedNewCycle = startedNewCycle;
         }
     }
 
@@ -40,6 +49,7 @@ namespace ImmortalLoot.Stage
         public string CurrentStageId => _currentStageId;
         public int CurrentStageNumber => CurrentStage.StageNumber;
         public StageConfig CurrentStage => _catalog.Stages[_currentStageId];
+        public int CurrentCycleIndex => _state.CycleIndex;
         public int DefeatsOnCurrentStage { get; private set; }
 
         public VictoryDrivenStageLoop(GameConfigCatalog catalog, StageProgressState state, string currentStageId)
@@ -47,6 +57,9 @@ namespace ImmortalLoot.Stage
             _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
             _state = state ?? throw new ArgumentNullException(nameof(state));
             _state.ClearedStageIds ??= new List<string>();
+            _state.CycleIndex = Math.Max(1, _state.CycleIndex);
+            if (double.IsNaN(_state.CycleElapsedSeconds) || double.IsInfinity(_state.CycleElapsedSeconds) || _state.CycleElapsedSeconds < 0d)
+                _state.CycleElapsedSeconds = 0d;
             _orderedStages = new List<StageConfig>(_catalog.Stages.Values);
             _orderedStages.Sort(CompareStages);
 
@@ -64,14 +77,18 @@ namespace ImmortalLoot.Stage
         public VictoryDrivenStageTransition RecordVictory(int maximumUnlockedStageNumber)
         {
             var completed = CurrentStage;
+            var completedCycleIndex = CurrentCycleIndex;
             var clearResult = _progress.RecordVictory(completed.Id);
             DefeatsOnCurrentStage = 0;
 
             if (IsFinalBoss(completed))
             {
+                if (_state.CycleIndex < int.MaxValue) _state.CycleIndex++;
+                _state.CycleElapsedSeconds = 0d;
                 _currentStageId = FirstStageIdInChapter(completed.Chapter);
                 return new VictoryDrivenStageTransition(
-                    clearResult, completed.Id, _currentStageId, advanced: true, completedChapter: true);
+                    clearResult, completed.Id, _currentStageId, advanced: true, completedChapter: true,
+                    completedCycleIndex: completedCycleIndex, nextCycleIndex: CurrentCycleIndex, startedNewCycle: true);
             }
 
             var nextStageId = completed.Id;
@@ -88,7 +105,10 @@ namespace ImmortalLoot.Stage
                 completed.Id,
                 _currentStageId,
                 advanced: !string.Equals(completed.Id, _currentStageId, StringComparison.Ordinal),
-                completedChapter: false);
+                completedChapter: false,
+                completedCycleIndex: completedCycleIndex,
+                nextCycleIndex: CurrentCycleIndex,
+                startedNewCycle: false);
         }
 
         public void RecordDefeat()

@@ -81,6 +81,8 @@ namespace ImmortalLoot.Player
             state.Realm.Experience = Math.Max(0, snapshot.Exp);
             state.Realm.CultivationExperience = Math.Max(0, snapshot.Exp);
             state.CurrentStageId = DeriveV2StageId(snapshot.StageElapsedSeconds);
+            state.Stage.CycleIndex = 1;
+            state.Stage.CycleElapsedSeconds = LegacyCycleElapsedSeconds(snapshot.StageElapsedSeconds);
             return state;
         }
 
@@ -111,9 +113,20 @@ namespace ImmortalLoot.Player
         internal static PlayerProgressState ResolveAggregate(PlayerSaveSnapshot snapshot)
         {
             if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
-            return IsMissingAggregate(snapshot.ProgressJson)
-                ? MigrateV2(snapshot)
-                : Deserialize(snapshot.ProgressJson);
+            if (IsMissingAggregate(snapshot.ProgressJson)) return MigrateV2(snapshot);
+            var state = Deserialize(snapshot.ProgressJson);
+            if (snapshot.ProgressJson.IndexOf("\"CycleIndex\"", StringComparison.Ordinal) < 0)
+            {
+                state.Stage.CycleIndex = 1;
+                state.Stage.CycleElapsedSeconds = LegacyCycleElapsedSeconds(snapshot.StageElapsedSeconds);
+            }
+            return state;
+        }
+
+        private static double LegacyCycleElapsedSeconds(double elapsedSeconds)
+        {
+            if (double.IsNaN(elapsedSeconds) || double.IsInfinity(elapsedSeconds) || elapsedSeconds <= 0d) return 0d;
+            return Math.Min(elapsedSeconds, V2FirstBossSeconds);
         }
 
         internal static void SyncLegacyMirror(PlayerSaveSnapshot snapshot, PlayerProgressState state)
@@ -149,6 +162,9 @@ namespace ImmortalLoot.Player
 
             state.Stage ??= new StageProgressState();
             state.Stage.ClearedStageIds ??= new List<string>();
+            state.Stage.CycleIndex = Math.Max(1, state.Stage.CycleIndex);
+            if (double.IsNaN(state.Stage.CycleElapsedSeconds) || double.IsInfinity(state.Stage.CycleElapsedSeconds) || state.Stage.CycleElapsedSeconds < 0d)
+                state.Stage.CycleElapsedSeconds = 0d;
             NormalizeIds(state.Stage.ClearedStageIds);
 
             state.Cultivation ??= new CultivationMethodState();

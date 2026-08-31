@@ -13,6 +13,11 @@ namespace ImmortalLoot.Tests
             Assert.That(pacing.firstEquipmentMinute, Is.InRange(0, 1));
             Assert.That(pacing.firstLevelMinute, Is.InRange(1, 3));
             Assert.That(pacing.firstBossMinute, Is.InRange(2, 4));
+            Assert.That(pacing.repeatBossMinute, Is.InRange(4, 6));
+            Assert.That(pacing.firstBossMinute + pacing.repeatBossMinute, Is.InRange(8, 10));
+            Assert.That(pacing.enemyStatGrowthPercentPerCycle, Is.InRange(10, 60));
+            Assert.That(pacing.rewardGrowthPercentPerCycle, Is.InRange(1, 25));
+            Assert.That(pacing.maxScaledCycle, Is.InRange(2, 20));
             Assert.That(pacing.firstBuildDirectionMinute, Is.InRange(3, 6));
             Assert.That(pacing.firstRealmBreakthroughMinute, Is.InRange(3, 6));
             Assert.That(pacing.firstSpiritualRootMinute, Is.InRange(3, 6));
@@ -65,6 +70,88 @@ namespace ImmortalLoot.Tests
             Assert.That(session.TryConsumeBattleReward(), Is.False);
             session.Advance(1);
             Assert.That(session.TryConsumeBattleReward(), Is.True);
+        }
+
+        [Test]
+        public void BeginCycle_ResetsOnlyStageGateAndPreservesGlobalRewardCadence()
+        {
+            var config = DemoPacingLoader.Load(new ResourcesConfigSource());
+            var session = new DemoPacingSession(config);
+            session.Advance(config.firstBossMinute * 60d + 13d);
+            var elapsed = session.ElapsedSeconds;
+            var generated = session.GeneratedRewardWindows;
+            var pending = session.PendingRewards;
+
+            session.BeginCycle(2);
+
+            Assert.That(session.CycleIndex, Is.EqualTo(2));
+            Assert.That(session.CycleElapsedSeconds, Is.Zero);
+            Assert.That(session.ElapsedSeconds, Is.EqualTo(elapsed));
+            Assert.That(session.GeneratedRewardWindows, Is.EqualTo(generated));
+            Assert.That(session.PendingRewards, Is.EqualTo(pending));
+            Assert.That(session.CurrentStageNumber, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void CycleTwoBossGate_OpensAtConfiguredRepeatWindow()
+        {
+            var config = DemoPacingLoader.Load(new ResourcesConfigSource());
+            var session = new DemoPacingSession(config);
+            session.Advance(config.firstBossMinute * 60d);
+            session.BeginCycle(2);
+
+            session.Advance(config.repeatBossMinute * 60d - 0.001d);
+            Assert.That(session.CurrentStageNumber, Is.LessThan(10));
+            session.Advance(0.001d);
+            Assert.That(session.CurrentStageNumber, Is.EqualTo(10));
+        }
+
+        [Test]
+        public void Restore_RoundTripsCycleClockWithoutReplayingRewardWindows()
+        {
+            var config = DemoPacingLoader.Load(new ResourcesConfigSource());
+            var session = new DemoPacingSession(config);
+            session.Restore(450d, 257d, 2);
+
+            Assert.That(session.ElapsedSeconds, Is.EqualTo(450d));
+            Assert.That(session.CycleElapsedSeconds, Is.EqualTo(257d));
+            Assert.That(session.CycleIndex, Is.EqualTo(2));
+            Assert.That(session.PendingRewards, Is.Zero);
+            Assert.That(session.CurrentStageNumber, Is.LessThan(10));
+            session.Advance(config.repeatBossMinute * 60d - 257d);
+            Assert.That(session.CurrentStageNumber, Is.EqualTo(10));
+        }
+
+        [Test]
+        public void InvalidElapsedInputs_CannotPoisonPacingState()
+        {
+            var session = new DemoPacingSession(DemoPacingLoader.Load(new ResourcesConfigSource()));
+
+            Assert.That(() => session.Advance(double.NaN), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+            Assert.That(() => session.Advance(double.PositiveInfinity), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+            session.Restore(double.NaN, double.PositiveInfinity, 2);
+
+            Assert.That(session.ElapsedSeconds, Is.Zero);
+            Assert.That(session.CycleElapsedSeconds, Is.Zero);
+            Assert.That(session.CycleIndex, Is.EqualTo(2));
+            Assert.That(session.CurrentStageNumber, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void BeyondValidationHorizon_ContinuesCurrentCycleAndRewardCadence()
+        {
+            var config = DemoPacingLoader.Load(new ResourcesConfigSource());
+            var session = new DemoPacingSession(config);
+            var validationHorizon = config.durationMinutes * 60d;
+            session.Restore(validationHorizon, 0d, 2);
+
+            session.Advance(config.repeatBossMinute * 60d);
+
+            Assert.That(session.IsComplete, Is.True);
+            Assert.That(session.ElapsedSeconds, Is.EqualTo(validationHorizon + config.repeatBossMinute * 60d));
+            Assert.That(session.CycleElapsedSeconds, Is.EqualTo(config.repeatBossMinute * 60d));
+            Assert.That(session.CurrentStageNumber, Is.EqualTo(10));
+            Assert.That(session.GeneratedRewardWindows, Is.GreaterThan(0));
         }
     }
 }

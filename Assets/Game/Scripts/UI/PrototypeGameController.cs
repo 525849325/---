@@ -66,6 +66,7 @@ namespace ImmortalLoot.UI
         private CultivationMethodService _cultivation;
         private DemoPacingSession _pacing;
         private DemoPacingConfig _pacingConfig;
+        private CycleScalingPolicy _cycleScalingPolicy;
         private VictoryDrivenStageLoop _stageLoop;
         private StageBattleFactory _stageBattleFactory;
         private string _activeBattleStageId = "stage_1_1";
@@ -147,10 +148,12 @@ namespace ImmortalLoot.UI
             _powerCalculator = PowerCalculator.Load(new ResourcesConfigSource());
             _upgradeEvaluator = new EquipmentUpgradeEvaluator(_catalog, _powerCalculator);
             _pacingConfig = DemoPacingLoader.Load(new ResourcesConfigSource());
+            _cycleScalingPolicy = new CycleScalingPolicy(_pacingConfig);
             _stageBattleFactory = new StageBattleFactory(
                 _catalog,
                 new MonsterFactory(_catalog),
-                new DamageCalculator(DamageFormulaConfigLoader.Load(new ResourcesConfigSource()), new SystemRandomSource()));
+                new DamageCalculator(DamageFormulaConfigLoader.Load(new ResourcesConfigSource()), new SystemRandomSource()),
+                _cycleScalingPolicy);
             InitializeRuntimeFromSnapshot(null);
             _pacingSpeed = DevelopmentPlaytestOptions.Speed;
             _login = FindAnyObjectByType<PrototypeLoginController>();
@@ -412,7 +415,8 @@ namespace ImmortalLoot.UI
             enemyHealth.value = _battle.Enemy.Hp / _battle.Enemy.MaxHp;
             var stage = _catalog.Stages[_activeBattleStageId];
             var bossLabel = stage.IsBossStage ? "BOSS · " : string.Empty;
-            statusText.text = $"{bossLabel}{stage.Name}  1-{stage.StageNumber}\n{_battle.Enemy.Id}  {_battle.Enemy.Hp:0}/{_battle.Enemy.MaxHp:0}\n玩家生命  {_battle.Player.Hp:0}/{_battle.Player.MaxHp:0}  ·  已击败：{_kills}";
+            var cycleLabel = _serverGameplay ? "在线" : $"第 {_stageLoop.CurrentCycleIndex} 轮";
+            statusText.text = $"{bossLabel}{stage.Name}  {cycleLabel} · 1-{stage.StageNumber}\n{_battle.Enemy.Id}  {_battle.Enemy.Hp:0}/{_battle.Enemy.MaxHp:0}\n玩家生命  {_battle.Player.Hp:0}/{_battle.Player.MaxHp:0}  ·  已击败：{_kills}";
             statusText.color = stage.IsBossStage ? PrototypeVisualTheme.Gold : PrototypeVisualTheme.TextPrimary;
             if (!_playtestQuitRequested && _pacing.IsComplete && _pacing.PendingRewards == 0 &&
                 !_settlingServerBattle && _pendingServerBattleSettlement == null && DevelopmentPlaytestOptions.AutoQuit)
@@ -430,7 +434,8 @@ namespace ImmortalLoot.UI
             var stage = _stageLoop.CurrentStage;
             var playerStats = _stats.Calculate(_baseStats);
             var player = new BattleActor("player", playerStats, 0.7f, new[] { _catalog.Skills["skill_ember_brand"] });
-            _battle = _stageBattleFactory.Create(_activeBattleStageId, player);
+            var battleCycle = _serverGameplay ? 1 : _stageLoop.CurrentCycleIndex;
+            _battle = _stageBattleFactory.Create(_activeBattleStageId, player, battleCycle);
             _battle.Finished += HandleBattleFinished;
             _battle.EventRaised += value =>
             {
@@ -669,8 +674,8 @@ namespace ImmortalLoot.UI
             }
             if (guideText != null)
                 guideText.text = retreated
-                    ? $"连续挑战失败：已退回 1-{_stageLoop.CurrentStageNumber} 自动修炼，胜利后会再次挑战。"
-                    : $"挑战失败：保留 1-{_stageLoop.CurrentStageNumber}，稍后自动重试（本关失败 {_stageLoop.DefeatsOnCurrentStage} 次）。";
+                    ? $"连续挑战失败：已退回第 {_stageLoop.CurrentCycleIndex} 轮 · 1-{_stageLoop.CurrentStageNumber} 自动修炼，胜利后会再次挑战。"
+                    : $"挑战失败：保留第 {_stageLoop.CurrentCycleIndex} 轮 · 1-{_stageLoop.CurrentStageNumber}，稍后自动重试（本关失败 {_stageLoop.DefeatsOnCurrentStage} 次）。";
             if (scheduleRetry) Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
         }
 
@@ -687,7 +692,7 @@ namespace ImmortalLoot.UI
             if (completedStage.IsBossStage)
             {
                 tribulationSummary = ResolvePendingTribulationAfterBossVictory(completedStage.StageNumber);
-                GrantConfiguredStageRewards(completedStage);
+                GrantConfiguredStageRewards(completedStage, transition.CompletedCycleIndex);
             }
 
             if (_inventory.State.PendingEquipment != null)
@@ -696,7 +701,7 @@ namespace ImmortalLoot.UI
                 while (_pacing.TryConsumeBattleReward()) skippedRewardWindows++;
                 _skippedPendingRewardWindows += skippedRewardWindows;
                 if (!completedStage.IsBossStage && skippedRewardWindows > 0)
-                    GrantConfiguredStageRewards(completedStage);
+                    GrantConfiguredStageRewards(completedStage, transition.CompletedCycleIndex);
                 shouldCheckpoint |= skippedRewardWindows > 0;
                 if (guideText != null) guideText.text = skippedRewardWindows > 0
                     ? $"待领取区仍有装备：已明确跳过 {skippedRewardWindows} 个新装备窗口，不会在重启后补发。已结算 {completedStage.Name}，请到背包处理待领取装备。"
@@ -716,7 +721,7 @@ namespace ImmortalLoot.UI
 
             var consumedEquipmentWindow = _pacing.TryConsumeBattleReward();
             if (!completedStage.IsBossStage && consumedEquipmentWindow)
-                GrantConfiguredStageRewards(completedStage);
+                GrantConfiguredStageRewards(completedStage, transition.CompletedCycleIndex);
             if (!completedStage.IsBossStage && !consumedEquipmentWindow)
             {
                 if (guideText != null)
@@ -800,15 +805,23 @@ namespace ImmortalLoot.UI
             Invoke(nameof(SpawnEnemy), 0.65f / _pacingSpeed);
         }
 
-        private void GrantConfiguredStageRewards(StageConfig completedStage)
+        private void GrantConfiguredStageRewards(StageConfig completedStage, int completedCycleIndex)
         {
+            var experience = _cycleScalingPolicy.ScaleReward(completedStage.RewardExp, completedCycleIndex);
+            var softCurrency = _cycleScalingPolicy.ScaleReward(completedStage.RewardSoftCurrency, completedCycleIndex);
+            var breakthroughMaterial = _cycleScalingPolicy.ScaleReward(completedStage.RewardBreakthroughMaterial, completedCycleIndex);
 #if UNITY_INCLUDE_TESTS
-            _configuredStageExperienceGranted += Math.Max(0, completedStage.RewardExp);
+            _configuredStageExperienceGranted += experience;
 #endif
-            GrantExperience(completedStage.RewardExp);
-            _softCurrency += completedStage.RewardSoftCurrency;
-            _progressState.Realm.BreakthroughMaterial += Math.Max(0, completedStage.RewardBreakthroughMaterial);
+            GrantExperience(experience);
+            _softCurrency = SaturatingAdd(_softCurrency, softCurrency);
+            _progressState.Realm.BreakthroughMaterial = SaturatingAdd(
+                _progressState.Realm.BreakthroughMaterial,
+                breakthroughMaterial);
         }
+
+        private static long SaturatingAdd(long left, long right) =>
+            right <= 0 ? Math.Max(0, left) : left > long.MaxValue - right ? long.MaxValue : left + right;
 
         private string ResolvePendingTribulationAfterBossVictory(int completedStageNumber)
         {
@@ -839,6 +852,8 @@ namespace ImmortalLoot.UI
             // constrains the actual next node, so no second client-owned numeric ceiling is required.
             var maximumUnlockedStage = _serverGameplay ? int.MaxValue : _pacing.CurrentStageNumber;
             var transition = _stageLoop.RecordVictory(maximumUnlockedStage);
+            if (transition.StartedNewCycle && !_serverGameplay)
+                _pacing.BeginCycle(transition.NextCycleIndex);
             _stageNumber = _stageLoop.CurrentStageNumber;
             return transition;
         }
@@ -939,7 +954,10 @@ namespace ImmortalLoot.UI
             }
             _baseStats.Attack += (_level - 1) * 2f;
             _baseStats.HP += (_level - 1) * 15f;
-            _pacing.Restore(saved?.StageElapsedSeconds ?? 0d);
+            _pacing.Restore(
+                saved?.StageElapsedSeconds ?? 0d,
+                _progressState.Stage.CycleElapsedSeconds,
+                _progressState.Stage.CycleIndex);
             _stageNumber = _stageLoop.CurrentStageNumber;
             if (saved == null) return;
             var equipped = JsonUtility.FromJson<EquippedIds>(saved.EquippedInstanceIdsJson);
@@ -959,7 +977,8 @@ namespace ImmortalLoot.UI
             _afkState = new AfkState { LastOfflineUnixSeconds = lastActive };
             if (saved == null) return;
             var service = new AfkRewardService(AfkConfigLoader.Load(new ResourcesConfigSource()), _afkState, new UtcClock());
-            var stageRate = _stageLoop.CurrentStage.AfkRewardRate;
+            var stageRate = _stageLoop.CurrentStage.AfkRewardRate *
+                            (_serverGameplay ? 1f : _cycleScalingPolicy.RewardMultiplier(_stageLoop.CurrentCycleIndex));
             var reward = service.Claim(stageRate, _cultivation.GetAfkMultiplier());
             if (reward.EffectiveSeconds <= 0) return;
             GrantExperience(reward.Experience);
@@ -1032,6 +1051,8 @@ namespace ImmortalLoot.UI
         private PlayerProgressState CaptureProgressState()
         {
             _progressState.CurrentStageId = _stageLoop.CurrentStageId;
+            _progressState.Stage.CycleIndex = _stageLoop.CurrentCycleIndex;
+            _progressState.Stage.CycleElapsedSeconds = _pacing.CycleElapsedSeconds;
             _progressState.GuideStep = Math.Max(0, _guideStep);
             _progressState.TaskClaimed = _taskClaimed;
             _progressState.Realm.PlayerLevel = Math.Max(1, _level);
@@ -1210,7 +1231,7 @@ namespace ImmortalLoot.UI
                     RefreshProgressDisplay();
                     SaveProgress();
                     return $"渡劫灵根成长：火灵根 +1\n累计 {_spiritualRootPoints} 点";
-                case "StagePage": return $"当前推进 1-{_stageNumber}\n1-10 为石魇 Boss，战斗会自动推进。";
+                case "StagePage": return $"当前推进 第 {_stageLoop.CurrentCycleIndex} 轮 · 1-{_stageNumber}\n1-10 为石魇 Boss；每轮重置推进节奏并提高敌人与资源强度。";
                 case "ShopPage":
                     if (!CommercialUnlocked) return "完成首件装备并理解战力成长后解锁商店。";
                     var offerText = "商业化验证商品（离线预览，不执行支付）\n";
@@ -1543,6 +1564,9 @@ namespace ImmortalLoot.UI
         public long SoftCurrencyForTests => _softCurrency;
         public long PremiumCurrencyForTests => _premiumCurrency;
         public string CurrentStageIdForTests => _stageLoop.CurrentStageId;
+        public int CycleIndexForTests => _stageLoop.CurrentCycleIndex;
+        public double CycleElapsedSecondsForTests => _pacing.CycleElapsedSeconds;
+        public float ActiveEnemyMaxHpForTests => _battle?.Enemy.MaxHp ?? 0f;
         public string ActiveBattleStageIdForTests => _activeBattleStageId;
         public int DefeatsOnCurrentStageForTests => _stageLoop.DefeatsOnCurrentStage;
         public string ServerLatestInstanceIdForTests => _serverLatestInstanceId;

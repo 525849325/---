@@ -108,9 +108,19 @@ namespace ImmortalLoot.Tests
         }
 
         [Test]
-        public void VictoryLoop_FinalBossVictoryLoopsToFirstStageRegardlessOfGate()
+        public void VictoryLoop_FinalBossStartsCycleTwoAtFirstStageAndPreservesFirstClearHistory()
         {
-            var loop = new VictoryDrivenStageLoop(Catalog(), new StageProgressState(), "stage_1_10");
+            var state = new StageProgressState
+            {
+                CycleIndex = 1,
+                CycleElapsedSeconds = 123d,
+                ClearedStageIds = new System.Collections.Generic.List<string>
+                {
+                    "stage_1_1", "stage_1_2", "stage_1_3", "stage_1_4", "stage_1_5",
+                    "stage_1_6", "stage_1_7", "stage_1_8", "stage_1_9"
+                }
+            };
+            var loop = new VictoryDrivenStageLoop(Catalog(), state, "stage_1_10");
 
             var transition = loop.RecordVictory(1);
 
@@ -119,7 +129,37 @@ namespace ImmortalLoot.Tests
             Assert.That(transition.NextStageId, Is.EqualTo("stage_1_1"));
             Assert.That(transition.Advanced, Is.True);
             Assert.That(transition.CompletedChapter, Is.True);
+            Assert.That(transition.CompletedCycleIndex, Is.EqualTo(1));
+            Assert.That(transition.NextCycleIndex, Is.EqualTo(2));
+            Assert.That(transition.StartedNewCycle, Is.True);
             Assert.That(loop.CurrentStageId, Is.EqualTo("stage_1_1"));
+            Assert.That(loop.CurrentCycleIndex, Is.EqualTo(2));
+            Assert.That(state.CycleIndex, Is.EqualTo(2));
+            Assert.That(state.CycleElapsedSeconds, Is.Zero);
+            Assert.That(state.ClearedStageIds, Has.Count.EqualTo(10));
+        }
+
+        [Test]
+        public void VictoryLoop_CycleTwoRespectsResetGateAndDoesNotRepeatFirstClearRewards()
+        {
+            var state = new StageProgressState
+            {
+                CycleIndex = 2,
+                ClearedStageIds = new System.Collections.Generic.List<string>
+                {
+                    "stage_1_1", "stage_1_2", "stage_1_3", "stage_1_4", "stage_1_5",
+                    "stage_1_6", "stage_1_7", "stage_1_8", "stage_1_9", "stage_1_10"
+                }
+            };
+            var loop = new VictoryDrivenStageLoop(Catalog(), state, "stage_1_1");
+
+            var gated = loop.RecordVictory(1);
+
+            Assert.That(gated.Advanced, Is.False);
+            Assert.That(gated.ClearResult.IsFirstClear, Is.False);
+            Assert.That(gated.ClearResult.FirstClearDropTableId, Is.Empty);
+            Assert.That(loop.CurrentStageId, Is.EqualTo("stage_1_1"));
+            Assert.That(loop.CurrentCycleIndex, Is.EqualTo(2));
         }
 
         [Test]
@@ -159,6 +199,49 @@ namespace ImmortalLoot.Tests
             Assert.That(battle.Enemy.Id, Is.EqualTo("monster_stone_nightmare"));
             battle.SkipToResult();
             Assert.That(battle.State, Is.EqualTo(BattleState.Victory));
+        }
+
+        [Test]
+        public void CycleScaling_GrowsEnemyAndRewardsWithoutMutatingCatalogAndCapsSafely()
+        {
+            var catalog = Catalog();
+            var pacing = DemoPacingLoader.Load(new ResourcesConfigSource());
+            var policy = new CycleScalingPolicy(pacing);
+            var factory = new StageBattleFactory(
+                catalog,
+                new MonsterFactory(catalog),
+                new DamageCalculator(DamageFormulaConfigLoader.Load(new ResourcesConfigSource()), new DamageCalculatorTests.FixedRandom(0.99f)),
+                policy);
+            var baselineHp = catalog.Monsters["monster_wasteland_beast"].MaxHp;
+            var player = new BattleActor("player", new CharacterStats { HP = 1000, Attack = 100, CritDamage = 1.5f }, 1f);
+
+            var firstCycle = factory.Create("stage_1_1", player, 1);
+            var secondCycle = factory.Create("stage_1_1", player, 2);
+
+            Assert.That(firstCycle.Enemy.MaxHp, Is.EqualTo(baselineHp).Within(0.001f));
+            Assert.That(secondCycle.Enemy.MaxHp,
+                Is.EqualTo(baselineHp * (1f + pacing.enemyStatGrowthPercentPerCycle / 100f)).Within(0.001f));
+            Assert.That(catalog.Monsters["monster_wasteland_beast"].MaxHp, Is.EqualTo(baselineHp));
+            Assert.That(policy.ScaleReward(100, 1), Is.EqualTo(100));
+            Assert.That(policy.ScaleReward(100, 2), Is.EqualTo(100 + pacing.rewardGrowthPercentPerCycle));
+            Assert.That(policy.ScaleReward(-1, 2), Is.Zero);
+            Assert.That(policy.ScaleReward(long.MaxValue, int.MaxValue), Is.EqualTo(long.MaxValue));
+            Assert.That(policy.EnemyMultiplier(int.MaxValue),
+                Is.EqualTo(1f + (pacing.maxScaledCycle - 1) * pacing.enemyStatGrowthPercentPerCycle / 100f).Within(0.001f));
+        }
+
+        [Test]
+        public void StageBattleFactory_RejectsLaterCycleWhenScalingPolicyWasNotProvided()
+        {
+            var catalog = Catalog();
+            var factory = new StageBattleFactory(
+                catalog,
+                new MonsterFactory(catalog),
+                new DamageCalculator(DamageFormulaConfigLoader.Load(new ResourcesConfigSource()), new DamageCalculatorTests.FixedRandom(0.99f)));
+            var player = new BattleActor("player", new CharacterStats { HP = 1000, Attack = 100, CritDamage = 1.5f }, 1f);
+
+            Assert.That(() => factory.Create("stage_1_1", player, 2),
+                Throws.InvalidOperationException.With.Message.Contains("scaling policy"));
         }
 
         private static GameConfigCatalog Catalog() => new JsonConfigRepository(new ResourcesConfigSource()).LoadAll();

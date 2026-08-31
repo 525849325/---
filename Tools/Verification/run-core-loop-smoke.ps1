@@ -37,7 +37,11 @@ $arguments = @(
     [string]$pacing.growthPulseMinutes,
     [string]$pacing.equipmentDropSeconds,
     [string]$pacing.firstEquipmentMinute,
-    [string]$pacing.firstBossMinute
+    [string]$pacing.firstBossMinute,
+    [string]$pacing.repeatBossMinute,
+    [string]$pacing.enemyStatGrowthPercentPerCycle,
+    [string]$pacing.rewardGrowthPercentPerCycle,
+    [string]$pacing.maxScaledCycle
 ) + $stageDescriptors
 
 try {

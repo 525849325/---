@@ -13,6 +13,7 @@ using ImmortalLoot.Inventory;
 using ImmortalLoot.Equipment;
 using ImmortalLoot.Battle;
 using ImmortalLoot.Cultivation;
+using ImmortalLoot.Config;
 using ImmortalLoot.Realm;
 using ImmortalLoot.SpiritualRoot;
 using ImmortalLoot.Analytics;
@@ -1305,6 +1306,7 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_10"));
             var configuredExperienceBefore = controller.ConfiguredStageExperienceGrantedForTests;
             var softCurrencyBefore = controller.SoftCurrencyForTests;
+            var premiumCurrencyBefore = controller.PremiumCurrencyForTests;
             var breakthroughMaterialBefore = controller.ProgressForTests.Realm.BreakthroughMaterial;
             var cultivationExperienceBefore = controller.ProgressForTests.Realm.CultivationExperience;
 
@@ -1323,6 +1325,24 @@ namespace ImmortalLoot.Tests.PlayMode
             Assert.That(controller.ProgressForTests.Stage.ClearedStageIds, Does.Contain("stage_1_10"));
             Assert.That(controller.CurrentStageIdForTests, Is.EqualTo("stage_1_1"),
                 "A completed chapter Boss must loop back instead of leaving the runtime permanently on stage 10.");
+            Assert.That(controller.CycleIndexForTests, Is.EqualTo(2));
+            Assert.That(controller.CycleElapsedSecondsForTests, Is.Zero);
+            Assert.That(controller.PremiumCurrencyForTests, Is.EqualTo(premiumCurrencyBefore + 10),
+                "The first-clear premium reward must be granted once without cycle scaling.");
+
+            var saved = JsonPlayerSaveRepository.CreateDefault().Load();
+            var savedProgress = PlayerProgressStateCodec.Deserialize(saved.ProgressJson);
+            Assert.That(savedProgress.Stage.CycleIndex, Is.EqualTo(2));
+            Assert.That(savedProgress.Stage.CycleElapsedSeconds, Is.Zero);
+            Assert.That(savedProgress.CurrentStageId, Is.EqualTo("stage_1_1"));
+
+            controller.RespawnCurrentBattleForTests();
+            var catalog = new JsonConfigRepository(new ResourcesConfigSource()).LoadAll();
+            var baselineEnemyHp = catalog.Monsters["monster_wasteland_beast"].MaxHp;
+            Assert.That(controller.ActiveBattleStageIdForTests, Is.EqualTo("stage_1_1"));
+            Assert.That(controller.ActiveEnemyMaxHpForTests,
+                Is.EqualTo(baselineEnemyHp * 1.25f).Within(0.001f),
+                "Cycle two must create a scaled enemy without mutating the shared monster config.");
             DeleteLocalSave();
         }
 

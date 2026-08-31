@@ -8,6 +8,8 @@ namespace ImmortalLoot.Stage
     public sealed class StageProgressState
     {
         public List<string> ClearedStageIds = new List<string>();
+        public int CycleIndex = 1;
+        public double CycleElapsedSeconds;
     }
 
     public readonly struct StageClearResult

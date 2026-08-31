@@ -25,6 +25,8 @@ internal static class RealBattlePacingSmoke
             VerifyDeterministicGrowthResistance(fixture);
             var tenMinutes = Simulate(fixture, 10, 20260830);
             var sixtyMinutes = Simulate(fixture, 60, 20260830);
+            Print(tenMinutes);
+            Print(sixtyMinutes);
             VerifyResult(tenMinutes);
             VerifyResult(sixtyMinutes);
 
@@ -33,8 +35,6 @@ internal static class RealBattlePacingSmoke
             Console.WriteLine(
                 "model: production battle/factory/stage/pacing; tick=1/60s; respawn=0.65s; " +
                 "player=controller baseline plus configured stage-exp level growth; equipment/cultivation bonuses excluded");
-            Print(tenMinutes);
-            Print(sixtyMinutes);
             return 0;
         }
         catch (Exception exception)
@@ -52,10 +52,12 @@ internal static class RealBattlePacingSmoke
             fixture.Catalog,
             new StageProgressState(),
             FirstStageId);
+        var cycleScaling = new CycleScalingPolicy(fixture.Pacing);
         var battles = new StageBattleFactory(
             fixture.Catalog,
             new MonsterFactory(fixture.Catalog),
-            new DamageCalculator(fixture.DamageFormula, new SystemRandomSource(randomSeed)));
+            new DamageCalculator(fixture.DamageFormula, new SystemRandomSource(randomSeed)),
+            cycleScaling);
         var progression = new BaselineProgression();
         var horizonSeconds = minutes * 60d;
         var elapsedSeconds = 0d;
@@ -74,6 +76,9 @@ internal static class RealBattlePacingSmoke
         var postBossTransitions = 0;
         var firstBossReachedSecond = -1d;
         var firstBossVictorySecond = -1d;
+        var secondBossReachedSecond = -1d;
+        var secondBossVictorySecond = -1d;
+        var thirdBossReachedSecond = -1d;
         var firstBossPlayerLevel = 0;
         var maximumEncounterDuration = 0d;
         var lastSettlementSecond = 0d;
@@ -88,7 +93,7 @@ internal static class RealBattlePacingSmoke
                 activeStageWasBoss = stage.IsBossStage;
                 encounterStartedSecond = elapsedSeconds;
                 finishedState = null;
-                battle = battles.Create(stage.Id, CreatePlayer(fixture.Catalog, progression.Level));
+                battle = battles.Create(stage.Id, CreatePlayer(fixture.Catalog, progression.Level), loop.CurrentCycleIndex);
                 battle.SuppressPresentationEvents = true;
                 battle.Finished += state =>
                 {
@@ -105,6 +110,8 @@ internal static class RealBattlePacingSmoke
                         firstBossReachedSecond = elapsedSeconds;
                         firstBossPlayerLevel = progression.Level;
                     }
+                    else if (secondBossReachedSecond < 0d) secondBossReachedSecond = elapsedSeconds;
+                    else if (thirdBossReachedSecond < 0d) thirdBossReachedSecond = elapsedSeconds;
                 }
             }
 
@@ -132,6 +139,7 @@ internal static class RealBattlePacingSmoke
                 {
                     bossVictories++;
                     if (firstBossVictorySecond < 0d) firstBossVictorySecond = elapsedSeconds;
+                    else if (secondBossVictorySecond < 0d) secondBossVictorySecond = elapsedSeconds;
                 }
                 if (transition.Advanced)
                 {
@@ -141,7 +149,9 @@ internal static class RealBattlePacingSmoke
 
                 var consumedRewardWindow = pacing.TryConsumeBattleReward();
                 if (completed.IsBossStage || consumedRewardWindow)
-                    progression.GrantExperience(completed.RewardExp);
+                    progression.GrantExperience(cycleScaling.ScaleReward(completed.RewardExp, transition.CompletedCycleIndex));
+                if (transition.StartedNewCycle)
+                    pacing.BeginCycle(transition.NextCycleIndex);
             }
             else if (finishedState.Value == BattleState.Defeat)
             {
@@ -171,6 +181,9 @@ internal static class RealBattlePacingSmoke
             minutes,
             firstBossReachedSecond,
             firstBossVictorySecond,
+            secondBossReachedSecond,
+            secondBossVictorySecond,
+            thirdBossReachedSecond,
             firstBossPlayerLevel,
             bossEntries,
             bossVictories,
@@ -193,7 +206,8 @@ internal static class RealBattlePacingSmoke
         var battles = new StageBattleFactory(
             fixture.Catalog,
             new MonsterFactory(fixture.Catalog),
-            new DamageCalculator(fixture.DamageFormula, new NoCriticalRandomSource()));
+            new DamageCalculator(fixture.DamageFormula, new NoCriticalRandomSource()),
+            new CycleScalingPolicy(fixture.Pacing));
         var loop = new VictoryDrivenStageLoop(fixture.Catalog, new StageProgressState(), "stage_1_10");
         var pacing = new DemoPacingSession(fixture.Pacing);
         pacing.Restore(180d);
@@ -304,9 +318,26 @@ internal static class RealBattlePacingSmoke
             $"{result.Minutes}-minute simulation did not defeat the first Boss");
         Require(result.FirstBossVictorySecond <= 240d,
             $"{result.Minutes}-minute simulation missed the 4-minute first-Boss defeat guardrail");
-        Require(result.BossVictories > 1,
-            $"{result.Minutes}-minute simulation did not complete a second Boss cycle");
-        Require(result.Defeats <= 2,
+        Require(result.SecondBossReachedSecond >= 480d && result.SecondBossReachedSecond <= 600d,
+            $"{result.Minutes}-minute simulation reached its second Boss outside the 8-10 minute target: {result.SecondBossReachedSecond:0.00}s");
+        Require(result.SecondBossVictorySecond >= result.SecondBossReachedSecond,
+            $"{result.Minutes}-minute simulation did not defeat its second Boss");
+        if (result.Minutes == 10)
+        {
+            Require(result.SecondBossVictorySecond <= 600d,
+                $"10-minute simulation missed the second-Boss defeat target: {result.SecondBossVictorySecond:0.00}s");
+            Require(result.ThirdBossReachedSecond < 0d && result.BossEntries == 2 && result.BossVictories == 2,
+                $"10-minute simulation produced Boss spam: entries={result.BossEntries}, victories={result.BossVictories}, third={result.ThirdBossReachedSecond:0.00}s");
+        }
+        else
+        {
+            Require(result.BossVictories >= 2 && result.BossVictories <= 12,
+                $"{result.Minutes}-minute Boss victories {result.BossVictories} exceeded the configured cadence");
+            Require(result.Defeats > 0,
+                $"{result.Minutes}-minute simulation never encountered the configured long-cycle resistance");
+        }
+        var maximumDefeats = result.Minutes == 10 ? 2 : 12;
+        Require(result.Defeats <= maximumDefeats,
             $"{result.Minutes}-minute simulation accumulated {result.Defeats} defeats and regressed into retry churn");
         Require(result.PostBossTransitions > 0,
             $"{result.Minutes}-minute simulation made no stage transition after its first Boss victory");
@@ -321,7 +352,7 @@ internal static class RealBattlePacingSmoke
 
     private static Fixture ParseFixture(string[] args)
     {
-        Require(args != null && args.Length >= 10,
+        Require(args != null && args.Length >= 14,
             "Expected pacing/formula values followed by production config descriptors.");
         var pacing = new DemoPacingConfig
         {
@@ -330,20 +361,24 @@ internal static class RealBattlePacingSmoke
             growthPulseMinutes = ParseInt(args[1], "growthPulseMinutes"),
             equipmentDropSeconds = ParseInt(args[2], "equipmentDropSeconds"),
             firstEquipmentMinute = ParseInt(args[3], "firstEquipmentMinute"),
-            firstBossMinute = ParseInt(args[4], "firstBossMinute")
+            firstBossMinute = ParseInt(args[4], "firstBossMinute"),
+            repeatBossMinute = ParseInt(args[5], "repeatBossMinute"),
+            enemyStatGrowthPercentPerCycle = ParseInt(args[6], "enemyStatGrowthPercentPerCycle"),
+            rewardGrowthPercentPerCycle = ParseInt(args[7], "rewardGrowthPercentPerCycle"),
+            maxScaledCycle = ParseInt(args[8], "maxScaledCycle")
         };
         var damageFormula = new DamageFormulaConfig
         {
-            DefenseConstant = ParseFloat(args[5], "defenseConstant"),
-            MinimumDamage = ParseFloat(args[6], "minimumDamage"),
-            MaximumDamageReduction = ParseFloat(args[7], "maximumDamageReduction"),
-            MaximumElementResistance = ParseFloat(args[8], "maximumElementResistance")
+            DefenseConstant = ParseFloat(args[9], "defenseConstant"),
+            MinimumDamage = ParseFloat(args[10], "minimumDamage"),
+            MaximumDamageReduction = ParseFloat(args[11], "maximumDamageReduction"),
+            MaximumElementResistance = ParseFloat(args[12], "maximumElementResistance")
         };
         var skills = new Dictionary<string, SkillConfig>(StringComparer.Ordinal);
         var monsters = new Dictionary<string, MonsterConfig>(StringComparer.Ordinal);
         var stages = new Dictionary<string, StageConfig>(StringComparer.Ordinal);
 
-        for (var index = 9; index < args.Length; index++)
+        for (var index = 13; index < args.Length; index++)
         {
             var fields = args[index].Split('|');
             switch (fields[0])
@@ -471,7 +506,8 @@ internal static class RealBattlePacingSmoke
     {
         Console.WriteLine(
             $"{result.Minutes}m: firstBossReached={result.FirstBossReachedSecond:0.00}s, " +
-            $"firstBossDefeated={result.FirstBossVictorySecond:0.00}s, firstBossLevel={result.FirstBossPlayerLevel}, bossEntries={result.BossEntries}, " +
+            $"firstBossDefeated={result.FirstBossVictorySecond:0.00}s, secondBossReached={result.SecondBossReachedSecond:0.00}s, " +
+            $"secondBossDefeated={result.SecondBossVictorySecond:0.00}s, thirdBossReached={result.ThirdBossReachedSecond:0.00}s, firstBossLevel={result.FirstBossPlayerLevel}, bossEntries={result.BossEntries}, " +
             $"bossVictories={result.BossVictories}, postBossTransitions={result.PostBossTransitions}, " +
             $"encounters={result.EncounterCount}, " +
             $"victories={result.Victories}, defeats={result.Defeats}, " +
@@ -526,6 +562,9 @@ internal static class RealBattlePacingSmoke
         public int Minutes { get; }
         public double FirstBossReachedSecond { get; }
         public double FirstBossVictorySecond { get; }
+        public double SecondBossReachedSecond { get; }
+        public double SecondBossVictorySecond { get; }
+        public double ThirdBossReachedSecond { get; }
         public int FirstBossPlayerLevel { get; }
         public int BossEntries { get; }
         public int BossVictories { get; }
@@ -546,6 +585,9 @@ internal static class RealBattlePacingSmoke
             int minutes,
             double firstBossReachedSecond,
             double firstBossVictorySecond,
+            double secondBossReachedSecond,
+            double secondBossVictorySecond,
+            double thirdBossReachedSecond,
             int firstBossPlayerLevel,
             int bossEntries,
             int bossVictories,
@@ -565,6 +607,9 @@ internal static class RealBattlePacingSmoke
             Minutes = minutes;
             FirstBossReachedSecond = firstBossReachedSecond;
             FirstBossVictorySecond = firstBossVictorySecond;
+            SecondBossReachedSecond = secondBossReachedSecond;
+            SecondBossVictorySecond = secondBossVictorySecond;
+            ThirdBossReachedSecond = thirdBossReachedSecond;
             FirstBossPlayerLevel = firstBossPlayerLevel;
             BossEntries = bossEntries;
             BossVictories = bossVictories;
